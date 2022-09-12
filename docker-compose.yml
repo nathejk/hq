@@ -1,0 +1,86 @@
+version: '3.4'
+
+volumes:
+    go:
+    vue:
+
+services:
+    gw:
+        image: jrgensen/gateway
+        environment:
+            PROXY_MAPPINGS: >
+                hq:ui
+                mysql:adminer:8080
+                redis:redis-commander:8081
+        ports:
+        - 80
+
+    ui:
+        build:
+            context: .
+            target: ui-dev
+            dockerfile: docker/Dockerfile
+        entrypoint: /app/init-dev
+        volumes:
+        - ./vue:/app
+        - vue:/app/node_modules
+        environment:
+            DEBUG: "true"
+            NODE_ENV: development
+            AUTH_BASEURL: https://lukmigind.nathejk.dk
+            API_BASEURL: http://api.hq.dev.nathejk.dk
+        depends_on:
+        - gw
+
+    api:
+        build:
+            context: .
+            target: api-dev
+            dockerfile: docker/Dockerfile
+        entrypoint: /app/docker/bin/init-dev
+        command: api
+        volumes:
+        - .:/app
+        - go:/go
+        environment:
+            #GO_BUILD_FLAGS: -race
+            STAN_DSN: stan://dev.nathejk.dk:4222/nathejk
+            DB_DSN: root:ib@tcp(mysql:3306)/hq?parseTime=true
+            REDIS_ADDR: redis:6379
+            MONOLITH_BASEURL: https://natpas.nathejk.dk
+            JWT_COOKIE_NAME: jwttoken
+            AUTH_BASEURL: https://lukmigind.nathejk.dk
+        depends_on:
+        - gw
+        - redis
+        - mysql
+
+    mysql:
+        image: mariadb:10.8
+        environment:
+            MYSQL_ROOT_PASSWORD: ib
+            MYSQL_DATABASE: hq
+            MYSQL_USER: nathejk
+            MYSQL_PASSWORD: kodeord
+            TZ: Europe/Copenhagen
+
+    adminer:
+        image: adminer
+        environment:
+            ADMINER_DEFAULT_SERVER: mysql
+            ADMINER_DEFAULT_USER: nathejk
+            ADMINER_DEFAULT_PASSWORD: kodeord
+            ADMINER_DEFAULT_DB: hq
+        depends_on:
+        - gw
+        - mysql
+
+    redis:
+        image: redis:4.0-alpine3.8
+        entrypoint: redis-server --appendonly yes
+
+    redis-commander:
+        image: rediscommander/redis-commander:latest
+        environment:
+            REDIS_HOSTS: auth:redis:6379
+

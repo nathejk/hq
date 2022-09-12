@@ -1,0 +1,5 @@
+#!/bin/bash
+
+eval "echo \"$(< /www/config.js.template )\"" > /www/config.js
+
+./dims $@

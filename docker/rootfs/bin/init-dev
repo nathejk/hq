@@ -1,0 +1,34 @@
+#!/bin/bash
+
+eval "echo \"$(< /app/public/config.js.template )\"" > /app/public/config.js
+
+mkdir -p /tmp/coverage
+(cd /tmp/coverage && ran &)
+
+cd src
+
+while true; do
+    go get -v -d ./... && \
+    go test -coverprofile=/tmp/coverage.out ./ && \
+    go tool cover -html=/tmp/coverage.out  -o /tmp/coverage/index.html
+
+    if [ "$?" == "0" ]; then
+        go run $GO_BUILD_FLAGS . &
+        pid=$!
+        echo "New pid: $pid"
+    fi
+
+    inotifywait -r --exclude "[^\.][^g][^o]$" --event modify,create,delete,move  ./ || exit 1
+
+    if [ "$pid" != "" ]; then
+        echo "Killing: $pid"
+        cpid=$(pgrep -P $pid)
+        if [ "$?" == "0" ]; then
+            echo "Killing child: $cpid"
+            kill -s SIGINT $cpid
+        fi
+        kill -s SIGINT $pid
+        wait $pid
+        echo "$pid killed!"
+    fi
+done
