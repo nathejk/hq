@@ -72,72 +72,73 @@ const getters = {
 */
 // actions
 const actions = {
-  async createSos(sos) {
+  async createSos({commit}, sos) {
     return axios
-        .put(window.envConfig.API_BASEURL + '/api/sos', sos, { withCredentials: true })
+        .put('/api/sos', sos, { withCredentials: true })
         .then((response) => {
           //commit('logUserIn', response.data);
             return response.data
         })
   },
-  async addSosComment(sos) {
+  async addSosComment({commit}, sos) {
     return axios
-      .put(window.envConfig.API_BASEURL + '/api/sos/comment', sos, { withCredentials: true })
+      .put('/api/sos/comment', sos, { withCredentials: true })
       .then((response) => { return response.data })
   },
-  updateSosHeadline(sos) {
+  updateSosHeadline({commit}, sos) {
+      console.log('updateSosHeadline(sos)', sos)
     return axios
-      .post(window.envConfig.API_BASEURL + '/api/sos/headline', sos, { withCredentials: true })
+      .post('/api/sos/headline', sos, { withCredentials: true })
       .then((response) => { return response.data })
   },
-  closeSos(sos) {
+  closeSos({commit}, sos) {
     return axios
-      .post(window.envConfig.API_BASEURL + '/api/sos/close', sos, { withCredentials: true })
+      .post('/api/sos/close', sos, { withCredentials: true })
       .then((response) => { return response.data })
   },
-  reopenSos(sos) {
+  reopenSos({commit}, sos) {
     return axios
-      .post(window.envConfig.API_BASEURL + '/api/sos/reopen', sos, { withCredentials: true })
+      .post('/api/sos/reopen', sos, { withCredentials: true })
       .then((response) => { return response.data })
   },
-  sosAssociateTeam(sos) {
+  sosAssociateTeam({commit}, sos) {
     return axios
-      .post(window.envConfig.API_BASEURL + '/api/sos/team', sos, { withCredentials: true })
+      .post('/api/sos/team', sos, { withCredentials: true })
       .then((response) => { return response.data })
   },
-  sosDisassociateTeam(sos) {
+  sosDisassociateTeam({commit}, sos) {
     return axios
-      .delete(window.envConfig.API_BASEURL + '/api/sos/team', { withCredentials: true, data: sos })
+      .delete('/api/sos/team', { withCredentials: true, data: sos })
       .then((response) => { return response.data })
   },
-  sosMergeTeams(sos) {
+  sosMergeTeams({commit}, sos) {
     return axios
-      .post(window.envConfig.API_BASEURL + '/api/sos/merge', sos, { withCredentials: true })
+      .post('/api/sos/merge', sos, { withCredentials: true })
       .then((response) => { return response.data })
   },
-  sosSplitTeam(sos) {
+  sosSplitTeam({commit}, sos) {
     return axios
-      .post(window.envConfig.API_BASEURL + '/api/sos/split', sos, { withCredentials: true })
+      .post('/api/sos/split', sos, { withCredentials: true })
       .then((response) => { return response.data })
   },
-  sosMemberStatus(sos) {
+  sosMemberStatus({commit}, sos) {
     return axios
-      .post(window.envConfig.API_BASEURL + '/api/sos/member', sos, { withCredentials: true })
+      .post('/api/sos/member', sos, { withCredentials: true })
       .then((response) => { return response.data })
   },
-  setSeveritySos(sos) {
+  setSeveritySos({commit}, sos) {
     return axios
-      .post(window.envConfig.API_BASEURL + '/api/sos/severity', sos, { withCredentials: true })
+      .post('/api/sos/severity', sos, { withCredentials: true })
       .then((response) => { return response.data })
   },
-  assignSos(sos) {
+  assignSos({commit}, sos) {
     return axios
-      .post(window.envConfig.API_BASEURL + '/api/sos/assign', sos, { withCredentials: true })
+      .post('/api/sos/assign', sos, { withCredentials: true })
       .then((response) => { return response.data })
   },
-  sosSendPositionSms(sos) {
+  sosSendPositionSms({commit}, sos) {
     return axios
-      .post(window.envConfig.API_BASEURL + '/api/sos/sms', sos, { withCredentials: true })
+      .post('/api/sos/sms', sos, { withCredentials: true })
       .then((response) => { return response.data })
   },
   async updateControlGroup({ commit }, ctrlgrp) {
@@ -158,9 +159,9 @@ const mutations = {
     try {
       var rsp;
       if (ctrlgrp.controlGroupId) {
-        rsp = await axios.post(window.envConfig.API_BASEURL + '/api/controlgroup', ctrlgrp, { withCredentials: true })
+        rsp = await axios.post('/api/controlgroup', ctrlgrp, { withCredentials: true })
       } else {
-        rsp = await axios.put(window.envConfig.API_BASEURL + '/api/controlgroup', ctrlgrp, { withCredentials: true })
+        rsp = await axios.put('/api/controlgroup', ctrlgrp, { withCredentials: true })
       }
 
       if (rsp.status == 200) {
