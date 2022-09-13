@@ -1,37 +1,3 @@
 #!/bin/sh
 
-echo
-echo "################################"
-echo "# Init node dev environment"
-echo
-
-#apk add python2 make g++
-#npm config set python "$(which python2)"
-
-#npm install -g sass
-#npm install -g vue
-
-#echo "going to sleep"
-#sleep 9999
-
-#npm install -g @vue/cli
-#npm install -g @vue/cli-service
-#npm install -g @vue/cli-plugin-babel
-#npm install -g babel-polyfill
-#npm install -g node-sass
-#npm install -g sass-loader
-#npm install -g vue-template-compiler
-
-
-#sh ./generate-config.sh > public/config.js
-#npm install -g npm@latest # upgrade npm to latest version, primarily to avoid warnings in the console
-npm install
-#sleep 9999
-
-echo
-echo "###############################################"
-echo "# Dependencies installed, running dev server"
-echo
-
-#npm ci # installs what is specified in package-lock.json
-npm run serve
+npm install && yarn dev

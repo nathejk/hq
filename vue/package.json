@@ -1,18 +1,23 @@
 {
-  "name": "ui",
-  "version": "0.1.0",
-  "private": true,
+  "name": "nathejk-hq-ui",
+  "version": "0.0.1",
   "scripts": {
-    "serve": "vue-cli-service serve",
-    "build": "vue-cli-service build",
-    "lint": "vue-cli-service lint"
+    "dev": "vite",
+    "build": "vite build",
+    "serve": "vite preview"
+  },
+  "devDependencies": {
+    "sass": "^1.54.9",
+    "vite": "^3.0.9",
+    "vite-plugin-vue2": "^2.0.2",
+    "vue-template-compiler": "^2.7.10"
   },
   "dependencies": {
     "axios": "^0.21.4",
     "bootstrap-select": "^1.13.18",
     "bootstrap-vue": "^2.21.2",
     "core-js": "^3.6.5",
-    "vue": "^2.6.11",
+    "vue": "^2.7.10",
     "vue-good-table": "^2.21.10",
     "vue-moment": "^4.1.0",
     "vue-router": "^3.5.2",
@@ -20,35 +25,16 @@
     "vue2-leaflet": "^2.7.1",
     "vuex": "^3.6.2"
   },
-  "devDependencies": {
-    "@vue/cli-plugin-babel": "~4.5.0",
-    "@vue/cli-plugin-eslint": "~4.5.0",
-    "@vue/cli-service": "~4.5.0",
-    "babel-eslint": "^10.1.0",
-    "eslint": "^6.7.2",
-    "eslint-plugin-vue": "^6.2.2",
-    "sass": "^1.22.10",
-    "sass-loader": "^7.2.0",
-    "sockjs-client": "^1.5.0",
-    "vue-template-compiler": "^2.6.11"
+  "description": "This template should help get you started developing with Vue 2 in Vite.",
+  "main": "vite.config.js",
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/nathejk/hq.git"
   },
-  "eslintConfig": {
-    "root": true,
-    "env": {
-      "node": true
-    },
-    "extends": [
-      "plugin:vue/essential",
-      "eslint:recommended"
-    ],
-    "parserOptions": {
-      "parser": "babel-eslint"
-    },
-    "rules": {}
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/nathejk/hq/issues"
   },
-  "browserslist": [
-    "> 1%",
-    "last 2 versions",
-    "not dead"
-  ]
+  "homepage": "https://github.com/nathejk/hq#readme"
 }

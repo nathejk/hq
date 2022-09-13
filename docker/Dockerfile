@@ -42,13 +42,14 @@ RUN GOARCH=amd64 CGO_ENABLED=1 GOOS=linux \
 
 
 ## UI
-FROM node:15.14-alpine3.13 AS ui-dev
+FROM node:18.9-alpine3.15 AS ui-dev
 
 RUN mkdir -p /app
 WORKDIR /app
 COPY vue /app
+COPY vue/init-dev /init
 
-RUN npm install -g npm@7.24.0
+RUN npm install -g npm@8.19.1
 
 # python is a dependency of node-gyp that we need to build node-sass https://www.npmjs.com/package/node-gyp
 RUN apk add g++ make python3 && \
@@ -56,7 +57,7 @@ RUN apk add g++ make python3 && \
 
 #RUN npm install
 
-ENTRYPOINT ["/app/init-dev"]
+ENTRYPOINT ["/init"]
 
 #FROM node:10.11-alpine AS ui-builder
 FROM ui-dev AS ui-builder

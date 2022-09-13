@@ -182,13 +182,14 @@ const mutations = {
 
   initialize(state) {
     const host = 'api.hq.dev.nathejk.dk' // window.location.host
-    console.log("connecting to websocket: ws://" + host + "/ws (" + state.timeout + "ms)")
+    console.log("connecting to websocket: ws://" + location.host + "/ws (" + state.timeout + "ms)")
     try {
       const protocol = location.protocol == 'https:' ? 'wss:' : 'ws:'
       state.ws = new WebSocket(protocol + '//' + location.host + '/ws');
     } catch(e) {
         console.log(e)
     }
+      console.log(state)
     const that = this
     state.ws.addEventListener('open', function() {
         console.log("ws connected")

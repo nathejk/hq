@@ -32,8 +32,8 @@
                             <div class="card-header d-flex">
                                 <small>
                                     <span class="text-uppercase pr-3">Sagen kort</span>
-                                    <span v-if="sos.closed" class="badge badge-danger p-1"><i class="fas fa-check text-light"></i> Afsluttet</span>
-                                    <span v-else class="badge badge-success p-1"><i class="fas fa-asterisk text-light"></i> Åben</span>
+                                    <span v-if="sos.closed" class="badge bg-danger p-1"><i class="fas fa-check text-light"></i> Afsluttet</span>
+                                    <span v-else class="badge bg-success p-1"><i class="fas fa-asterisk text-light"></i> Åben</span>
                                 </small>
                                 <ul class="navbar-nav flex-row ml-auto d-none d-flex">
                                     <li class="nav-item pl-3">

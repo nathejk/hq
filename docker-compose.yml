@@ -20,7 +20,7 @@ services:
             context: .
             target: ui-dev
             dockerfile: docker/Dockerfile
-        entrypoint: /app/init-dev
+        #entrypoint: ["sleep", "infinity"]
         volumes:
         - ./vue:/app
         - vue:/app/node_modules

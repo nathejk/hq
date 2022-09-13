@@ -112,7 +112,7 @@
 import axios from 'axios';
 //import VueTimepicker from 'vue2-timepicker/src/vue-timepicker.vue'
 import { BModal } from 'bootstrap-vue'
-import { corps } from 'constants'
+//import { corps } from '@constants'
 //Vue.use(ModalPlugin)
 
 

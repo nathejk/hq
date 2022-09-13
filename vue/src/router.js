@@ -1,46 +1,32 @@
 import Vue from 'vue'
 import Router from 'vue-router'
-import qs from 'qs'
 
 const routes = [
-  { path: '/', component: 'Frontpage', name: 'home' },
-  { path: '/kort', component: 'Kort', meta: {footer:false}},
-  { path: '/poster', component: 'Poster'},
-  { path: '/organisation', component: 'Organisation' },
-  { path: '/search', component: 'Search' },
-  { path: '/ude', component: 'Udgået' },
-  { path: '/sos', component: 'Sos/List' },
-  { path: '/sos/new', component: 'Sos/View', name: 'new-sos' },
-  { path: '/sos/:id', component: 'Sos/View', name: 'view-sos' },
+  { path: '/',              component: () => import('@/views/Frontpage.vue'), name: 'home' },
+  { path: '/kort',          component: () => import('@/views/Kort.vue'), meta: {footer:false}},
+  { path: '/poster',        component: () => import('@/views/Poster.vue') },
+  { path: '/organisation',  component: () => import('@/views/Organisation.vue') },
+  { path: '/search',        component: () => import('@/views/Search.vue') },
+  { path: '/ude',           component: () => import('@/views/Udgået.vue') },
+  { path: '/sos',           component: () => import('@/views/Sos/List.vue') },
+  { path: '/sos/new',       component: () => import('@/views/Sos/View.vue'), name: 'new-sos' },
+  { path: '/sos/:id',       component: () => import('@/views/Sos/View.vue'), name: 'view-sos' },
 
-  { path: '/patruljer', component: 'Patruljer', name: 'patruljer' },
-  { path: '/patruljer/:id', component: 'Patrulje', name: 'patrulje' },
-  { path: '/lok', component: 'lok', name: 'loks' },
-  { path: '/klan', component: 'List', name: 'klan-list', props: { team: "klan" } },
-  { path: '/klan/:id', component: 'Team', name: 'klan-view', props: { team: "klan" } },
-  { path: '/senior/:id', component: 'Team' },
+  { path: '/patruljer',     component: () => import('@/views/Patruljer.vue'), name: 'patruljer' },
+  { path: '/patruljer/:id', component: () => import('@/views/Patrulje.vue'), name: 'patrulje' },
+  { path: '/lok',           component: () => import('@/views/Lok.vue'), name: 'loks' },
+  { path: '/klan',          component: () => import('@/views/List.vue'), name: 'klan-list', props: { team: "klan" } },
+  { path: '/klan/:id',      component: () => import('@/views/Team.vue'), name: 'klan-view', props: { team: "klan" } },
+  { path: '/senior/:id',    component: () => import('@/views/Team.vue') },
   // Notfound
-  { path: '*',  component: 'NotFound' },
-].map(route => {
-  return {
-    ...route,
-    component: () => import(`@/views/${route.component}.vue`),
-  }
-})
+  { path: '*',  component: () => import('@/views/NotFound.vue') },
+]
 
 Vue.use(Router)
 
 const router = new Router({
   mode: 'history',
   routes,
-  parseQuery: (query) => {
-    return qs.parse(query);
-  },
-  stringifyQuery(query) {
-    let result = qs.stringify(query, { encode: false });
-
-    return result ? ('?' + result) : '';
-  }
 })
 
 router.setPermissions = function (userPermissions) {
