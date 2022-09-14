@@ -62,7 +62,7 @@ func NewServer(publisher streaminterface.Publisher, state StateReader, sms notif
 
 	mux.Handle("/index.html", StaticFileHandler("/www/index.html"))
 	mux.Handle("/", StaticFileHandler("/www/index.html"))
-	mux.Handle("", StaticFileHandler("/www/index.html"))
+	//mux.Handle("", StaticFileHandler("/www/index.html"))
 
 	return &server{mux: mux}
 }
