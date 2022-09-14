@@ -12,7 +12,7 @@ import (
 )
 
 type UserAggregate struct {
-	messages.NathejkUserUpdated
+	messages.NathejkPersonnelUpdated
 
 	CreatedAt time.Time `json:"createdAt"`
 	deleted   bool
@@ -63,8 +63,8 @@ func (m *userModel) CaughtUp() {
 
 func (m *userModel) Consumes() []streaminterface.Subject {
 	return []streaminterface.Subject{
-		streaminterface.SubjectFromStr("nathejk:user.updated"),
-		streaminterface.SubjectFromStr("nathejk:user.deleted"),
+		streaminterface.SubjectFromStr("nathejk:personnel.updated"),
+		streaminterface.SubjectFromStr("nathejk:personnel.deleted"),
 	}
 }
 
@@ -82,8 +82,8 @@ func (m *userModel) HandleMessage(msg streaminterface.Message) error {
 		return
 	}*/
 	switch msg.Subject().Subject() {
-	case "nathejk:user.updated":
-		var body messages.NathejkUserUpdated
+	case "nathejk:personnel.updated":
+		var body messages.NathejkPersonnelUpdated
 		msg.Body(&body)
 		user := m.get(body.UserID)
 		user.deleted = false
@@ -93,8 +93,8 @@ func (m *userModel) HandleMessage(msg streaminterface.Message) error {
 		if m.live {
 			m.ap.Publish(user)
 		}
-	case "nathejk:user.deleted":
-		var body messages.NathejkUserDeleted
+	case "nathejk:personnel.deleted":
+		var body messages.NathejkPersonnelDeleted
 		msg.Body(&body)
 		user := m.get(body.UserID)
 		user.deleted = true

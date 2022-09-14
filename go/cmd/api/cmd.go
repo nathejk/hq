@@ -19,17 +19,20 @@ func NewCommander(publisher streaminterface.Publisher) *commander {
 }
 
 func (c *commander) SaveUser(r PostUserRequest) error {
-	body := messages.NathejkUserUpdated{
-		UserID:   r.UserID,
-		Name:     r.Name,
-		Phone:    r.Phone,
-		HqAccess: r.HqAccess,
-		Group:    r.Group,
+	body := messages.NathejkPersonnelUpdated{
+		UserID:     r.UserID,
+		Name:       r.Name,
+		Phone:      r.Phone,
+		Email:      r.Email,
+		HqAccess:   r.HqAccess,
+		Department: r.Department,
+		MedlemNr:   r.MedlemNr,
+		Corps:      r.Corps,
 	}
 	if body.UserID == "" {
 		body.UserID = types.UserID("user-" + uuid.New().String())
 	}
-	msg := c.publisher.MessageFunc()(streaminterface.SubjectFromStr("nathejk:user.updated"))
+	msg := c.publisher.MessageFunc()(streaminterface.SubjectFromStr("nathejk:personnel.updated"))
 	//msg := eventstream.NewMessage()
 	//msg.Msg().Type = "user.updated"
 	msg.SetBody(body)
@@ -40,10 +43,10 @@ func (c *commander) SaveUser(r PostUserRequest) error {
 }
 
 func (c *commander) DeleteUser(r DeleteUserRequest) error {
-	body := messages.NathejkUserDeleted{
+	body := messages.NathejkPersonnelDeleted{
 		UserID: r.UserID,
 	}
-	msg := c.publisher.MessageFunc()(streaminterface.SubjectFromStr("nathejk:user.deleted"))
+	msg := c.publisher.MessageFunc()(streaminterface.SubjectFromStr("nathejk:personnel.deleted"))
 	//msg := eventstream.NewMessage()
 	//msg.Msg().Type = "user.deleted"
 	msg.SetBody(body)

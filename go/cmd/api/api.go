@@ -25,12 +25,25 @@ func NewApi(cmd ApiCommander) *api {
 	}
 }
 
+/*
+corps: "xxs"
+createdAt: "2021-08-06T09:07:57.3427887Z"
+group: "bhq"
+hqAccess: false
+name: "klipklap"
+originalIndex: 2
+phone: "112"
+userId: "user-3df89
+*/
 type PostUserRequest struct {
-	UserID   types.UserID      `json:"userId"`
-	Name     string            `json:"name"`
-	Phone    types.PhoneNumber `json:"phone"`
-	HqAccess bool              `json:"hqAccess"`
-	Group    string            `json:"group"`
+	UserID     types.UserID      `json:"userId"`
+	Name       string            `json:"name"`
+	Phone      types.PhoneNumber `json:"phone"`
+	Email      types.Email       `json:"email"`
+	HqAccess   bool              `json:"hqAccess"`
+	Department string            `json:"department"`
+	MedlemNr   string            `json:"medlemnr"`
+	Corps      types.CorpsSlug   `json:"corps"`
 }
 type DeleteUserRequest struct {
 	UserID types.UserID `json:"userId"`

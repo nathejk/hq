@@ -57,7 +57,7 @@
       <div class="form-group row">
         <label class="col-sm-2 col-form-label" for="modalFunction">Funktion</label>
         <div class="col-sm-10">
-          <select class="form-control form-control-sm" v-model="user.group">
+          <select class="form-control form-control-sm" v-model="user.department">
             <optgroup v-for="group in groupOptions" :label="group.label" :key="group.label">
               <option v-for="option in group.options" :value="option.slug" :key="option.slug">{{ option.text }}</option>
             </optgroup>
@@ -131,7 +131,7 @@ export default {
         {label: 'E-mail', field: 'email'},
         {label: 'Korps', field: 'corps'},
         {label: 'medlemsnr.', field: 'medlemnr'},
-        {label: 'Hold', field: 'group'},
+        {label: 'Hold', field: 'department'},
         //{label: 'Antal scanninger', field: 'scanCount', type:'number'},
       ],
       groupOptions: [
@@ -240,7 +240,7 @@ export default {
           { text: 'Målpost',  value: 'slut' },
         ],
       },
-      user: { name:'', controls:[] },
+      user: { name:'' },
     }),
     computed: {
         groupSlugs() {
@@ -256,7 +256,7 @@ export default {
             //return this.$store.getters['dims/users']
             const users = {}
             for (const user of this.$store.getters['dims/users']) {
-                const label = this.groupSlugs[user.group] || 'Andet'
+                const label = this.groupSlugs[user.department] || 'Andet'
                 if (!users[label]) {
                     users[label] = []
                 }
@@ -302,7 +302,7 @@ export default {
         },
         async saveUser() {
             try {
-                const rsp = await axios.post(window.envConfig.API_BASEURL + '/api/user', this.user, { withCredentials: true })
+                const rsp = await axios.post('/api/user', this.user, { withCredentials: true })
                 if (rsp.status == 200) {
                     //$('#userModal').modal('hide')
                     this.$refs['userModal'].hide()
@@ -317,7 +317,7 @@ export default {
                 return
             }
             try {
-                const rsp = await axios.delete(window.envConfig.API_BASEURL + '/api/user', { withCredentials: true, data: this.user })
+                const rsp = await axios.delete('/api/user', { withCredentials: true, data: this.user })
                 if (rsp.status == 200) {
                     //$('#userModal').modal('hide')
                     this.$refs['userModal'].hide()

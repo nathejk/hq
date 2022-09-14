@@ -169,7 +169,7 @@ export default {
         /*
     async mounted() {
         try {
-            const rsp = await axios.get(window.envConfig.API_BASEURL + '/api/teams',
+            const rsp = await axios.get('/api/teams',
             { withCredentials: true }
             )
             if (rsp.status == 200) {
@@ -185,7 +185,7 @@ export default {
     },
     /*
     mounted() {
-        axios.get(window.envConfig.API_BASEURL + '/api/teams',
+        axios.get('/api/teams',
             { withCredentials: true }
         ).then((rsp) => {
             var teams = {}

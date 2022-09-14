@@ -18,12 +18,12 @@ const (
 	TeamTypePatrulje TeamType = "patrulje"
 	TeamTypeKlan     TeamType = "klan"
 
-//	TeamTypes        TeamTypeList = TeamTypeList{TeamTypePatrulje, TeamTypeKlan}
+// TeamTypes        TeamTypeList = TeamTypeList{TeamTypePatrulje, TeamTypeKlan}
 )
 
 var TeamTypes = TeamTypeList{TeamTypePatrulje, TeamTypeKlan}
 
-//type TeamTypes []TeamType
+// type TeamTypes []TeamType
 func (l *TeamTypeList) Exists(t TeamType) bool {
 	for _, i := range TeamTypes {
 		if t == i {

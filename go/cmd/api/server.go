@@ -13,6 +13,7 @@ import (
 	"github.com/rs/cors"
 
 	"nathejk.dk/nathejk/aggregate/team"
+	"nathejk.dk/nathejk/types"
 	"nathejk.dk/pkg/notification"
 	"nathejk.dk/pkg/streaminterface"
 )
@@ -38,6 +39,7 @@ func NewServer(publisher streaminterface.Publisher, state StateReader, sms notif
 
 	//s := server{router: http.NewServeMux()}
 	mux := http.NewServeMux()
+	mux.HandleFunc("/api/base", NewBaseHandler())
 	mux.HandleFunc("/api/patrulje/", patruljeHandler(state))
 	mux.HandleFunc("/api/teams", monolithHandler)
 	mux.HandleFunc("/api/teams/", monolithTeamHandler)
@@ -166,4 +168,24 @@ func IndexHandler(entrypoint string) func(w http.ResponseWriter, r *http.Request
 		http.ServeFile(w, r, entrypoint)
 	}
 	return http.HandlerFunc(fn)
+}
+func NewBaseHandler() http.HandlerFunc {
+	type corps struct {
+		Slug  types.CorpsSlug
+		Label string
+	}
+	type response struct {
+		Build   string  `json:"build"`
+		Corpses []corps `json:"corpses"`
+	}
+	corpses := []corps{}
+	for _, slug := range types.CorpsSlugs {
+		corpses = append(corpses, corps{Slug: slug, Label: slug.String()})
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(&response{
+			Build:   "dev",
+			Corpses: corpses,
+		})
+	}
 }

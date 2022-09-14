@@ -54,6 +54,7 @@ func (d *dims) Subscribe() *dims {
 	dstswtch, err := stream.NewSwitch(dstmux, []streaminterface.Consumer{
 		table.NewPatrulje(sqlw),
 		table.NewSpejder(sqlw),
+		table.NewPersonnel(sqlw, memstream),
 
 		member.NewMemberModel(bufferedPublisher),
 		team.NewSpejderModel(bufferedPublisher),
