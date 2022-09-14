@@ -15,7 +15,7 @@ const routes = [
   { path: '/patruljer',     component: () => import('@/views/Patruljer.vue'), name: 'patruljer' },
   { path: '/patruljer/:id', component: () => import('@/views/Patrulje.vue'), name: 'patrulje' },
   { path: '/lok',           component: () => import('@/views/Lok.vue'), name: 'loks' },
-  { path: '/klan',          component: () => import('@/views/List.vue'), name: 'klan-list', props: { team: "klan" } },
+//  { path: '/klan',          component: () => import('@/views/List.vue'), name: 'klan-list', props: { team: "klan" } },
   { path: '/klan/:id',      component: () => import('@/views/Team.vue'), name: 'klan-view', props: { team: "klan" } },
   { path: '/senior/:id',    component: () => import('@/views/Team.vue') },
   // Notfound

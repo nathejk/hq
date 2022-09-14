@@ -34,7 +34,7 @@ COPY go/ .
 
 #
 # BUILD
-FROM base AS build
+#FROM base AS build
 
 # build service
 RUN GOARCH=amd64 CGO_ENABLED=1 GOOS=linux \
@@ -68,7 +68,7 @@ RUN npm ci --no-save
 
 #RUN yarn install --frozen-lockfile
 
-RUN npm test
+#RUN npm test
 RUN npm run build
 
 #FROM api-dev AS prod

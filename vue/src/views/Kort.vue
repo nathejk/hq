@@ -10,7 +10,7 @@
 <script>
 export default {
   components: {
-    Map: () => import('@/components/Map'),
+    Map: () => import('@/components/Map.vue'),
   },
   data() {
     return {

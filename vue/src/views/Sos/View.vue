@@ -333,7 +333,7 @@ table tr.done {
 
 <script>
 //import MapModal from '../MapModal.vue'
-import ActivityLine from './ActivityLine'
+import ActivityLine from './ActivityLine.vue'
 import { BPopover } from 'bootstrap-vue'
 
 export default {
