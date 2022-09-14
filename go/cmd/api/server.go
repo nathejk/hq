@@ -57,7 +57,12 @@ func NewServer(publisher streaminterface.Publisher, state StateReader, sms notif
 	mux.Handle("/app.bundle.js.map", StaticFileHandler("/www/app.bundle.js.map"))
 	mux.Handle("/config.js", StaticFileHandler("/www/config.js"))
 
+	mux.Handle("/assets/", http.FileServer(http.Dir("/www/")))
+	mux.Handle("/favicon.ico", StaticFileHandler("/www/favicon.ico"))
+
+	mux.Handle("/index.html", StaticFileHandler("/www/index.html"))
 	mux.Handle("/", StaticFileHandler("/www/index.html"))
+	mux.Handle("", StaticFileHandler("/www/index.html"))
 
 	return &server{mux: mux}
 }
