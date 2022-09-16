@@ -53,8 +53,13 @@ func (d *dims) Subscribe() *dims {
 	dstmux.Handles(d.stream, "monolith", "nathejk") //d.stream.Channels()...)
 	dstswtch, err := stream.NewSwitch(dstmux, []streaminterface.Consumer{
 		table.NewPatrulje(sqlw),
+		table.NewPatruljeStatus(sqlw),
+		table.NewPatruljeMerged(sqlw),
 		table.NewSpejder(sqlw),
 		table.NewPersonnel(sqlw, memstream),
+		table.NewControlPoint(sqlw, memstream),
+		table.NewControlGroupUser(sqlw, memstream),
+		table.NewScan(sqlw, memstream),
 
 		member.NewMemberModel(bufferedPublisher),
 		team.NewSpejderModel(bufferedPublisher),

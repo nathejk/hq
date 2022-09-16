@@ -1,15 +1,18 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"path"
 	"strconv"
 
+	_ "github.com/go-sql-driver/mysql"
 	"github.com/rs/cors"
 
 	"nathejk.dk/nathejk/aggregate/team"
@@ -34,12 +37,18 @@ func NewServer(publisher streaminterface.Publisher, state StateReader, sms notif
 	cmd := NewCommander(publisher)
 	api := NewApi(cmd)
 
+	db, err := sql.Open("mysql", os.Getenv("DB_DSN"))
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	ctrlgrp := NewCrudRoute(NewControlGroupCmd(publisher), &CreateRequest{}, &ReadRequest{}, &UpdateRequest{}, &DeleteRequest{})
 	sos := NewSosRoutes(NewSosCmd(publisher, state, sms))
 
 	//s := server{router: http.NewServeMux()}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/base", NewBaseHandler())
+	mux.HandleFunc("/api/cgstatus", NewControlgroupStatusHandler(db))
 	mux.HandleFunc("/api/patrulje/", patruljeHandler(state))
 	mux.HandleFunc("/api/teams", monolithHandler)
 	mux.HandleFunc("/api/teams/", monolithTeamHandler)
@@ -192,5 +201,146 @@ func NewBaseHandler() http.HandlerFunc {
 			Build:   "dev",
 			Corpses: corpses,
 		})
+	}
+}
+func NewControlgroupStatusHandler(con *sql.DB) http.HandlerFunc {
+	type response struct {
+		ControlGroups []json.RawMessage
+	}
+	cgIDs := func() (IDs []types.ControlGroupID) {
+		rows, err := con.Query("SELECT controlGroupId FROM controlpoint GROUP BY controlGroupId")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer rows.Close()
+
+		var cgID types.ControlGroupID
+		for rows.Next() {
+			if err := rows.Scan(&cgID); err != nil {
+				log.Fatal(err)
+			}
+			IDs = append(IDs, cgID)
+		}
+		return
+	}
+	startedTeamIDs := func() []types.TeamID {
+		teamIDs := []types.TeamID{}
+		rows, err := con.Query("SELECT teamId FROM patruljestatus WHERE startedUts > 0 AND teamId >= 2022000")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer rows.Close()
+
+		var teamID types.TeamID
+		for rows.Next() {
+			if err := rows.Scan(&teamID); err != nil {
+				log.Fatal(err)
+			}
+			teamIDs = append(teamIDs, teamID)
+		}
+		return teamIDs
+	}
+	inactiveTeamIDs := func() []types.TeamID {
+		teamIDs := []types.TeamID{}
+		rows, err := con.Query("SELECT teamId FROM patruljemerged")
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer rows.Close()
+
+		var teamID types.TeamID
+		for rows.Next() {
+			if err := rows.Scan(&teamID); err != nil {
+				log.Fatal(err)
+			}
+			teamIDs = append(teamIDs, teamID)
+		}
+		return teamIDs
+	}
+	type scan struct {
+		TeamID         types.TeamID
+		TeamNumber     string
+		Uts            int
+		UserID         string
+		ControlGroupID types.ControlGroupID
+		ControlIndex   int
+		OnTime         bool
+	}
+	allScans := func() (ss []scan) {
+		rows, err := con.Query(`select teamId, teamNumber, uts, userId, cp.controlGroupId, cp.controlIndex, (openFromUts - 60*minusMinutes <= uts AND uts <= openUntilUts + 60*plusMinutes) AS ontime from scan 
+  JOIN controlgroup_user cgu ON scan.scannerId = cgu.userId AND startUts <= uts AND uts <= endUts 
+  JOIN controlpoint cp ON cgu.controlGroupId = cp.controlGroupId AND cgu.controlIndex = cp.controlIndex`)
+		if err != nil {
+			log.Fatalf("Query: %v", err)
+		}
+		for rows.Next() {
+			var s scan
+			err = rows.Scan(&s.TeamID, &s.TeamNumber, &s.Uts, &s.UserID, &s.ControlGroupID, &s.ControlIndex, &s.OnTime)
+			if err != nil {
+				log.Fatalf("Scan: %v", err)
+			}
+			ss = append(ss, s)
+		}
+		return
+	}
+	type counts struct {
+		NotArrived types.TeamIDs
+		OnTime     types.TeamIDs
+		OverTime   types.TeamIDs
+		Inactive   types.TeamIDs
+	}
+
+	type scans map[types.TeamID]types.UserID
+
+	type cgCount struct {
+		ontime  scans
+		delayed scans
+	}
+	/*
+
+	   controlCount := func (cgID types.ControlGroupID) (cc  cgCount) {
+
+	*/
+	return func(w http.ResponseWriter, r *http.Request) {
+		controlGroups := map[types.ControlGroupID]counts{}
+		for _, cgID := range cgIDs() {
+			controlGroups[cgID] = counts{
+				NotArrived: startedTeamIDs(),
+				OnTime:     types.TeamIDs{},
+				OverTime:   types.TeamIDs{},
+				Inactive:   inactiveTeamIDs(),
+			}
+		}
+		for _, scan := range allScans() {
+			cg := controlGroups[scan.ControlGroupID]
+			log.Printf("ADDING TeamID %q to %q", scan.TeamID, scan.ControlGroupID)
+			if scan.OnTime {
+				cg.OnTime = append(cg.OnTime, scan.TeamID)
+			} else {
+				cg.OverTime = append(cg.OverTime, scan.TeamID)
+			}
+			controlGroups[scan.ControlGroupID] = cg
+		}
+		/*
+		           for cgID, cg := range controlGroups {
+
+		           }
+		   		/*	rows, err := con.Query("select * from patruljestatus ps left join scan on ps.teamId = scan.teamId left join controlgroup_user cgu on scan.scannerId = cgu.userId")
+		   			if err != nil {
+		   				panic(err.Error())
+		   			}
+
+		   			defer rows.Close()
+		   			resp := &response{}
+		   			for _, j := range jsonify.Jsonify(rows) {
+		   				log.Print(j)
+		   				resp.ControlGroups = append(resp.ControlGroups, json.RawMessage(j))
+		   			}*/
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"startedCount":  len(startedTeamIDs()),
+			"scans":         allScans(),
+			"controlGroups": controlGroups,
+		})
+		//w.Write([]byte(jsonify.Jsonify(rows)[0]))
 	}
 }

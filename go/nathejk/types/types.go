@@ -24,6 +24,33 @@ func (t TeamID) New() TeamID {
 	return TeamID("team-" + uuid.New().String())
 }
 
+type TeamIDs []TeamID
+
+func (i TeamIDs) Add(ID TeamID) {
+	i = append(i, ID)
+}
+
+/*
+func (i TeamIDs) Exists(key ) bool {
+     for _, prop := range s {
+         if prop == key {
+             return true
+         }
+     }
+     return false
+ }
+ func (s ChangeSet) Any(keys ...string) bool {
+     for _, prop := range s {
+         for _, key := range keys {
+             if prop == key {
+                 return true
+             }
+         }
+     }
+     return false
+ }
+*/
+
 type MemberID ID
 
 func (ID MemberID) New() MemberID {

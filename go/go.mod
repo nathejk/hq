@@ -3,6 +3,7 @@ module nathejk.dk
 go 1.16
 
 require (
+	github.com/bdwilliams/go-jsonify v0.0.0-20141020182238-48749139e742
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
 	github.com/davecgh/go-spew v1.1.1
 	github.com/globalsign/mgo v0.0.0-20181015135952-eeefdecb41b8

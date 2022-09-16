@@ -25,12 +25,12 @@
                     <div class="card-body pb-0">
                         <table class="table table-borderless control-stats">
                             <tbody>
-                                <tr><td>Ikke ankommet</td><td class="text-right"><span class="h6 font-weight-bold">88</span></td></tr>
-                                <tr><td>Passeret rettidigt</td><td class="text-right"><span class="h6 font-weight-bold">20</span></td></tr>
-                                <tr><td>Passeret uden for åbningstid</td><td class="text-right"><span class="h6 font-weight-bold">0</span></td></tr>
-                                <tr><td>Udgået/sammenlagt</td><td class="text-right"><span class="h6 font-weight-bold">17</span></td></tr>
+                                <tr><td>Ikke ankommet</td><td class="text-right"><span class="h6 font-weight-bold">{{ counts.NotArrived.length }}</span></td></tr>
+                                <tr><td>Passeret rettidigt</td><td class="text-right"><span class="h6 font-weight-bold">{{ counts.OnTime.length }}</span></td></tr>
+                                <tr><td>Passeret uden for åbningstid</td><td class="text-right"><span class="h6 font-weight-bold">{{ counts.OverTime.length }}</span></td></tr>
+                                <tr><td>Udgået/sammenlagt</td><td class="text-right"><span class="h6 font-weight-bold">{{ counts.Inactive.length }}</span></td></tr>
                                 <tr><td colspan="2"><hr class="my-1"></td></tr>
-                                <tr><td colspan="2" class="text-right"><span class="h4 font-weight-bold">125</span></td></tr>
+                                <tr><td colspan="2" class="text-right"><span class="h4 font-weight-bold">{{ totalCount }}</span></td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -201,6 +201,7 @@ table.control-stats td:last-child {
 </style>
 
 <script>
+import axios from 'axios';
 import moment from 'moment'
 import { BModal } from 'bootstrap-vue'
 import DateRangePicker from 'vue2-daterange-picker'
@@ -212,7 +213,8 @@ export default {
     data: () => ({
       viewControlGroupId: String,
       edit:{ controls:Array },
-
+      stats: {},
+      startedCount: 0,
       locale:{
         format:'ddd. HH:MM',
         firstDay: 1,
@@ -239,6 +241,12 @@ export default {
       },
     },
     computed: {
+      counts() {
+        return this.stats[this.viewControlGroupId] || { NotArrived:[], OnTime:[], OverTime:[], Inactive:[] }
+      },
+      totalCount() {
+        return this.counts.NotArrived.length + this.counts.OnTime.length + this.counts.OverTime.length + this.counts.Inactive.length
+      },
       controlgroups() {
         const cgs = this.$store.getters['dims/controlGroups']
         return cgs.sort((a, b) => (this.controlGroupStartDate(a) > this.controlGroupStartDate(b) ? 1 : -1))
@@ -329,7 +337,19 @@ export default {
         ctrl.scanners.splice(i, 1)
       },
     },
-    mounted: function () {
+    async mounted() {
+        try {
+            const rsp = await axios.get('/api/cgstatus',
+            { withCredentials: true }
+            )
+            if (rsp.status == 200) {
+                this.stats = rsp.data.controlGroups
+                this.startedCount = resp.data.startedCount
+            }
+        } catch(error) {
+            console.log("error happend", error)
+            throw new Error(error.response.data)
+        }
     },
     beforeDestroy() {
     }

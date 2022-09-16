@@ -130,6 +130,10 @@ func (m *sosModel) Produces() []string {
 }
 
 func (m *sosModel) HandleMessage(msg streaminterface.Message) error {
+	if msg.Time().Year() != time.Now().Year() {
+		// only handle messages from this year
+		return nil
+	}
 	/*msg, ok := i.(eventstream.Message)
 	if !ok {
 		return
