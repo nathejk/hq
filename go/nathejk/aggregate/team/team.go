@@ -78,6 +78,10 @@ func (m *teamModel) Produces() []string {
 }
 
 func (m *teamModel) HandleMessage(msg streaminterface.Message) error {
+	if msg.Time().Year() != time.Now().Year() {
+		// only handle messages from this year
+		return nil
+	}
 	/*msg, ok := i.(eventstream.Message)
 	if !ok {
 		return
