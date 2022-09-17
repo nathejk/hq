@@ -1,6 +1,7 @@
 package team
 
 import (
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -26,7 +27,7 @@ func (v *TeamAggregate) ID() string {
 }
 
 func (v *TeamAggregate) IsValid() bool {
-	return v.TeamID != ""
+	return v.TeamID != "" && v.Type != ""
 }
 
 type teamModel struct {
@@ -78,10 +79,10 @@ func (m *teamModel) Produces() []string {
 }
 
 func (m *teamModel) HandleMessage(msg streaminterface.Message) error {
-	if msg.Time().Year() != time.Now().Year() {
-		// only handle messages from this year
-		return nil
-	}
+	//if msg.Time().Year() != time.Now().Year() {
+	// only handle messages from this year
+	//	return nil
+	//}
 	/*msg, ok := i.(eventstream.Message)
 	if !ok {
 		return
@@ -95,6 +96,10 @@ func (m *teamModel) HandleMessage(msg streaminterface.Message) error {
 		var body messages.MonolithNathejkTeam
 		msg.Body(&body)
 		if !map[string]bool{"PAY": true, "PAID": true}[body.Entity.SignupStatusTypeName] {
+			return nil
+		}
+		if string(body.Entity.ID) < fmt.Sprintf("%d000", time.Now().Year()) {
+			// skip teams from previous years
 			return nil
 		}
 		team := m.get(body.Entity.ID)

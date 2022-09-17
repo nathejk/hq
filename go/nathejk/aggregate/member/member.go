@@ -1,6 +1,7 @@
 package member
 
 import (
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -75,10 +76,10 @@ func (m *memberModel) Produces() []string {
 }
 
 func (m *memberModel) HandleMessage(msg streaminterface.Message) error {
-	if msg.Time().Year() != time.Now().Year() {
-		// only handle messages from this year
-		return nil
-	}
+	//if msg.Time().Year() != time.Now().Year() {
+	// only handle messages from this year
+	//return nil
+	//}
 	/*msg, ok := i.(eventstream.Message)
 	if !ok {
 		return
@@ -90,7 +91,13 @@ func (m *memberModel) HandleMessage(msg streaminterface.Message) error {
 	switch msg.Subject().Subject() {
 	case "monolith:nathejk_member":
 		var body messages.MonolithNathejkMember
-		msg.Body(&body)
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		if string(body.Entity.TeamID) < fmt.Sprintf("%d000", time.Now().Year()) {
+			// skip teams from previous years
+			return nil
+		}
 		member := m.get(body.Entity.ID)
 		member.NathejkMemberUpdated = messages.NathejkMemberUpdated{
 			MemberID:    body.Entity.ID,
