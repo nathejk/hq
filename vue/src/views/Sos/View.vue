@@ -168,7 +168,9 @@
 
                         <div v-for="(foumd, teamId)  of sos.teamIds" :key="teamId" class="associated  list-group-flush mt-3">
                           <div class="d-flex justify-content-between align-items-center list-group-item">
-                            <strong>{{ patrulje(teamId).teamNumber }} - {{ patrulje(teamId).name }}</strong>
+                            <router-link :to="{name:'patrulje', params: { id: teamId }}" class="text-dark">
+                              <strong>{{ patrulje(teamId).teamNumber }} - {{ patrulje(teamId).name }}</strong>
+                            </router-link>
                             <button :id="'team-' + teamId" class="btn btn-hint hint py-0 px-1"><i class="far fa-dot-circle"></i></button>
 
                             <b-popover :target="'team-' + teamId" triggers="hover" placement="left">
