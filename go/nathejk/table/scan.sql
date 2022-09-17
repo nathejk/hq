@@ -5,5 +5,7 @@ CREATE TABLE IF NOT EXISTS scan (
     scannerId VARCHAR(99) NOT NULL,
     scannerPhone VARCHAR(99) NOT NULL,
     uts INT NOT NULL DEFAULT 0,
+    latitude VARCHAR(99) NOT NULL,
+    longitude VARCHAR(99) NOT NULL,
     PRIMARY KEY(qrId, uts)
 );

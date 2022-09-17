@@ -25,4 +25,8 @@ type NathejkQrScanned struct {
 	TeamNumber   string            `json:"teamNumber"`
 	ScannerID    string            `json:"scannerId"`
 	ScannerPhone types.PhoneNumber `json:"scannerPhone"`
+	Location     struct {
+		Latitude  string `json:"lat"`
+		Longitude string `json:"lon"`
+	} `json:"location"`
 }

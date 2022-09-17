@@ -58,7 +58,7 @@ func (c *scan) HandleMessage(msg streaminterface.Message) error {
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
-		sql := fmt.Sprintf("INSERT INTO scan (qrId, teamId, teamNumber, scannerId, scannerPhone, uts) VALUES (%q, %q, %q, %q, %q, %d) ON DUPLICATE KEY UPDATE qrId=VALUES(qrId)", body.QrID, body.TeamID, body.TeamNumber, body.ScannerID, body.ScannerPhone, msg.Time().Unix())
+		sql := fmt.Sprintf("INSERT INTO scan (qrId, teamId, teamNumber, scannerId, scannerPhone, uts, latitude, longitude) VALUES (%q, %q, %q, %q, %q, %d, %q, %q) ON DUPLICATE KEY UPDATE qrId=VALUES(qrId)", body.QrID, body.TeamID, body.TeamNumber, body.ScannerID, body.ScannerPhone, msg.Time().Unix(), body.Location.Latitude, body.Location.Longitude)
 		if err := c.w.Consume(sql); err != nil {
 			return nil
 		}
