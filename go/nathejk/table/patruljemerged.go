@@ -68,11 +68,14 @@ func (c *patruljeMerged) HandleMessage(msg streaminterface.Message) error {
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
+		if body.Entity.TypeName != "patrulje" {
+			return nil
+		}
 		var sql string
 		if len(body.Entity.ParentTeamID) > 1 {
 			sql = fmt.Sprintf("INSERT INTO patruljemerged SET teamId=%q, parentTeamId=%q ON DUPLICATE KEY UPDATE teamId=VALUES(teamId)", body.Entity.ID, body.Entity.ParentTeamID)
 		} else {
-			sql = fmt.Sprintf("DELETE FROM patruljemerged WHERE teamId=%q OR parentTeamId=%q", body.Entity.ID, body.Entity.ID)
+			sql = fmt.Sprintf("DELETE FROM patruljemerged WHERE teamId=%q", body.Entity.ID)
 		}
 		if err := c.w.Consume(sql); err != nil {
 			log.Fatalf("Error consuming sql %q", err)
