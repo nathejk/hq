@@ -34,7 +34,7 @@ type patruljeStatus struct {
 func NewPatruljeStatus(w tablerow.Consumer) *patruljeStatus {
 	table := &patruljeStatus{w: w}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
-		log.Fatalf("Error creating table %q", err)
+		log.Fatalf("Error creating table %q %q", err, table.CreateTableSql())
 	}
 	return table
 }
@@ -48,14 +48,14 @@ func (t *patruljeStatus) CreateTableSql() string {
 
 func (c *patruljeStatus) Consumes() (subjs []streaminterface.Subject) {
 	return []streaminterface.Subject{
-		streaminterface.SubjectFromStr("monolith"),
+		streaminterface.SubjectFromStr("monolith:nathejk_team"),
 	}
 }
 
 func (c *patruljeStatus) HandleMessage(msg streaminterface.Message) error {
 	if msg.Time().Year() != time.Now().Year() {
 		// only handle messages from this year
-		return nil
+		//return nil
 	}
 	switch msg.Subject().Subject() {
 	case "monolith:nathejk_team":
@@ -63,10 +63,18 @@ func (c *patruljeStatus) HandleMessage(msg streaminterface.Message) error {
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
+		if body.Entity.ID < "2022000" {
+			//log.Printf("TeamNumber: %q %q", body.Entity.ID, body.Entity.TeamNumber)
+			return nil
+		}
+
 		if body.Entity.TeamNumber == "0" {
+			//log.Printf("TeamNumber: %q %q", body.Entity.ID, body.Entity.TeamNumber)
 			return nil
 		}
 		if body.Entity.DeletedUts != "0" {
+			//log.Printf("Deleted: %q %q", body.Entity.ID, body.Entity.DeletedUts)
+
 			return c.w.Consume(fmt.Sprintf("DELETE FROM patruljestatus WHERE teamId=%q", body.Entity.ID))
 		}
 		startedUts, _ := strconv.Atoi(body.Entity.StartUts)
