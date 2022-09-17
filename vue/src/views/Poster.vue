@@ -25,16 +25,17 @@
                     <div class="card-body pb-0">
                         <table class="table table-borderless control-stats">
                             <tbody>
-                                <tr><td>Ikke ankommet</td><td class="text-right"><span class="h6 font-weight-bold">{{ counts.NotArrived.length }}</span></td></tr>
-                                <tr><td>Passeret rettidigt</td><td class="text-right"><span class="h6 font-weight-bold">{{ counts.OnTime.length }}</span></td></tr>
-                                <tr><td>Passeret uden for åbningstid</td><td class="text-right"><span class="h6 font-weight-bold">{{ counts.OverTime.length }}</span></td></tr>
-                                <tr><td>Udgået/sammenlagt</td><td class="text-right"><span class="h6 font-weight-bold">{{ counts.Inactive.length }}</span></td></tr>
+                                <tr><td>Ikke ankommet</td><td class="text-right"><span @click="show(counts.NotArrived)" class="h6 font-weight-bold">{{ counts.NotArrived.length }}</span></td></tr>
+                                <tr><td>Passeret rettidigt</td><td class="text-right"><span @click="show(counts.OnTime)" class="h6 font-weight-bold">{{ counts.OnTime.length }}</span></td></tr>
+                                <tr><td>Passeret uden for åbningstid</td><td class="text-right"><span @click="show(counts.OverTime)" class="h6 font-weight-bold">{{ counts.OverTime.length }}</span></td></tr>
+                                <tr><td>Udgået/sammenlagt</td><td class="text-right"><span @click="show(counts.Inactive)" class="h6 font-weight-bold">{{ counts.Inactive.length }}</span></td></tr>
                                 <tr><td colspan="2"><hr class="my-1"></td></tr>
                                 <tr><td colspan="2" class="text-right"><span class="h4 font-weight-bold">{{ totalCount }}</span></td></tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
+                {{ list }}
             </div>
             <div class="col-4" v-if="controlgroup">
 
@@ -214,6 +215,7 @@ export default {
       viewControlGroupId: String,
       edit:{ controls:Array },
       stats: {},
+      list:[],
       startedCount: 0,
       locale:{
         format:'ddd. HH:MM',
@@ -286,6 +288,9 @@ export default {
       },
     },
     methods: {
+      show (list) {
+              this.list = list
+          },
       controlGroupStartDate(grp) {
         if (grp.controls.length == 0) {
           return new Date().toISOString()
