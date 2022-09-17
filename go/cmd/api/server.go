@@ -245,7 +245,7 @@ func NewControlgroupStatusHandler(con *sql.DB) http.HandlerFunc {
 	}
 	inactiveTeamIDs := func() []types.TeamID {
 		teamIDs := []types.TeamID{}
-		rows, err := con.Query("SELECT teamId FROM patruljemerged WHERE teamId > 2022000")
+		rows, err := con.Query("SELECT m.teamId FROM patruljemerged m JOIN patruljestatus s ON m.teamId = s.teamId WHERE s.startedUts > 0 AND m.teamId > 2022000")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -313,7 +313,7 @@ func NewControlgroupStatusHandler(con *sql.DB) http.HandlerFunc {
 				NotArrived: types.TeamIDs{},
 				OnTime:     types.TeamIDs{},
 				OverTime:   types.TeamIDs{},
-				Inactive:   inactiveTeamIDs(),
+				Inactive:   types.TeamIDs{},
 			}
 		}
 		for _, scan := range allScans() {
@@ -333,14 +333,16 @@ func NewControlgroupStatusHandler(con *sql.DB) http.HandlerFunc {
 
 		cgs := map[types.ControlGroupID]counts{}
 		for cgID, cg := range controlGroups {
+			inactive := types.DiffTeamID(inactiveTeamIDs(), cg.OnTime)
+			inactive = types.DiffTeamID(inactive, cg.OverTime)
 			notArrived := types.DiffTeamID(allTeamIDs, cg.OnTime)
 			notArrived = types.DiffTeamID(notArrived, cg.OverTime)
-			notArrived = types.DiffTeamID(notArrived, cg.Inactive)
+			notArrived = types.DiffTeamID(notArrived, inactive)
 			cgs[cgID] = counts{
 				NotArrived: notArrived,
 				OnTime:     cg.OnTime,
 				OverTime:   cg.OverTime,
-				Inactive:   cg.Inactive,
+				Inactive:   inactive,
 			}
 		}
 
