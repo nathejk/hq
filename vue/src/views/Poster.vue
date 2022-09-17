@@ -370,7 +370,7 @@ export default {
             )
             if (rsp.status == 200) {
                 this.stats = rsp.data.controlGroups
-                this.startedCount = resp.data.startedCount
+                //this.startedCount = resp.data.startedCount
             }
         } catch(error) {
             console.log("error happend", error)

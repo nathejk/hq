@@ -175,7 +175,17 @@ const mutations = {
     console.log('UPDATE_CONTROL_GROUP', ctrlgrp)
     //state.user.name = name;
   },
-  DELETE_CONTROL_GROUP(state, id) {
+  async DELETE_CONTROL_GROUP(state, id) {
+    try {
+      const rsp = await axios.delete('/api/controlgroup', { withCredentials: true, data: { 'controlGroupId': id }})
+      if (rsp.status == 200) {
+          console.log('ok')
+      }
+      console.log('rsp', rsp)
+    } catch(error) {
+      console.log('about to throw an error', error)
+      throw new Error(error.response.data)
+    }
     console.log('DELETE_CONTROL_GROUP', id)
     //state.user.name = name;
   },
