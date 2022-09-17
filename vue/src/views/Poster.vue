@@ -25,17 +25,34 @@
                     <div class="card-body pb-0">
                         <table class="table table-borderless control-stats">
                             <tbody>
-                                <tr><td>Ikke ankommet</td><td class="text-right"><span @click="show(counts.NotArrived)" class="h6 font-weight-bold">{{ counts.NotArrived.length }}</span></td></tr>
-                                <tr><td>Passeret rettidigt</td><td class="text-right"><span @click="show(counts.OnTime)" class="h6 font-weight-bold">{{ counts.OnTime.length }}</span></td></tr>
-                                <tr><td>Passeret uden for åbningstid</td><td class="text-right"><span @click="show(counts.OverTime)" class="h6 font-weight-bold">{{ counts.OverTime.length }}</span></td></tr>
-                                <tr><td>Udgået/sammenlagt</td><td class="text-right"><span @click="show(counts.Inactive)" class="h6 font-weight-bold">{{ counts.Inactive.length }}</span></td></tr>
+                                <tr><td>Ikke ankommet</td><td class="text-right"><span @click="show(counts.NotArrived)" role="button" class="h6 font-weight-bold">{{ counts.NotArrived.length }}</span></td></tr>
+                                <tr><td>Passeret rettidigt</td><td class="text-right"><span @click="show(counts.OnTime)" role="button" class="h6 font-weight-bold">{{ counts.OnTime.length }}</span></td></tr>
+                                <tr><td>Passeret uden for åbningstid</td><td class="text-right"><span @click="show(counts.OverTime)" role="button" class="h6 font-weight-bold">{{ counts.OverTime.length }}</span></td></tr>
+                                <tr><td>Udgået/sammenlagt</td><td class="text-right"><span @click="show(counts.Inactive)" role="button" class="h6 font-weight-bold">{{ counts.Inactive.length }}</span></td></tr>
                                 <tr><td colspan="2"><hr class="my-1"></td></tr>
                                 <tr><td colspan="2" class="text-right"><span class="h4 font-weight-bold">{{ totalCount }}</span></td></tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
-                {{ list }}
+                <table v-if="list.length > 0" class="table table-sm">
+  <thead>
+    <tr>
+      <th scope="col">#</th>
+      <th scope="col">Patrulje</th>
+      <th scope="col"></th>
+      <th scope="col"></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr v-for="teamId in list">
+        <th scope="row">{{ patrulje(teamId).teamNumber }}</th>
+        <td>{{ patrulje(teamId).name}}</td>
+      <td></td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
             </div>
             <div class="col-4" v-if="controlgroup">
 
@@ -288,6 +305,9 @@ export default {
       },
     },
     methods: {
+      patrulje(teamId) {
+        return this.$store.getters['dims/patrulje'](teamId)
+      },
       show (list) {
               this.list = list
           },
@@ -305,6 +325,7 @@ export default {
       },
 
       showControlGroup(controlGroupId) {
+        this.list = []
         this.viewControlGroupId = controlGroupId
       },
       editControlGroup() {
