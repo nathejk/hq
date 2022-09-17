@@ -39,6 +39,7 @@ func (t *patruljeMerged) CreateTableSql() string {
 func (c *patruljeMerged) Consumes() (subjs []streaminterface.Subject) {
 	return []streaminterface.Subject{
 		streaminterface.SubjectFromStr("nathejk"),
+		streaminterface.SubjectFromStr("monolith:nathejk_team"),
 	}
 }
 
@@ -59,6 +60,20 @@ func (c *patruljeMerged) HandleMessage(msg streaminterface.Message) error {
 			return err
 		}
 		sql := fmt.Sprintf("DELETE FROM patruljemerged WHERE teamId=%q OR parentTeamId=%q", body.TeamID, body.TeamID)
+		if err := c.w.Consume(sql); err != nil {
+			log.Fatalf("Error consuming sql %q", err)
+		}
+	case "monolith:nathejk_team":
+		var body messages.MonolithNathejkTeam
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		var sql string
+		if len(body.Entity.ParentTeamID) > 1 {
+			sql = fmt.Sprintf("INSERT INTO patruljemerged SET teamId=%q, parentTeamId=%q ON DUPLICATE KEY UPDATE teamId=VALUES(teamId)", body.Entity.ID, body.Entity.ParentTeamID)
+		} else {
+			sql = fmt.Sprintf("DELETE FROM patruljemerged WHERE teamId=%q OR parentTeamId=%q", body.Entity.ID, body.Entity.ID)
+		}
 		if err := c.w.Consume(sql); err != nil {
 			log.Fatalf("Error consuming sql %q", err)
 		}
