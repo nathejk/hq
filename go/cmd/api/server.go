@@ -245,7 +245,7 @@ func NewControlgroupStatusHandler(con *sql.DB) http.HandlerFunc {
 	}
 	inactiveTeamIDs := func() []types.TeamID {
 		teamIDs := []types.TeamID{}
-		rows, err := con.Query("SELECT m.teamId FROM patruljemerged m JOIN patruljestatus s ON m.teamId = s.teamId WHERE s.startedUts > 0 AND m.teamId > 2022000")
+		rows, err := con.Query("SELECT DISTINCT m.teamId FROM patruljemerged m JOIN patruljestatus s ON m.teamId = s.teamId WHERE s.startedUts > 0 AND m.teamId > 2022000")
 		if err != nil {
 			log.Fatal(err)
 		}
