@@ -30,15 +30,56 @@ func (i TeamIDs) Add(ID TeamID) {
 	i = append(i, ID)
 }
 
+func UniqueTeamID(teamIDs []TeamID) []TeamID {
+	keys := make(map[TeamID]bool)
+	list := []TeamID{}
+	for _, entry := range teamIDs {
+		if _, value := keys[entry]; !value {
+			keys[entry] = true
+			list = append(list, entry)
+		}
+	}
+	return list
+}
+
+func DiffTeamID(slice1, slice2 TeamIDs) TeamIDs {
+	var diff TeamIDs
+
+	// Loop two times, first to find slice1 strings not in slice2,
+	// second loop to find slice2 strings not in slice1
+	for i := 0; i < 2; i++ {
+		for _, s1 := range slice1 {
+			found := false
+			for _, s2 := range slice2 {
+				if s1 == s2 {
+					found = true
+					break
+				}
+			}
+			// String not found. We add it to return slice
+			if !found {
+				diff = append(diff, s1)
+			}
+		}
+		// Swap the slices, only if it was the first loop
+		if i == 0 {
+			slice1, slice2 = slice2, slice1
+		}
+	}
+
+	return diff
+}
+
+func (IDs TeamIDs) Exists(key TeamID) bool {
+	for _, prop := range IDs {
+		if prop == key {
+			return true
+		}
+	}
+	return false
+}
+
 /*
-func (i TeamIDs) Exists(key ) bool {
-     for _, prop := range s {
-         if prop == key {
-             return true
-         }
-     }
-     return false
- }
  func (s ChangeSet) Any(keys ...string) bool {
      for _, prop := range s {
          for _, key := range keys {

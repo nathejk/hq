@@ -40,7 +40,10 @@ func NewServer(publisher streaminterface.Publisher, state StateReader, sms notif
 	db, err := sql.Open("mysql", os.Getenv("DB_DSN"))
 	if err != nil {
 		log.Fatal(err)
+		panic("Can't connect to " + os.Getenv("DB_DSN"))
+		return nil
 	}
+	log.Printf("Connected to " + os.Getenv("DB_DSN"))
 
 	ctrlgrp := NewCrudRoute(NewControlGroupCmd(publisher), &CreateRequest{}, &ReadRequest{}, &UpdateRequest{}, &DeleteRequest{})
 	sos := NewSosRoutes(NewSosCmd(publisher, state, sms))
@@ -242,7 +245,7 @@ func NewControlgroupStatusHandler(con *sql.DB) http.HandlerFunc {
 	}
 	inactiveTeamIDs := func() []types.TeamID {
 		teamIDs := []types.TeamID{}
-		rows, err := con.Query("SELECT teamId FROM patruljemerged")
+		rows, err := con.Query("SELECT teamId FROM patruljemerged WHERE teamId > 2022000")
 		if err != nil {
 			log.Fatal(err)
 		}
@@ -302,10 +305,12 @@ func NewControlgroupStatusHandler(con *sql.DB) http.HandlerFunc {
 
 	*/
 	return func(w http.ResponseWriter, r *http.Request) {
+		allTeamIDs := startedTeamIDs()
 		controlGroups := map[types.ControlGroupID]counts{}
 		for _, cgID := range cgIDs() {
 			controlGroups[cgID] = counts{
-				NotArrived: startedTeamIDs(),
+				//NotArrived: startedTeamIDs(),
+				NotArrived: types.TeamIDs{},
 				OnTime:     types.TeamIDs{},
 				OverTime:   types.TeamIDs{},
 				Inactive:   inactiveTeamIDs(),
@@ -315,12 +320,30 @@ func NewControlgroupStatusHandler(con *sql.DB) http.HandlerFunc {
 			cg := controlGroups[scan.ControlGroupID]
 			log.Printf("ADDING TeamID %q to %q", scan.TeamID, scan.ControlGroupID)
 			if scan.OnTime {
-				cg.OnTime = append(cg.OnTime, scan.TeamID)
+				if !cg.OnTime.Exists(scan.TeamID) {
+					cg.OnTime = append(cg.OnTime, scan.TeamID)
+				}
 			} else {
-				cg.OverTime = append(cg.OverTime, scan.TeamID)
+				if !cg.OverTime.Exists(scan.TeamID) {
+					cg.OverTime = append(cg.OverTime, scan.TeamID)
+				}
 			}
 			controlGroups[scan.ControlGroupID] = cg
 		}
+
+		cgs := map[types.ControlGroupID]counts{}
+		for cgID, cg := range controlGroups {
+			notArrived := types.DiffTeamID(allTeamIDs, cg.OnTime)
+			notArrived = types.DiffTeamID(notArrived, cg.OverTime)
+			notArrived = types.DiffTeamID(notArrived, cg.Inactive)
+			cgs[cgID] = counts{
+				NotArrived: notArrived,
+				OnTime:     cg.OnTime,
+				OverTime:   cg.OverTime,
+				Inactive:   cg.Inactive,
+			}
+		}
+
 		/*
 		           for cgID, cg := range controlGroups {
 
@@ -337,9 +360,10 @@ func NewControlgroupStatusHandler(con *sql.DB) http.HandlerFunc {
 		   				resp.ControlGroups = append(resp.ControlGroups, json.RawMessage(j))
 		   			}*/
 		json.NewEncoder(w).Encode(map[string]interface{}{
-			"startedCount":  len(startedTeamIDs()),
-			"scans":         allScans(),
-			"controlGroups": controlGroups,
+			"startedCount": len(allTeamIDs),
+			//"scans":         allScans(),
+			"controlGroups":  cgs,
+			"startedTeamIds": allTeamIDs,
 		})
 		//w.Write([]byte(jsonify.Jsonify(rows)[0]))
 	}
