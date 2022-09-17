@@ -333,15 +333,12 @@ func NewControlgroupStatusHandler(con *sql.DB) http.HandlerFunc {
 
 		cgs := map[types.ControlGroupID]counts{}
 		for cgID, cg := range controlGroups {
-			inactive := types.DiffTeamID(inactiveTeamIDs(), cg.OnTime)
-			inactive = types.DiffTeamID(inactive, cg.OverTime)
-			notArrived := types.DiffTeamID(allTeamIDs, cg.OnTime)
-			notArrived = types.DiffTeamID(notArrived, cg.OverTime)
-			notArrived = types.DiffTeamID(notArrived, inactive)
+			inactive := types.DiffTeamID(inactiveTeamIDs(), cg.OnTime, cg.OverTime)
+			notArrived := types.DiffTeamID(allTeamIDs, cg.OnTime, cg.OverTime, inactive)
 			cgs[cgID] = counts{
 				NotArrived: notArrived,
 				OnTime:     cg.OnTime,
-				OverTime:   cg.OverTime,
+				OverTime:   types.DiffTeamID(cg.OverTime, cg.OnTime),
 				Inactive:   inactive,
 			}
 		}

@@ -42,30 +42,25 @@ func UniqueTeamID(teamIDs []TeamID) []TeamID {
 	return list
 }
 
-func DiffTeamID(slice1, slice2 TeamIDs) TeamIDs {
+func DiffTeamID(slice1 TeamIDs, slices ...TeamIDs) TeamIDs {
 	diff := TeamIDs{}
 
 	// Loop two times, first to find slice1 strings not in slice2,
 	// second loop to find slice2 strings not in slice1
 	//	for i := 0; i < 2; i++ {
-	for _, s1 := range slice1 {
+	for _, id := range slice1 {
 		found := false
-		for _, s2 := range slice2 {
-			if s1 == s2 {
+		for _, slice := range slices {
+			if slice.Exists(id) {
 				found = true
 				break
 			}
 		}
 		// String not found. We add it to return slice
 		if !found {
-			diff = append(diff, s1)
+			diff = append(diff, id)
 		}
 	}
-	// Swap the slices, only if it was the first loop
-	//if i == 0 {
-	//			slice1, slice2 = slice2, slice1
-	//}
-	//	}
 
 	return diff
 }
