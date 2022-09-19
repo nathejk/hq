@@ -32,28 +32,37 @@ jobs:
 
       - name: Extract metadata (tags, labels) for Docker
         id: meta
-        uses: docker/metadata-action@v2
+        uses: docker/metadata-action@v4
         with:
           # Note: tags has to be all lower-case
-          images: |
-            #my-docker-hub-namespace/my-docker-hub-repository
-            #ghcr.io/${{ github.repository }}
-            nathejk/hq:latest
-            ${{ env.GITHUB_REPOSITORY }}:${{ env.GITHUB_REF_NAME }}.${{ env.GITHUB_RUN_NUMBER }}
+          images: ${{ github.repository }}
+          tags: |
+            # set latest tag for default branch
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=mytag-{{branch}}-{{sha}}
+            test${{ env.GITHUB_REPOSITORY }}:${{ env.GITHUB_REF_NAME }}.${{ env.GITHUB_RUN_NUMBER }}
+            number${{github.run_number}}
 
       - name: Build image and push to Docker Hub
-        uses: docker/build-push-action@v2
-        env:
-          GIT_COMMIT: ${{ env.GITHUB_SHA }}
-          GIT_BRANCH: ${{ env.GITHUB_REF_NAME }}
-          BUILD_NUMBER: ${{ env.GITHUB_RUN_NUMBER }}
-          BUILD_VERSION: ${{ env.GITHUB_REF_NAME }}.${{ env.GITHUB_RUN_NUMBER }}
+        uses: docker/build-push-action@v3
+        #env:
+        #  GIT_COMMIT: ${{ env.GITHUB_SHA }}
+        #  GIT_BRANCH: ${{ env.GITHUB_REF_NAME }}
+        #  BUILD_NUMBER: ${{ env.GITHUB_RUN_NUMBER }}
+        #  BUILD_VERSION: ${{ env.GITHUB_REF_NAME }}.${{ env.GITHUB_RUN_NUMBER }}
         with:
           # relative path to the place where source code with Dockerfile is located
           context: .
           file: docker/Dockerfile
           # build on feature branches, push only on main branch
           push: ${{ github.ref == 'refs/heads/main' }}
+          build-args: |
+            GIT_COMMIT=${{ env.GITHUB_SHA }}
+            GIT_BRANCH=${{ env.GITHUB_REF_NAME }}
+            BUILD_NUMBER=${{ env.GITHUB_RUN_NUMBER }}
+            BUILD_VERSION=${{ env.GITHUB_REF_NAME }}.${{ env.GITHUB_RUN_NUMBER }}
+            ARG1=foo
+            ARG2=bar
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
