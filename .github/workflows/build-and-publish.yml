@@ -60,11 +60,6 @@ jobs:
 
       - name: Build image and push to Docker Hub
         uses: docker/build-push-action@v3
-        env:
-          GIT_COMMIT: ${{ env.GITHUB_SHA }}
-        #  GIT_BRANCH: ${{ env.GITHUB_REF_NAME }}
-        #  BUILD_NUMBER: ${{ env.GITHUB_RUN_NUMBER }}
-        #  BUILD_VERSION: ${{ env.GITHUB_REF_NAME }}.${{ env.GITHUB_RUN_NUMBER }}
         with:
           # relative path to the place where source code with Dockerfile is located
           context: .
@@ -72,12 +67,10 @@ jobs:
           # build on feature branches, push only on main branch
           push: ${{ github.ref == 'refs/heads/main' }}
           build-args: |
-            __GIT_COMMIT=${{ env.GITHUB_SHA }}
-            GIT_BRANCH=${{ env.GITHUB_REF_NAME }}
+            GIT_COMMIT=${{ github.sha }}
+            GIT_BRANCH=${{ github.ref_name }}
             BUILD_NUMBER=${{ github.run_number }}
-            BUILD_VERSION=${{ github.repository }}.${{ env.GITHUB_RUN_NUMBER }}
-            ARG1=foo
-            ARG2=bar
+            BUILD_VERSION=${{ github.ref_name }}.${{ github.run_number }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
