@@ -49,7 +49,7 @@
                                 </ul>
                             </div>
 
-                            <div class="card-body bg-light">
+                            <div class="card-body bg-light py-2">
                                     <dl class="row">
                                       <dt class="col-sm-3 small grey text-uppercase">Oprettet:</dt>
                                       <dd class="col-sm-9">{{ sos.createdAt }}</dd>
@@ -83,7 +83,7 @@
                                         <span class="text-uppercase">{{ activity.createdAt }}</span>
                                     </small>
                                 </div>
-                                <div class="card-body" style="white-space: pre-line;">
+                                <div class="card-body py-2" style="white-space: pre-line;">
                                     {{ activity.comment.plainText }}
                                 </div>
                             </div>
@@ -126,7 +126,7 @@
                                     <span class="text-uppercase">Ny kommentar</span>
                                 </small>
                             </div>
-                            <div class="card-body">
+                            <div class="card-body py-2">
                                 <form novalidate="novalidate">
                                     <div v-if="!sos.sosId" class="form-group">
                                         <input type="text" placeholder="Overskrift" class="form-control" v-model="headline" />
