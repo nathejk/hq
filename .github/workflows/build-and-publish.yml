@@ -39,14 +39,12 @@ jobs:
           tags: |
             # set latest tag for default branch
             type=raw,value=latest,enable={{is_default_branch}}
-            type=raw,value=mytag-{{branch}}-{{sha}}
-            test${{ env.GITHUB_REPOSITORY }}:${{ env.GITHUB_REF_NAME }}.${{ env.GITHUB_RUN_NUMBER }}
-            number${{github.run_number}}
+            type=raw,value={{branch}}.${{github.run_number}}
 
       - name: Build image and push to Docker Hub
         uses: docker/build-push-action@v3
-        #env:
-        #  GIT_COMMIT: ${{ env.GITHUB_SHA }}
+        env:
+          GIT_COMMIT: ${{ env.GITHUB_SHA }}
         #  GIT_BRANCH: ${{ env.GITHUB_REF_NAME }}
         #  BUILD_NUMBER: ${{ env.GITHUB_RUN_NUMBER }}
         #  BUILD_VERSION: ${{ env.GITHUB_REF_NAME }}.${{ env.GITHUB_RUN_NUMBER }}
@@ -57,10 +55,10 @@ jobs:
           # build on feature branches, push only on main branch
           push: ${{ github.ref == 'refs/heads/main' }}
           build-args: |
-            GIT_COMMIT=${{ env.GITHUB_SHA }}
+            __GIT_COMMIT=${{ env.GITHUB_SHA }}
             GIT_BRANCH=${{ env.GITHUB_REF_NAME }}
-            BUILD_NUMBER=${{ env.GITHUB_RUN_NUMBER }}
-            BUILD_VERSION=${{ env.GITHUB_REF_NAME }}.${{ env.GITHUB_RUN_NUMBER }}
+            BUILD_NUMBER=${{ github.run_number }}
+            BUILD_VERSION=${{ branch }}.${{ env.GITHUB_RUN_NUMBER }}
             ARG1=foo
             ARG2=bar
           tags: ${{ steps.meta.outputs.tags }}
