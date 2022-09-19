@@ -58,7 +58,7 @@ jobs:
             __GIT_COMMIT=${{ env.GITHUB_SHA }}
             GIT_BRANCH=${{ env.GITHUB_REF_NAME }}
             BUILD_NUMBER=${{ github.run_number }}
-            BUILD_VERSION=${{ branch }}.${{ env.GITHUB_RUN_NUMBER }}
+            BUILD_VERSION=${{ github.repository }}.${{ env.GITHUB_RUN_NUMBER }}
             ARG1=foo
             ARG2=bar
           tags: ${{ steps.meta.outputs.tags }}
