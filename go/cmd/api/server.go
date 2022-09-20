@@ -55,7 +55,7 @@ func NewServer(publisher streaminterface.Publisher, state StateReader, sms notif
 	mux.HandleFunc("/api/patrulje/", patruljeHandler(state))
 	mux.HandleFunc("/api/teams", monolithHandler)
 	mux.HandleFunc("/api/teams/", monolithTeamHandler)
-	mux.HandleFunc("/api/user", api.HandleUser)
+	mux.HandleFunc("/api/personnel", api.HandleUser)
 	mux.HandleFunc("/api/controlgroup", ctrlgrp.Handler)
 	mux.HandleFunc("/api/sos", sos.Handler)
 	mux.HandleFunc("/api/sos/", sos.Handler)

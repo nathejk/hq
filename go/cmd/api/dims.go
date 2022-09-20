@@ -75,7 +75,7 @@ func (d *dims) Subscribe() *dims {
 		controlgroup.NewControlGroupScansModel(bufferedPublisher, d.state),
 
 		websync.NewWebsyncModel(d.updater, map[string]string{
-			"user.aggregate":              "users",
+			"user.aggregate":              "personnel",
 			"controlgroup.aggregate":      "cg",
 			"controlgroupscans.aggregate": "controlgroup",
 			"team-klan.aggregate":         "klan",

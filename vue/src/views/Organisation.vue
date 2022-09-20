@@ -253,14 +253,13 @@ export default {
             return slugs
         },
         users() {
-            //return this.$store.getters['dims/users']
             const users = {}
-            for (const user of this.$store.getters['dims/users']) {
+            for (const person of this.$store.getters['dims/personnel']) {
                 const label = this.groupSlugs[user.department] || 'Andet'
                 if (!users[label]) {
                     users[label] = []
                 }
-                users[label].push(user)
+                users[label].push(person)
 
             }
             const groups = []
@@ -302,7 +301,7 @@ export default {
         },
         async saveUser() {
             try {
-                const rsp = await axios.post('/api/user', this.user, { withCredentials: true })
+                const rsp = await axios.post('/api/personnel', this.user, { withCredentials: true })
                 if (rsp.status == 200) {
                     //$('#userModal').modal('hide')
                     this.$refs['userModal'].hide()
@@ -317,7 +316,7 @@ export default {
                 return
             }
             try {
-                const rsp = await axios.delete('/api/user', { withCredentials: true, data: this.user })
+                const rsp = await axios.delete('/api/personnel', { withCredentials: true, data: this.user })
                 if (rsp.status == 200) {
                     //$('#userModal').modal('hide')
                     this.$refs['userModal'].hide()

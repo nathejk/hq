@@ -9,7 +9,7 @@ const state = {
   cache: {},
   list: Object,
   ids: {
-    users:[],
+    personnel:[],
     controlgroup:[],
     klan:[],
     patrulje:[],
@@ -36,7 +36,7 @@ const getters = {
         if (!state.ws) return 'uninitialized'
         return state.status
     },
-    users: (state) => state.ids['users'].map( id => state.list['users'][id] ),
+    personnel: (state) => state.ids['personnel'].map( id => state.list['personnel'][id] ),
     controlGroups: (state) => state.ids['controlgroup'].map( id => state.list['controlgroup'][id] ),
     klans: (state) => state.ids['klan'].map( id => state.list['klan'][id] ),
     klan: (state) => (id) => {
@@ -206,7 +206,7 @@ const mutations = {
       state.status = 'open'
       state.timeout = 250 // reset reconnect timeout
       // subscribe to relevant views
-      state.ws.send(JSON.stringify({View:'users'}))
+      state.ws.send(JSON.stringify({View:'personnel'}))
       state.ws.send(JSON.stringify({View:'controlgroup'}))
       state.ws.send(JSON.stringify({View:'klan'}))
       state.ws.send(JSON.stringify({View:'patrulje'}))
@@ -219,7 +219,7 @@ const mutations = {
       state.status = 'open'
       state.timeout = 250 // reset reconnect timeout
       // subscribe to relevant views
-      state.ws.send(JSON.stringify({View:'users'}))
+      state.ws.send(JSON.stringify({View:'personnel'}))
       state.ws.send(JSON.stringify({View:'controlgroup'}))
       state.ws.send(JSON.stringify({View:'klan'}))
       state.ws.send(JSON.stringify({View:'patrulje'}))
