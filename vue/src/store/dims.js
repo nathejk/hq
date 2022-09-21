@@ -8,6 +8,7 @@ const state = {
   status: '',
   cache: {},
   list: Object,
+  user: {name:'test'},
   ids: {
     personnel:[],
     controlgroup:[],
@@ -25,6 +26,7 @@ const state = {
 }
 
 const getters = {
+    user: (state) => state.user,
     soses: (state) => state.ids['sos'].map( id => state.list['sos'][id] ),
     sos: (state) => (id) => {
         if (!state.lastModify['sos']) {
@@ -233,6 +235,7 @@ const mutations = {
       setTimeout (function(){that.commit('dims/initialize')}, state.timeout)
     });
     state.ws.addEventListener('error', function(err) {
+fetchUser()
         console.log("ws error", err)
       state.status = 'errored'
     //  console.error('Socket encountered error: ', err, 'Closing socket');
@@ -254,6 +257,25 @@ const mutations = {
     });
   }
 }
+function fetchUser() {
+    fetch("/api/user").then(response => {
+        if( !response.ok ){
+            console.log("!response.ok", response)
+        } else {
+response.json().then(body => {body.name = body.sub; state.user =body;})
+            console.log('fetched user', u)
+state.user.name = u.sub
+
+            console.log("all ok", response)
+            return true
+        }
+    }).catch( e => {
+        console.log('catch', e)
+    });
+    state.user = {}
+    return false
+}
+fetchUser()
 
 export default {
   namespaced: true,

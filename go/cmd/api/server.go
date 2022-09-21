@@ -15,6 +15,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/rs/cors"
 
+	"nathejk.dk/cmd/api/user"
 	"nathejk.dk/nathejk/aggregate/team"
 	"nathejk.dk/nathejk/types"
 	"nathejk.dk/pkg/notification"
@@ -51,6 +52,7 @@ func NewServer(publisher streaminterface.Publisher, state StateReader, sms notif
 	//s := server{router: http.NewServeMux()}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/base", NewBaseHandler())
+	mux.HandleFunc("/api/user", user.ShowUserFromCookieHandler(os.Getenv("JWT_COOKIE_NAME"), os.Getenv("AUTH_BASEURL")))
 	mux.HandleFunc("/api/cgstatus", NewControlgroupStatusHandler(db))
 	mux.HandleFunc("/api/patrulje/", patruljeHandler(state))
 	mux.HandleFunc("/api/teams", monolithHandler)

@@ -111,9 +111,6 @@ export default {
         title: null
     },
     data: () => ({
-        user: {
-            name: 'Hello'
-        },
         activeMenu: 'søg',
         menu: [
             //{icon:'fa-home', label:'Hjem', link:'/'},
@@ -129,6 +126,9 @@ export default {
         ],
     }),
     computed: {
+      user() {
+        return this.$store.getters['dims/user']
+      },
       statusClass() {
         switch (this.$store.getters['dims/websocketStatus']) {
         case 'open': return 'text-warning'
