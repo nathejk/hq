@@ -6,6 +6,10 @@
             @on-row-click="showUser"
             :search-options="{enabled: true}"
             :group-options="{enabled: true}"
+            :sort-options="{
+                enabled: true,
+                initialSortBy: {field: 'department', type: 'asc'}
+            }"
             >
             <div slot="table-actions">
                 <div class="btn-group" role="toolbar" >
@@ -64,33 +68,6 @@
           </select>
         </div>
       </div>
-      <div v-if="false" class="form-group row">
-        <label class="col-sm-2 col-form-label" for="modalFunction">Scanner som</label>
-        <div class="col-sm-10">
-
-          <div v-for="(control, i) in user.controls" class="form-group d-flex mb-1" :key="i">
-            <select class="form-control form-control-sm col mr-3" v-model="control.slug">
-              <optgroup v-for="(group, name) in controlOptions" :label="name" :key="name">
-                <option v-for="option in group" :value="option.value" :key="option.value">{{ option.text }}</option>
-              </optgroup>
-            </select>
-            <select class="form-control form-control-sm col-1 mr-3" v-model="control.day">
-              <option>fre</option>
-              <option>lør</option>
-              <option>søn</option>
-            </select>
-            <span>
-              <!-- vue-timepicker placeholder="Starttid" v-model="control.start"></vue-timepicker> <i class="fa fa-arrow-right"></i> <vue-timepicker placeholder="Sluttid" v-model="control.end"></vue-timepicker -->
-              <button type="button" @click="deleteControl(i)" class="btn btn-sm btn-outline-danger ml-3"><i class="far fa-trash-alt text-dange"></i></button>
-            </span>
-          </div>
-
-          <div class="form-group d-flex justify-content-end">
-              <button type="button" @click="addControl" class="btn btn-sm btn-outline-success ml-3"><i class="fa fa-plus"></i></button>
-          </div>
-
-        </div>
-      </div>
     </form>
     <div slot="modal-footer">
       <button type="button" class="btn btn-sm btn-outline-secondary" @click="closeUser">Luk</button>
@@ -110,7 +87,6 @@
 
 <script>
 import axios from 'axios';
-//import VueTimepicker from 'vue2-timepicker/src/vue-timepicker.vue'
 import { BModal } from 'bootstrap-vue'
 //import { corps } from '@constants'
 //Vue.use(ModalPlugin)
@@ -126,12 +102,12 @@ export default {
       title: 'Nathejk 2019',
       team: {},
       columns: [
+        {label: 'Hold', field: 'department'},
         {label: 'Navn', field: 'name'},
         {label: 'Telefon', field: 'phone'},
         {label: 'E-mail', field: 'email'},
         {label: 'Korps', field: 'corps'},
         {label: 'medlemsnr.', field: 'medlemnr'},
-        {label: 'Hold', field: 'department'},
         //{label: 'Antal scanninger', field: 'scanCount', type:'number'},
       ],
       groupOptions: [
@@ -209,37 +185,6 @@ export default {
             ],
         },
       ],
-      controlOptions: {
-        Start: [
-          { text: 'Startpost',  value: 'start' },
-        ],
-        'Postlinie 1': [
-          { text: 'Post 1A',  value: 'post1a' },
-          { text: 'Post 1B',  value: 'post1b' },
-          { text: 'Post 1C',  value: 'post1c' },
-        ],
-        'Postlinie 2': [
-          { text: 'Post 2A',  value: 'post2a' },
-          { text: 'Post 2B',  value: 'post2b' },
-          { text: 'Post 2C',  value: 'post2c' },
-        ],
-        'Postlinie 3': [
-          { text: 'Post 3A',  value: 'post3a' },
-          { text: 'Post 3B',  value: 'post3b' },
-          { text: 'Post 3C',  value: 'post3c' },
-        ],
-        'Postlinie 4': [
-          { text: 'Post 4A',  value: 'post4a' },
-          { text: 'Post 4B',  value: 'post4b' },
-          { text: 'Post 4C',  value: 'post4c' },
-        ],
-        Oplevelse: [
-          { text: 'Oplevelsespost',  value: 'oplev' },
-        ],
-        'Mål': [
-          { text: 'Målpost',  value: 'slut' },
-        ],
-      },
       user: { name:'' },
     }),
     computed: {
@@ -255,7 +200,7 @@ export default {
         users() {
             const users = {}
             for (const person of this.$store.getters['dims/personnel']) {
-                const label = this.groupSlugs[user.department] || 'Andet'
+                const label = this.groupSlugs[person.department] || 'Andet'
                 if (!users[label]) {
                     users[label] = []
                 }
