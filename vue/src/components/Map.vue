@@ -72,13 +72,13 @@ import 'leaflet/dist/leaflet.css';
 
 import { Icon, latLng } from 'leaflet';
 import { LMap, LTileLayer, LWMSTileLayer, LControlLayers, LControlScale, LMarker, LPopup, LTooltip } from 'vue2-leaflet';
-
+/*
 delete Icon.Default.prototype._getIconUrl;
 Icon.Default.mergeOptions({
   iconRetinaUrl: require('leaflet/dist/images/marker-icon-2x.png'),
   iconUrl: require('leaflet/dist/images/marker-icon.png'),
   shadowUrl: require('leaflet/dist/images/marker-shadow.png'),
-});
+});*/
 export default {
   props: {
     center: {
@@ -114,12 +114,23 @@ export default {
         },
       ],
       layersWms: [
-        {
-          url: 'https://kortforsyningen.kms.dk/topo50?token=0d5816d7e175e934301f0277686c43f8',
+       /* {
+          url: 'https://services.datafordeler.dk/DKtopokort/dtk_50/1.0.0/WMS?username=KJRCGJTSDZ&password=sepnup-Pocdu8-voksyb',
           name: 'Topografisk 1:50.000',
           visible: true,
           format: 'image/png',
           layers: 'dtk_2cm_508dpi',
+          //layers: 'dtk_50',
+          transparent: true,
+          attribution: '&copy; <a target="_blank" href="https://download.kortforsyningen.dk/content/vilk%C3%A5r-og-betingelser">Styrelsen for Dataforsyning og Effektivisering</a>',
+        },*/
+        {
+          url: 'https://api.dataforsyningen.dk/dtk_25_DAF?service=WMS&request=GetCapabilities&token=0d5816d7e175e934301f0277686c43f8',
+          name: 'Topografisk 1:25.000',
+          visible: true,
+          format: 'image/png',
+          //layers: 'dtk_2cm_508dpi',
+          layers: 'DTK25',
           transparent: true,
           attribution: '&copy; <a target="_blank" href="https://download.kortforsyningen.dk/content/vilk%C3%A5r-og-betingelser">Styrelsen for Dataforsyning og Effektivisering</a>',
         }

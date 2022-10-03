@@ -8,9 +8,10 @@
 </style>
 
 <script>
+import Map from '@/components/Map.vue'
 export default {
   components: {
-    Map: () => import('@/components/Map.vue'),
+    Map,
   },
   data() {
     return {
