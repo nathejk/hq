@@ -12,11 +12,16 @@ import (
 	"path"
 	"strconv"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/rs/cors"
 
+	"nathejk.dk/cmd/api/commands"
+	"nathejk.dk/cmd/api/handlers"
 	"nathejk.dk/cmd/api/user"
 	"nathejk.dk/nathejk/aggregate/team"
+	"nathejk.dk/nathejk/table"
 	"nathejk.dk/nathejk/types"
 	"nathejk.dk/pkg/notification"
 	"nathejk.dk/pkg/streaminterface"
@@ -26,7 +31,7 @@ type server struct {
 	//    db     *someDatabase
 	//router *apiRouter
 	//    email  EmailSender
-	mux *http.ServeMux
+	mux *chi.Mux
 }
 
 type StateReader interface {
@@ -50,7 +55,10 @@ func NewServer(publisher streaminterface.Publisher, state StateReader, sms notif
 	sos := NewSosRoutes(NewSosCmd(publisher, state, sms))
 
 	//s := server{router: http.NewServeMux()}
-	mux := http.NewServeMux()
+	//mux := http.NewServeMux()
+	mux := chi.NewRouter()
+	mux.Use(middleware.Logger)
+
 	mux.HandleFunc("/api/base", NewBaseHandler())
 	mux.HandleFunc("/api/user", user.ShowUserFromCookieHandler(os.Getenv("JWT_COOKIE_NAME"), os.Getenv("AUTH_BASEURL")))
 	mux.HandleFunc("/api/cgstatus", NewControlgroupStatusHandler(db))
@@ -61,6 +69,12 @@ func NewServer(publisher streaminterface.Publisher, state StateReader, sms notif
 	mux.HandleFunc("/api/controlgroup", ctrlgrp.Handler)
 	mux.HandleFunc("/api/sos", sos.Handler)
 	mux.HandleFunc("/api/sos/", sos.Handler)
+
+	depQuerier := table.DepartmentQuerier(db)
+	depCmd := commands.NewDepartment(depQuerier, publisher)
+	mux.Put("/api/department", handlers.CreateDepartment(depCmd))
+	mux.Post("/api/department", handlers.UpdateDepartment(depCmd))
+	mux.Delete("/api/department", handlers.DeleteDepartment(depCmd))
 
 	mux.Handle("/ws", auth(state))
 
@@ -115,12 +129,21 @@ func patruljeHandler(state StateReader) http.HandlerFunc {
 		json.NewEncoder(w).Encode(t)
 	}
 }
+func teamsHandler(state StateReader) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		teamID := r.URL.Path[len("/api/patrulje/"):]
+		var t team.TeamMembersAggregate
+		state.Read("patrulje", teamID, &t)
+		json.NewEncoder(w).Encode(t)
+	}
+}
 
 func auth(next http.Handler) http.HandlerFunc {
 	// $jwt = $_COOKIE[getenv('JWT_COOKIE_NAME')] ?? "none";
 	// $json = @file_get_contents(getenv('AUTH_BASEURL')."/token/" . $jwt);
 	// if ($USER = json_decode($json)) {
 	return func(w http.ResponseWriter, r *http.Request) {
+		log.Println("STARTING WEBSICKER")
 		cookie, _ := r.Cookie(os.Getenv("JWT_COOKIE_NAME"))
 		resp, err := http.Get(os.Getenv("AUTH_BASEURL") + "/token/" + cookie.Value)
 		if err != nil || resp.StatusCode != http.StatusOK {

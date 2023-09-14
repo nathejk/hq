@@ -8,7 +8,7 @@ const state = {
   claims: {},
   profile: {},
   profiles: {},
-  users: {},
+  users: [],
   invitations: {},
   customer: null,
   isLoggedIn: false

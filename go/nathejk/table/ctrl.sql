@@ -3,6 +3,8 @@ CREATE TABLE IF NOT EXISTS controlpoint (
     controlGroupName VARCHAR(99) NOT NULL DEFAULT "",
     controlIndex TINYINT NOT NULL,
     controlName VARCHAR(99) NOT NULL DEFAULT "",
+    scheme VARCHAR(99) NOT NULL DEFAULT "",
+    relativeControlGroupId VARCHAR(99),
     openFromUts INT NOT NULL DEFAULT 0,
     openUntilUts INT NOT NULL DEFAULT 0,
     plusMinutes INT NOT NULL DEFAULT 0,

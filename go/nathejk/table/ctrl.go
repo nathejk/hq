@@ -66,7 +66,20 @@ func (c *controlPoint) HandleMessage(msg streaminterface.Message) error {
 		}
 		for index, control := range body.Controls {
 			//for _, scanner := range control.Scanners {
-			sql := fmt.Sprintf("INSERT INTO controlpoint (controlGroupId, controlGroupName, controlIndex, controlName, openFromUts, openUntilUts, plusMinutes, minusMinutes) VALUES (%q, %q, %d, %q, %d, %d, %d, %d)", body.ControlGroupID, body.Name, index, control.Name, control.DateRange.StartDate.Unix(), control.DateRange.EndDate.Unix(), control.Plus, control.Minus)
+			args := []any{
+				body.ControlGroupID,
+				body.Name,
+				index,
+				control.Name,
+				control.Scheme,
+				control.RelativeCheckgroupID,
+				control.DateRange.StartDate.Unix(),
+				control.DateRange.EndDate.Unix(),
+				control.Plus,
+				control.Minus,
+			}
+
+			sql := fmt.Sprintf("INSERT INTO controlpoint (controlGroupId, controlGroupName, controlIndex, controlName, scheme, relativeControlGroupId, openFromUts, openUntilUts, plusMinutes, minusMinutes) VALUES (%q, %q, %d, %q, %q, %q, %d, %d, %d, %d)", args...)
 			if err := c.w.Consume(sql); err != nil {
 				return nil
 			}

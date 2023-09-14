@@ -63,10 +63,10 @@ func (c *patruljeStatus) HandleMessage(msg streaminterface.Message) error {
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
-		if body.Entity.ID < "2022000" {
-			//log.Printf("TeamNumber: %q %q", body.Entity.ID, body.Entity.TeamNumber)
-			return nil
-		}
+		//		if body.Entity.ID < "2022000" {
+		//log.Printf("TeamNumber: %q %q", body.Entity.ID, body.Entity.TeamNumber)
+		//			return nil
+		//		}
 
 		if body.Entity.TeamNumber == "0" {
 			//log.Printf("TeamNumber: %q %q", body.Entity.ID, body.Entity.TeamNumber)
@@ -77,8 +77,11 @@ func (c *patruljeStatus) HandleMessage(msg streaminterface.Message) error {
 
 			return c.w.Consume(fmt.Sprintf("DELETE FROM patruljestatus WHERE teamId=%q", body.Entity.ID))
 		}
+
+		uts, _ := strconv.ParseInt(body.Entity.CreatedUts, 10, 64)
+		year := time.Unix(uts, 0).Year()
 		startedUts, _ := strconv.Atoi(body.Entity.StartUts)
-		sql := fmt.Sprintf("INSERT INTO patruljestatus SET teamId=%q, startedUts=%d ON DUPLICATE KEY UPDATE startedUts=VALUES(startedUts)", body.Entity.ID, startedUts)
+		sql := fmt.Sprintf("INSERT INTO patruljestatus SET teamId=%q, year=\"%d\", startedUts=%d ON DUPLICATE KEY UPDATE startedUts=VALUES(startedUts)", body.Entity.ID, year, startedUts)
 		if err := c.w.Consume(sql); err != nil {
 			log.Fatalf("Error consuming sql %q", err)
 		}

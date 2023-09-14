@@ -17,7 +17,7 @@ type MonolithNathejkTeam struct {
 		StartUts             types.UnixtimeString `json"startUts"`
 		FinishUts            types.UnixtimeString `json"finishUts"`
 		SignupStatusTypeName string               `json"signupStatusTypeName"`
-		TypeName             string               `json"typeName"`
+		TypeName             types.TeamType       `json"typeName"`
 		ParentTeamID         types.TeamID         `json"parentTeamId"`
 		IP                   string               `json"ip"`
 		Title                string               `json"title"`
@@ -32,12 +32,12 @@ type MonolithNathejkTeam struct {
 		ContactRole          string               `json"contactRole"`
 		TeamNumber           string               `json"teamNumber"`
 		LigaNumber           string               `json"ligaNumber"`
-		LigaNumberVerified   string               `json"ligaNumberVerified"`
+		LigaNumberVerified   *string              `json"ligaNumberVerified"`
 		LokNumber            string               `json"lokNumber"`
 		MemberCount          string               `json"memberCount"`
 		PaidMemberCount      string               `json"paidMemberCount"`
 		Paid                 string               `json"paid"`
-		PaidStatus           string               `json"paidStatus"`
+		PaidStatus           *string              `json"paidStatus"`
 		Remark               string               `json"remark"`
 		PhotoID              string               `json"photoId"`
 		PhotoUts             types.UnixtimeString `json"photoUts"`

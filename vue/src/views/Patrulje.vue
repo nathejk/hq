@@ -253,6 +253,9 @@ export default {
         //team: {},
         mail: {},
         member: {},
+        members: [],
+        team: {},
+        teamUrl : string
     }),
     computed: {
         paidUts() {
@@ -264,6 +267,19 @@ export default {
         },
     },
     methods: {
+        load() {
+            try {
+                const rsp = await axios.get('/api/patrulje/' + this.$route.params.id, { withCredentials: true } )
+                if (rsp.status == 200) {
+                    this.team = rsp.data.patrulje
+                    this.members = rsp.data.spejdere
+                    this.teamUrl = rsp.data.url
+                }
+            } catch(error) {
+                console.log("error happend", error)
+                throw new Error(error.response.data)
+            }
+        },
         showMail(mail) {
             this.mail = mail
  //           $('#mailModal').modal({})
@@ -283,8 +299,10 @@ export default {
             //return moment(Number(value)*1000).format('D/M')
         },
     },
-        /*
     async mounted() {
+        load();
+    },
+        /*
         try {
             const rsp = await axios.get(window.envConfig.API_BASEURL + '/api/teams/' + this.$route.params.id,
             { withCredentials: true }

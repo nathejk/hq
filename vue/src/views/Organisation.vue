@@ -1,4 +1,17 @@
 <template>
+  <div id="view-organisation">
+
+    <div class="menu">
+      <div class="container d-flex justify-content-between align-items-center">
+        <div>
+        </div>
+        <div>
+            <button v-if="false" type="button" class="btn btn-outline-secondary btn-circle btn-sm ml-2" @click="newUnit"><i class="fas fa-cog"></i></button>
+            <button type="button" class="btn btn-outline-secondary btn-circle btn-sm ml-2" @click="newUser"><i class="fas fa-user-plus"></i></button>
+        </div>
+      </div>
+    </div>
+
     <div class="container p-3">
         <vue-good-table ref="teamlist" styleClass="vgt-table condensed"
             :columns="columns"
@@ -17,68 +30,155 @@
                 </div>
             </div>
             <template slot="table-row" slot-scope="props">
-                <span v-if="props.column.field == 'name'">
-                    {{props.formattedRow[props.column.field]}} <i v-if="props.row.hqAccess" class="fas fa-xs fa-key text-warning"></i>
-                </span>
-                <span v-else>
-                    {{props.formattedRow[props.column.field]}}
-                </span>
-            </template>
-            <div lot="emptystate"><em class="text-warning text-italic">- Telefonlisten er tom -</em></div>
-        </vue-good-table>
-  <b-modal ref="userModal" size="lg" header-class="hazyblue bg-midnightblue">
-    <div slot="modal-title">
-        <i class="fas fa-fw fa-phone"></i> Telefonnummer
+            <span v-if="props.column.field == 'name'">
+                {{props.formattedRow[props.column.field]}} <i v-if="props.row.hqAccess" class="fas fa-xs fa-key text-warning"></i>
+            </span>
+            <span v-else>
+                {{props.formattedRow[props.column.field]}}
+            </span>
+        </template>
+        <div lot="emptystate"><em class="text-warning text-italic">- Telefonlisten er tom -</em></div>
+    </vue-good-table>
+
+<b-modal ref="unitModal" size="lg" header-class="hazyblue bg-midnightblue">
+<div slot="modal-title">
+    <i class="fas fa-fw fa-user"></i> Hold og enheder
+</div>
+<template class="small">
+    <EditUnits />
+<!--
+  <draggable v-for="department in departments" v-model="department.units" draggable=".item" group="departments">
+    <strong>{{ department.name }}</strong>
+    <transition-group>
+    <div v-for="unit in department.units" :key="unit.id" class="item"  style="padding:5px;border:1px solid #999">
+        {{unit.name}}
     </div>
-    <form class="small">
-      <div class="form-group row">
-        <label class="col-sm-2 col-form-label" for="modalUserName">Navn</label>
-        <div class="col-sm-10"><input type="text" class="form-control form-control-sm" id="modalUserName" v-model="user.name"></div>
-      </div>
-      <div class="form-group row">
-        <label class="col-sm-2 col-form-label" for="modalPhone">Telefon</label>
-        <div class="col-sm-10"><input type="text" class="form-control form-control-sm" id="modalPhone" v-model="user.phone"></div>
-      </div>
-      <div class="form-group row">
-        <label class="col-sm-2 col-form-label" for="modalEmail">E-mail</label>
-        <div class="col-sm-10"><input type="text" class="form-control form-control-sm" id="modalEmail" v-model="user.email"></div>
-      </div>
-      <div class="form-group row">
-        <label class="col-sm-2 col-form-label" for="modalMedlem">Medlemsnummer</label>
-        <div class="col-sm-10"><input type="text" class="form-control form-control-sm" id="modalMedlem" v-model="user.medlemnr"></div>
-      </div>
-      <div class="form-group row">
-        <label class="col-sm-2 col-form-label" for="modalKorps">Korps</label>
-        <div class="col-sm-10"><input type="text" class="form-control form-control-sm" id="modalKorps" v-model="user.corps"></div>
-      </div>
-      <div class="form-group formcheck row">
-        <label class="col-sm-2 col-form-label" for="modalHqAccess">HQ adgang</label>
-        <div class="col-sm-10"><div class="form-check py-1">
-            <input type="checkbox" class="form-check-input" id="modalHqAccess" v-model="user.hqAccess">
-            <label class="form-check-label" for="modalHqAccess">Ja</label>
-        </div></div>
-      </div>
-      <div class="form-group row">
-        <label class="col-sm-2 col-form-label" for="modalFunction">Funktion</label>
-        <div class="col-sm-10">
-          <select class="form-control form-control-sm" v-model="user.department">
-            <optgroup v-for="group in groupOptions" :label="group.label" :key="group.label">
-              <option v-for="option in group.options" :value="option.slug" :key="option.slug">{{ option.text }}</option>
-            </optgroup>
-          </select>
-        </div>
-      </div>
-    </form>
-    <div slot="modal-footer">
-      <button type="button" class="btn btn-sm btn-outline-secondary" @click="closeUser">Luk</button>
-      <button type="button" class="btn btn-sm btn-outline-danger ml-2" @click="deleteUser">Slet</button>
-      <button type="button" class="btn btn-sm btn-success ml-2" @click="saveUser">Gem</button>
+    </transition-group>
+
+  </draggable>
+  <button slot="footer" @click="addUnit">Add</button>
+-->
+</template>
+<div slot="modal-footer">
+  <button type="button" class="btn btn-sm btn-outline-secondary" @click="closeUnit">Luk</button>
+  <button type="button" class="btn btn-sm btn-outline-danger ml-2" click="deleteUser">Slet</button>
+  <button type="button" class="btn btn-sm btn-success ml-2" click="saveUser">Gem</button>
+</div>
+</b-modal>
+
+<b-modal ref="userModal" size="lg" header-class="hazyblue bg-midnightblue">
+<div slot="modal-title">
+    <i class="fas fa-fw fa-user"></i> Personoplysninger
+</div>
+<form class="small">
+  <div class="form-group row">
+    <label class="col-sm-2 col-form-label" for="modalUserName">Navn</label>
+    <div class="col-sm-10"><input type="text" class="form-control form-control-sm" id="modalUserName" v-model="user.name"></div>
+  </div>
+  <div class="form-group row">
+    <label class="col-sm-2 col-form-label" for="modalPhone">Telefon</label>
+    <div class="col-sm-10"><input type="text" class="form-control form-control-sm" id="modalPhone" v-model="user.phone"></div>
+  </div>
+  <div class="form-group row">
+    <label class="col-sm-2 col-form-label" for="modalEmail">E-mail</label>
+    <div class="col-sm-10"><input type="text" class="form-control form-control-sm" id="modalEmail" v-model="user.email"></div>
+  </div>
+  <div class="form-group row">
+    <label class="col-sm-2 col-form-label" for="modalMedlem">Medlemsnummer</label>
+    <div class="col-sm-10"><input type="text" class="form-control form-control-sm" id="modalMedlem" v-model="user.medlemnr"></div>
+  </div>
+  <div class="form-group row">
+    <label class="col-sm-2 col-form-label" for="modalKorps">Korps</label>
+    <div class="col-sm-10"><input type="text" class="form-control form-control-sm" id="modalKorps" v-model="user.corps"></div>
+  </div>
+  <div class="form-group formcheck row">
+    <label class="col-sm-2 col-form-label" for="modalHqAccess">HQ adgang</label>
+    <div class="col-sm-10"><div class="form-check py-1">
+        <input type="checkbox" class="form-check-input" id="modalHqAccess" v-model="user.hqAccess">
+        <label class="form-check-label" for="modalHqAccess">Ja</label>
+    </div></div>
+  </div>
+  <div class="form-group row">
+    <label class="col-sm-2 col-form-label" for="modalFunction">Funktion</label>
+    <div class="col-sm-10">
+      <select class="form-control form-control-sm" v-model="user.department">
+        <optgroup v-for="group in groupOptions" :label="group.label" :key="group.label">
+          <option v-for="option in group.options" :value="option.slug" :key="option.slug">{{ option.text }}</option>
+        </optgroup>
+      </select>
     </div>
-  </b-modal>
-    </div>
+  </div>
+</form>
+<div slot="modal-footer">
+  <button type="button" class="btn btn-sm btn-outline-secondary" @click="closeUser">Luk</button>
+  <button type="button" class="btn btn-sm btn-outline-danger ml-2" @click="deleteUser">Slet</button>
+  <button type="button" class="btn btn-sm btn-success ml-2" @click="saveUser">Gem</button>
+</div>
+</b-modal>
+</div>
+</div>
 </template>
 
 <style>
+.menu .btn-outline-secondary:hover {
+   /* color: black !important;*/
+}
+.btn-circle.btn-sm {
+  width: 30px;
+  height: 30px;
+  border-radius: 15px;
+  font-size: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+        .btn-circle.btn-md {
+            width: 50px;
+            height: 50px;
+            padding: 7px 10px;
+            border-radius: 25px;
+            font-size: 10px;
+            text-align: center;
+        }
+        .btn-circle.btn-xl {
+            width: 70px;
+            height: 70px;
+            padding: 10px 16px;
+            border-radius: 35px;
+            font-size: 12px;
+            text-align: center;
+        }
+.menu {
+  background:#f5f5f5;
+  border-bottom: 1px solid #ccc;
+  padding: 0.3rem 0;
+  /*box-shadow: 0 1px 1px rgb(0 0 0 / 15%)*/
+}
+.menu a {
+    display: inline-block;
+    padding: 0 1rem;
+    color: #888; 
+    text-decoration: none;
+    text-transform: uppercase;
+    font-weight: 100;
+    /*line-height: 3.2rem;*/
+}
+.menu a::after {
+  display: block;
+  content: attr(title);
+  text-transform: uppercase;
+  font-weight: 600;
+  height: 1px;
+  color: transparent;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+.menu a:hover, .menu a.selected {
+    color: #666;
+    font-weight: 600;
+}
+
 .vgt-global-search {
     border:0;
     background:none;
@@ -88,6 +188,7 @@
 <script>
 import axios from 'axios';
 import { BModal } from 'bootstrap-vue'
+import EditUnits from './EditUnits.vue'
 //import { corps } from '@constants'
 //Vue.use(ModalPlugin)
 
@@ -96,8 +197,16 @@ export default {
     components: {
         //Modal: () => import('@/components/Modal'),
         BModal,
+        draggable: () => import('vuedraggable'),
+        EditUnits,
     },
     data: () => ({
+            myArray:[
+                    {id:1, name:"One"},
+                    {id:2, name:"Two"},
+                    {id:3, name:"Three"},
+                    {id:4, name:"Four"},
+                ],
       date:{},
       title: 'Nathejk 2019',
       team: {},
@@ -110,8 +219,15 @@ export default {
         {label: 'medlemsnr.', field: 'medlemnr'},
         //{label: 'Antal scanninger', field: 'scanCount', type:'number'},
       ],
+      departments: [
+        {name:'Banditter', slug:'bandit', units:[{id:1, name:"One"}]},
+        {name:'Postmandskab', slug:'post', units:[]},
+        {name:'Logistik', slug:'logistik', units:[]},
+        {name:'Guides', slug:'guide', units:[]},
+        {name:'Andet', slug:'', units:[]},
+      ],
       groupOptions: [
-        { 
+        {
             'label': 'Banditter',
             'options': [
               { text: 'BHQ', slug: 'bhq' },
@@ -221,11 +337,21 @@ export default {
         },
     },
     methods: {
+        addUnit() {
+            this.departments[this.departments.length-1].units.push({id:123, name:"Enhed"})
+        //        this.myArray.push({id:this.myArray.length, name:this.myArray.length})
+        },
         addControl() {
             this.user.controls.push({})
         },
         deleteControl(index) {
             this.user.controls.splice(index, 1)
+        },
+        newUnit() {
+          this.$refs['unitModal'].show()
+        },
+        closeUnit() {
+          this.$refs['unitModal'].hide()
         },
         newUser() {
             for (let key in this.user) {

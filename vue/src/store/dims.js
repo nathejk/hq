@@ -39,7 +39,19 @@ const getters = {
         return state.status
     },
     personnel: (state) => state.ids['personnel'].map( id => state.list['personnel'][id] ),
+    person: (state) => (id) => {
+        if (!state.lastModify['personnel']) {
+            return {}
+        }
+        return state.list['personnel'][id] || {}
+    },
     controlGroups: (state) => state.ids['controlgroup'].map( id => state.list['controlgroup'][id] ),
+    controlGroup: (state) => (id) => {
+        if (!state.lastModify['controlgroup']) {
+            return {}
+        }
+        return state.list['controlgroup'][id]
+    },
     klans: (state) => state.ids['klan'].map( id => state.list['klan'][id] ),
     klan: (state) => (id) => {
         if (!state.lastModify['klan']) {

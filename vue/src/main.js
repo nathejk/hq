@@ -13,6 +13,9 @@ import 'bootstrap-vue/dist/bootstrap-vue.css'
 
 Vue.config.productionTip = false
 
+import uuid from "vue-uuid";
+Vue.use(uuid);
+
 import VueMoment from 'vue-moment'
 Vue.use(VueMoment)
 

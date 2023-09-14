@@ -17,10 +17,11 @@ RUN set -eux; \
         inotify-tools && \
     apt -qq clean
 
-RUN printf "#!/bin/sh\necho 'Please mount repo into /app'" > /app/docker/bin/init-dev && \
-    chmod +x /app/docker/bin/init-dev
+#RUN printf "#!/bin/sh\necho 'Please mount repo into /app'" > /app/docker/bin/init-dev && \
+#    chmod +x /app/docker/bin/init-dev
 
-ENTRYPOINT ["/app/docker/bin/init-dev"]
+COPY docker/bin/init-dev /init
+ENTRYPOINT ["/init"]
 #ENTRYPOINT ["/init"]
 CMD ["api"]
 

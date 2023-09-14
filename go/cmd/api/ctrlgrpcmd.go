@@ -43,7 +43,9 @@ func (cmd ctrlgrpCmd) Update(req interface{}) (interface{}, error) {
 	}
 	for _, rc := range r.Controls {
 		control := messages.NathejkControlGroup_Control{
-			Name: rc.Name,
+			Name:                 rc.Name,
+			Scheme:               rc.Scheme,
+			RelativeCheckgroupID: rc.RelativeCheckgroupID,
 			DateRange: messages.NathejkControlGroup_DateRange{
 				StartDate: rc.DateRange.StartDate,
 				EndDate:   rc.DateRange.EndDate,
@@ -105,8 +107,10 @@ func (d Date) ToTime() time.Time {
 type CreateRequest struct {
 	Name     string `json:"name"`
 	Controls []struct {
-		Name      string `json:"name"`
-		DateRange struct {
+		Name                 string               `json:"name"`
+		Scheme               string               `json:"scheme"`
+		RelativeCheckgroupID types.ControlGroupID `json:"relativeControlGroupId"`
+		DateRange            struct {
 			StartDate time.Time `json:"startDate"`
 			EndDate   time.Time `json:"endDate"`
 		} `json:"dateRange"`

@@ -9,7 +9,7 @@
             :select-options="{enabled: true, selectOnCheckboxOnly: true, disableSelectInfo: true}"
             :group-options="{enabled: true}"
             >
-            <div slot="table-actions">
+            <div _slot="table-actions">
                 <div class="btn-group" role="toolbar" >
                     <button type="button" class="btn btn-sm btn-outline-dark" :disabled="!selectedCount"><i style="color: rgb(221, 27, 22);" class="fa fa-fw fa-trash-alt"></i> slet</button>
                     <button type="button" class="btn btn-sm btn-outline-dark" :disabled="!selectedCount"><i class="fa fa-fw fa-at"></i> e-mail</button>
@@ -49,6 +49,7 @@
 </style>
 
 <script>
+import axios from 'axios';
 //import 'vue-good-table/dist/vue-good-table.css'
 //import { VueGoodTable } from 'vue-good-table';
 
@@ -56,12 +57,13 @@ export default {
     data: () => ({
         columns: [
             {label: 'ID', field: 'id'},
-            {label: 'Nr', field: 'teamNumber'},
+            {label: 'Nr', field: 'number', type:'num-fmt'},
             {label: 'Patrulje', field: 'name'},
-            {label: 'Gruppe', field: 'groupName'},
-            {label: 'Korps', field: 'korps'},
+            {label: 'Gruppe', field: 'group'},
+            {label: 'Korps', field: 'corps'},
             {label: 'Antal', field: 'memberCount', sortable: false},
         ],
+        patruljer: [],
         teams: [],
         members: [],
         selectedCount: 0,
@@ -77,17 +79,16 @@ export default {
             return this.groupings[0]
         },
         Teams() {
-
-        const groups = {
-          active: {mode:'span', label:'Aktive patruljer', children:[]},
-          merged: {mode:'span', label:'Sammenlagte', children:[]},
-          stopped: {mode:'span', label:'Udgåede patruljer', children:[]},
-        }
-        for (const patrulje of this.$store.getters['dims/patruljer']) {
-                console.log(patrulje)
-          groups[patrulje.activeMembers.length == 0 ? 'stopped' : (patrulje.parentTeamId ? 'merged' : 'active')].children.push(patrulje)
-        }
-        return [groups.active, groups.merged, groups.stopped]
+            const groups = {
+              active: {mode:'span', label:'Aktive patruljer', children:[]},
+              merged: {mode:'span', label:'Sammenlagte', children:[]},
+              stopped: {mode:'span', label:'Udgåede patruljer', children:[]},
+              signedup: {mode:'span', label:'Ikke startede patruljer', children:[]},
+            }
+            for (const patrulje of this.patruljer) {
+                groups[patrulje.status == 'JOIN' ? 'merged' : (patrulje.status == 'STARTED' ? 'active' : 'signedup')].children.push(patrulje)
+            }
+            return [groups.active, groups.merged, groups.stopped, groups.signedup]
         },
         selectedTeams() {
             if (!this.$refs['teamlist']) return []
@@ -95,6 +96,20 @@ export default {
         }
     },
     methods: {
+      async load () {
+        try {
+            const rsp = await axios.get('/api/patruljer?year=2022', { withCredentials: true })
+            if (rsp.status == 200) {
+                console.log(rsp)
+                this.patruljer = rsp.data.patruljer
+                //this.checkgroups = cgs.sort((a, b) => (this.controlGroupStartDate(a) > this.controlGroupStartDate(b) ? 1 : -1))
+                //this.startedCount = resp.data.startedCount
+            }
+        } catch(error) {
+            console.log("error happend", error)
+            throw new Error(error.response.data)
+        }
+      },
       selectionChanged(params) {
           console.log('selectionChanged', params)
           this.selectedCount = this.$refs.teamlist.selectedRows.length
@@ -108,7 +123,7 @@ export default {
           }
         }
               console.log('row', params.row)
-        this.$router.push({ name: "patrulje", params: { id: params.row.teamId }});
+        this.$router.push({ name: "patrulje", params: { id: params.row.id }});
       },
       toggleColumn( index, event ){
           event.preventDefault()
@@ -117,8 +132,10 @@ export default {
         this.$set( this.columns[ index ], 'hidden', ! this.columns[ index ].hidden );
       }
     },
-    /*
     async mounted() {
+        this.load()
+    },
+    /*
         try {
             const rsp = await axios.get(window.envConfig.API_BASEURL + '/api/teams',
             { withCredentials: true }

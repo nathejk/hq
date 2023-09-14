@@ -4,6 +4,7 @@ import (
 	"sync"
 
 	"nathejk.dk/nathejk/aggregate"
+	"nathejk.dk/nathejk/types"
 	"nathejk.dk/pkg/streaminterface"
 )
 
@@ -13,17 +14,17 @@ type teamTypeModel struct {
 	sync.Mutex
 	ap *aggregate.Publisher
 	//validator *validator.Validator
-	teamType string
+	teamType types.TeamType
 }
 
-func NewTeamTypeModel(publisher streaminterface.Publisher, teamType string) *teamTypeModel {
+func NewTeamTypeModel(publisher streaminterface.Publisher, teamType types.TeamType) *teamTypeModel {
 	m := teamTypeModel{
 		teamType: teamType,
 		//validator: &validator.Validator{IgnoreMissing: true},
 	}
 	//vPublisher := &validator.Publisher{Publisher: publisher, Validator: m.validator}
 	//mPublisher := model.Publisher(&m, vPublisher)
-	m.ap = aggregate.NewPublisher(publisher, "team-"+m.teamType+".aggregate")
+	m.ap = aggregate.NewPublisher(publisher, "team-"+string(m.teamType)+".aggregate")
 	return &m
 }
 
@@ -39,7 +40,7 @@ func (m *teamTypeModel) Consumes() []streaminterface.Subject {
 }
 
 func (m *teamTypeModel) Produces() []string {
-	return []string{"team-" + m.teamType + ".aggregate:updated", "team-" + m.teamType + ".aggregate:removed", "team-" + m.teamType + ".aggregate:caughtup"}
+	return []string{"team-" + string(m.teamType) + ".aggregate:updated", "team-" + string(m.teamType) + ".aggregate:removed", "team-" + string(m.teamType) + ".aggregate:caughtup"}
 }
 
 func (m *teamTypeModel) HandleMessage(msg streaminterface.Message) error {

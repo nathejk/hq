@@ -30,7 +30,7 @@ type NathejkSmsSent struct {
 // nathejk:team.updated
 type NathejkTeamUpdated struct {
 	TeamID            types.TeamID      `json:"teamId"`
-	Type              types.Enum        `json:"type"`
+	Type              types.TeamType    `json:"type"`
 	Name              string            `json:"name"`
 	GroupName         string            `json:"groupName"`
 	Korps             string            `json:"korps"`

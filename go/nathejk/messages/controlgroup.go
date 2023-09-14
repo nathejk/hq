@@ -21,11 +21,13 @@ type NathejkControlGroup_Scanner struct {
 }
 
 type NathejkControlGroup_Control struct {
-	Name      string                        `json:"name"`
-	DateRange NathejkControlGroup_DateRange `json:"dateRange"`
-	Minus     int                           `json:"minus"`
-	Plus      int                           `json:"plus"`
-	Scanners  []NathejkControlGroup_Scanner `json:"scanners"`
+	Name                 string                        `json:"name"`
+	Scheme               string                        `json:"scheme"`
+	RelativeCheckgroupID types.ControlGroupID          `json:"relativeControlGroupId"`
+	DateRange            NathejkControlGroup_DateRange `json:"dateRange"`
+	Minus                int                           `json:"minus"`
+	Plus                 int                           `json:"plus"`
+	Scanners             []NathejkControlGroup_Scanner `json:"scanners"`
 }
 
 // nathejk:user.updated

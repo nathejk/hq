@@ -11,7 +11,7 @@ import {
 } from './websocket-mutations'
 */
 import app from './app'
-import osm from './osm'
+import department from './department'
 import user from './user'
 import dims from './dims'
 
@@ -20,7 +20,7 @@ Vue.use(Vuex)
 export const store = new Vuex.Store({
   modules: {
     app,
-    osm,
+    department,
     user,
     dims,
   },
