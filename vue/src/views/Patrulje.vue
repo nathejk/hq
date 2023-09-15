@@ -54,7 +54,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(member, i) in members" :key="i" @click="openMember(member)">
+                  <tr v-for="(member, i) in members" :key="i" @click="openMember(member)" :class="{inactive:member.status != 'started'}">
                   <td>{{ member.name }}</td>
                   <td>{{ member.address }}, {{ member.postalCode }}</td>
                   <td>{{ member.mail }}</td>
@@ -263,6 +263,9 @@
 <style lang="scss">
 .badge {
     font-weight:400;
+}
+tr.inactive {
+  text-decoration: line-through;
 }
 </style>
 
