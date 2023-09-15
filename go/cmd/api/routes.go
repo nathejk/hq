@@ -56,8 +56,8 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPut, "/api/sos", sos.Handler)
 	router.HandlerFunc(http.MethodPost, "/api/sos", sos.Handler)
 	router.HandlerFunc(http.MethodDelete, "/api/sos", sos.Handler)
-	router.HandlerFunc(http.MethodPut, "/api/sos/", sos.Handler)
-	router.HandlerFunc(http.MethodPost, "/api/sos/", sos.Handler)
+	router.HandlerFunc(http.MethodPut, "/api/sos/:cmd", sos.Handler)
+	router.HandlerFunc(http.MethodPost, "/api/sos/:cmd", sos.Handler)
 
 	router.HandlerFunc(http.MethodGet, "/api/checkgroups", app.listCheckgroupsHandler)
 	router.HandlerFunc(http.MethodGet, "/api/patruljer", app.listPatruljerHandler)
