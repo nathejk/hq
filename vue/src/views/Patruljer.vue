@@ -98,7 +98,7 @@ export default {
     methods: {
       async load () {
         try {
-            const rsp = await axios.get('/api/patruljer?year=2022', { withCredentials: true })
+            const rsp = await axios.get('/api/patruljer', { withCredentials: true })
             if (rsp.status == 200) {
                 console.log(rsp)
                 this.patruljer = rsp.data.patruljer

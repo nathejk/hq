@@ -466,7 +466,7 @@ export default {
     methods: {
       async load () {
         try {
-            const rsp = await axios.get('/api/checkgroups?year=2022',
+            const rsp = await axios.get('/api/checkgroups',
             { withCredentials: true }
             )
             if (rsp.status == 200) {
