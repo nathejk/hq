@@ -358,6 +358,7 @@ export default {
         samarit: 'Samarit',
         rover: 'Rover',
         logistik: 'Logistik',
+        hoens: 'Hønemor',
       },
       memberStatuses: {
         active: 'Aktiv i løbet',
