@@ -115,7 +115,6 @@ export default {
           this.selectedCount = this.$refs.teamlist.selectedRows.length
       },
       onRowClick(params) {
-
         // If click-event originates from the checkbox column then ignore
         for (let el = params.event.target; el && el.nodeName != 'TR'; el = el.parentNode) {
           for (const className of el.classList) {

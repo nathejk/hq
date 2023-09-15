@@ -57,6 +57,8 @@ func (d *dims) Subscribe() *dims {
 		table.NewPatruljeMerged(sqlw),
 		table.NewSpejder(sqlw),
 		table.NewSpejderStatus(sqlw),
+		table.NewSos(sqlw),
+		table.NewSosAssociation(sqlw),
 		table.NewDepartment(sqlw, memstream),
 		table.NewPersonnel(sqlw, memstream),
 		table.NewControlPoint(sqlw, memstream),

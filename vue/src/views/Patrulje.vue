@@ -1,7 +1,7 @@
 <template>
     <div class="container p-3">
         <h1 class="mb-2 clearfix">
-            <span class="h2 mb-0"><span class="badge bg-secondary text-uppercase easy-select">{{ team.teamNumber || '&times;&times;-&times;' }}</span></span>
+            <span class="h2 mb-0"><span class="badge bg-secondary text-uppercase easy-select">{{ teamNumber || '&times;&times;-&times;' }}</span></span>
             <span class="h3 mb-0 ps-3 d-block d-md-inline">
                 <small class="text-uppercase text-muted pl-3">{{ team.name }}<small class="ms-1"></small></small>
             </span>
@@ -12,22 +12,22 @@
           <div class="card-header"><i class="fas fa-fw fa-users darkblue"></i> Patrulje</div>
           <div class="card-body">
             <div class="small border rounded  bg-light pt-2 mb-3">
-            <button class="btn btn-sm btn-outline-danger float-right mr-2" data-toggle="modal" data-target="#teamModal"><i class="fas fa-pencil-alt"></i> ret</button>
+            <a :href="teamUrl" class="btn btn-sm btn-outline-danger float-right mr-2" datatoggle="modal" datatarget="#teamModal"><i class="fas fa-pencil-alt"></i> ret</a>
             <dl class="row pb-0 mb-0">
               <dt class="col-2 small text-uppercase grey">Patrulje</dt>
               <dd class="col-10">{{ team.name }}</dd>
 
               <dt class="col-2 small text-uppercase grey">Gruppe / Division</dt>
-              <dd class="col-10">{{ team.groupName }}</dd>
+              <dd class="col-10">{{ team.group }}</dd>
 
               <dt class="col-2 small text-uppercase grey">Korps</dt>
-              <dd class="col-10">{{ team.korps | korps }}</dd>
+              <dd class="col-10">{{ team.corps | korps }}</dd>
 
               <dt class="col-2 small text-uppercase grey">Adv.spejd liga ID</dt>
               <dd class="col-10">{{ team.ligaNumber || '-' }}</dd>
 
               <dt class="col-2 small text-uppercase grey">Status</dt>
-              <dd class="col-10">{{ team.signupStatusTypeName }}</dd>
+              <dd class="col-10">{{ team.status }}</dd>
             </dl>
             </div>
   <Modal id="teamModal" iconClass="fas fa-users" title="Ret patruljeoplysninger">
@@ -54,13 +54,13 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(member, i) in team.members" :key="i" @click="openMember(member)">
+                <tr v-for="(member, i) in members" :key="i" @click="openMember(member)">
                   <td>{{ member.name }}</td>
                   <td>{{ member.address }}, {{ member.postalCode }}</td>
                   <td>{{ member.mail }}</td>
                   <td>{{ member.phone }}</td>
                   <td>{{ member.phoneParent }}</td>
-                  <td>{{ member.birthDate }}</td>
+                  <td>{{ member.birthdate }}</td>
                 </tr>
               </tbody>
             </table>
@@ -93,6 +93,54 @@
         </div></div>
 
         <div class="row mt-3">
+          <div class="col">
+            <div class="card">
+              <div class="card-header"><i class="fas fa-fw fa-map-marker-alt text-secondary"></i> Scanninger</div>
+              <div class="card-body" style="font-size:0.8rem">
+            <table class="table table-sm table-hover table-striped" style="font-size:0.8rem">
+              <thead>
+                <tr>
+                  <th scope="col">Kl</th>
+                  <th scope="col">Placering</th>
+                  <th scope="col">Person</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(member, i) in members">
+                  <td>{{ member.birthdate }}</td>
+                  <td>{{ member.name }}</td>
+                  <td>{{ member.mail }}</td>
+                </tr>
+              </tbody>
+            </table>
+              </div>
+            </div>
+          </div>
+          <div class="col">
+            <div class="card">
+              <div class="card-header"><i class="fas fa-fw fa-user-injured text-secondary"></i> Kontakt med nødtelefon</div>
+              <div class="card-body" style="font-size:0.8rem">
+            <table class="table table-sm table-hover table-striped" style="font-size:0.8rem">
+              <thead>
+                <tr>
+                  <th scope="col">Startet</th>
+                  <th scope="col">Opdateret</th>
+                  <th scope="col">Emne</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="sos in soses" @click="sosClicked(sos)">
+                  <td>{{ sos.createdAt }}</td>
+                  <td>{{ sos.headline }}</td>
+                  <td><span v-if="sos.status=='closed'" class="badge badge-secondary">Lukket</span><span v-else class="badge badge-primary">Åben</span></td>
+                </tr>
+              </tbody>
+            </table>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div v-if="false" class="row mt-3">
           <div class="col">
             <div class="card">
               <div class="card-header d-flex justify-content-between align-items-center">
@@ -219,6 +267,7 @@
 </style>
 
 <script>
+import axios from 'axios';
 import Modal from '@/components/Modal.vue'
 //import moment from 'moment'
 
@@ -254,31 +303,39 @@ export default {
         mail: {},
         member: {},
         members: [],
+        soses: [],
         team: {},
-        teamUrl : string
+        teamUrl : "",
     }),
     computed: {
         paidUts() {
             let paid = 0
             return paid
         },
-        team() {
-            return this.$store.getters['dims/patrulje'](this.$route.params.id) || {}
+        teamNumber() {
+            return this.team.number + '-' + this.team.memberCount
         },
+        /*team() {
+            return this.$store.getters['dims/patrulje'](this.$route.params.id) || {}
+        },*/
     },
     methods: {
-        load() {
+        async load() {
             try {
                 const rsp = await axios.get('/api/patrulje/' + this.$route.params.id, { withCredentials: true } )
                 if (rsp.status == 200) {
                     this.team = rsp.data.patrulje
                     this.members = rsp.data.spejdere
+                    this.soses = rsp.data.soses
                     this.teamUrl = rsp.data.url
                 }
             } catch(error) {
                 console.log("error happend", error)
                 throw new Error(error.response.data)
             }
+        },
+        sosClicked(sos) {
+            this.$router.push({ name: "view-sos", params: { id: sos.sosId }});
         },
         showMail(mail) {
             this.mail = mail
@@ -300,7 +357,7 @@ export default {
         },
     },
     async mounted() {
-        load();
+        this.load();
     },
         /*
         try {

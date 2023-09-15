@@ -61,10 +61,14 @@ func (app *application) viewPatruljerHandler(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}
+	soses, err := app.models.Sos.GetByTeam(filters.TeamID)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
 	envelope := jsonapi.Envelope{
 		"patrulje": patrulje,
 		"spejdere": spejdere,
-		"soses":    []interface{}{},
+		"soses":    soses,
 		"url":      fmt.Sprintf("https://tilmelding.nathejk.dk/spejder/%s:%s", filters.TeamID, types.LegacyID(filters.TeamID).Checksum()),
 	}
 	err = app.WriteJSON(w, http.StatusOK, envelope, nil)

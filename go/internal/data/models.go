@@ -32,6 +32,9 @@ type Models struct {
 		GetCheckgroupsScans(Filters) ([]*CheckgroupScan, Metadata, error)
 		GetNewestCheckgroupTeamTime(Filters) (CheckgroupTeamTime, Metadata, error)
 	}
+	Sos interface {
+		GetByTeam(types.TeamID) ([]*Sos, error)
+	}
 	Permissions interface {
 		AddForUser(int64, ...string) error
 		GetAllForUser(int64) (Permissions, error)
@@ -55,6 +58,7 @@ func NewModels(db *sql.DB) Models {
 		Teams:       TeamModel{DB: db},
 		Members:     MemberModel{DB: db},
 		Scans:       ScanModel{DB: db},
+		Sos:         SosModel{DB: db},
 		Permissions: PermissionModel{DB: db},
 		Tokens:      TokenModel{DB: db},
 		Users:       UserModel{DB: db},
