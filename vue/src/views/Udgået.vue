@@ -149,7 +149,7 @@ export default {
             if (className == 'vgt-checkbox-col') return
           }
         }
-        this.$router.push({ name: "klan-view", params: { id: params.row.id }});
+        this.$router.push({ name: "patrulje", params: { id: params.row.id }});
       },
       toggleColumn( index, event ){
           event.preventDefault()
