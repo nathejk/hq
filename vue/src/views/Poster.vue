@@ -639,7 +639,9 @@ export default {
         this.edit.controls = cps
         this.$store.dispatch("dims/updateControlGroup", this.edit);
         this.$refs['modal'].hide()
-        this.load()
+        setTimeout(() => {
+          this.load()
+        }, 1000);
       },
       deleteControlGroup() {
         this.$store.dispatch("dims/deleteControlGroup", this.edit.controlGroupId);
