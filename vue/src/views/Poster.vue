@@ -21,6 +21,18 @@
                   <template #cell(name)="data">
                     <EditInline v-model="data.item.name" @input="log" size="sm" />
                   </template>
+                  <template #cell(onTimeTeamIds)="data">
+                      <span role="button" @click.stop="showTeamsModal(data.item.onTimeTeamIds)">{{ data.item.onTimeTeamIds.length }}</span>
+                  </template>
+                  <template #cell(overTimeTeamIds)="data">
+                      <span role="button" @click.stop="showTeamsModal(data.item.overTimeTeamIds)">{{ data.item.overTimeTeamIds.length }}</span>
+                  </template>
+                  <template #cell(inactiveTeamIds)="data">
+                      <span role="button" @click.stop="showTeamsModal(data.item.inactiveTeamIds)">{{ data.item.inactiveTeamIds.length }}</span>
+                  </template>
+                  <template #cell(notArrivedTeamIds)="data">
+                      <span role="button" @click.stop="showTeamsModal(data.item.notArrivedTeamIds)">{{ data.item.notArrivedTeamIds.length }}</span>
+                  </template>
                   <template #cell(action)="data">
                     <i v-if="data.item._showDetails" class="fas fa-times-circle fa-lg"></i>
                     <i v-else class="fas fa-chevron-circle-right fa-lg"></i>
@@ -33,7 +45,7 @@
                             <div class="col">{{ cp.name }}</div>
                             <div class="col"><i v-if="false" class="fas fa-map-marker-alt"></i></div>
                             <div class="col text-center">{{ cp.openFrom | dateHHmm }} <i class="far fa-clock mx-1"></i> {{ cp.openUntil | dateHHmm }}</div>
-                            <div class="col text-right"><small>(- %) -</small></div>
+                            <div class="col text-right"><small>(- %) {{ scanCount(cp) }}</small></div>
                         </div>
                         <div class="row" v-if="cp._showScanners" v-for="scanner in cp.scanners">
                             <div class="col"><small class="px-2">{{ person(scanner.userId).name }}</small></div>
@@ -116,6 +128,33 @@
     </div>
 
 
+  <b-modal ref="teamsModal" size="lg" header-class="hazyblue bg-midnightblue">
+    <div slot="modal-title">
+      <i class="fas fa-fw fa-map-marker-alt"></i> Patruljer
+    </div>
+                <table  class="table table-sm">
+  <thead>
+    <tr>
+      <th scope="col">#</th>
+      <th scope="col">Patrulje</th>
+      <th scope="col"></th>
+      <th scope="col"></th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr v-for="teamId in teamsModalTeamIds">
+        <th scope="row">{{ patrulje(teamId).teamNumber }}</th>
+        <td><router-link :to="{ name: 'patrulje', params: { id: teamId }}">{{ patrulje(teamId).name}}</router-link></td>
+      <td></td>
+      <td></td>
+    </tr>
+  </tbody>
+</table>
+
+    <div slot="modal-footer">
+      <button type="button" class="btn btn-sm btn-outline-secondary" @click="closeTeamsModal">Luk</button>
+    </div>
+  </b-modal>
   <b-modal ref="modal" size="lg" header-class="hazyblue bg-midnightblue">
     <div slot="modal-title">
       <i class="fas fa-fw fa-map-marker-alt"></i> Postlinie
@@ -342,6 +381,7 @@ export default {
       checkgroups: [],
       viewControlGroupId: String,
       edit:{ controls:Array },
+      teamsModalTeamIds: [],
       stats: {},
       list:[],
         test: 'HEAST',
@@ -365,10 +405,10 @@ export default {
       //rows: [],
       fields: [
               { key: 'name' },
-              { key: 'notArrivedCount', label: 'Mangler', class:'text-right col-1'},
-              { key: 'onTimeCount', label: 'Rettidig', class:'text-right col-1' },
-              { key: 'overTimeCount', label: 'For sent', class:'text-right col-1' },
-              { key: 'inactiveCount', label: 'Udgåede', class:'text-right col-1' },
+              { key: 'notArrivedTeamIds', label: 'Mangler', class:'text-right col-1'},
+              { key: 'onTimeTeamIds', label: 'Rettidig', class:'text-right col-1' },
+              { key: 'overTimeTeamIds', label: 'For sent', class:'text-right col-1' },
+              { key: 'inactiveTeamIds', label: 'Udgåede', class:'text-right col-1' },
               { key: 'totalCount', label: 'I alt', class:'text-right col-1' },
               { key: 'action', label: '', class:'text-right col-1 pr-3' },
       ],
@@ -450,14 +490,14 @@ export default {
                 name:cg.name,
                 _edit: false,
                 _showDetails: false,
-                notArrivedCount: cg.notArrivedTeamIds.length,
-                onTimeCount: (cg.onTimeTeamIds || []).length,
-                overTimeCount: (cg.overTimeTeamIds || []).length,
-                inactiveCount: cg.discontinuedTeamIds.length,
+                notArrivedTeamIds: cg.notArrivedTeamIds,
+                onTimeTeamIds: cg.onTimeTeamIds || [],
+                overTimeTeamIds: cg.overTimeTeamIds || [],
+                inactiveTeamIds: cg.discontinuedTeamIds,
                 controlpoints: cps,
             }
             
-            row.totalCount = row.notArrivedCount + row.onTimeCount + row.overTimeCount + row.inactiveCount
+            row.totalCount = row.notArrivedTeamIds.length + row.onTimeTeamIds.length + row.overTimeTeamIds.length + row.inactiveTeamIds.length
             rows.push(row)
         }
         return rows
@@ -478,6 +518,27 @@ export default {
             console.log("error happend", error)
             throw new Error(error.response.data)
         }
+      },
+      checkgroup(id) {
+        for (const grp of this.checkgroups) {
+            console.log(grp, grp.id, id)
+          if (grp.id == id) {
+            return grp
+          }
+        }
+          return {}
+      },
+      scanCount(cp) {
+          const onTime = cp.OnTimeTeamIds || []
+          const overTime = cp.OverTimeTeamIds || []
+          return [...onTime, ...overTime].length
+      },
+      showTeamsModal(teamIds) {
+        this.teamsModalTeamIds = teamIds
+        this.$refs['teamsModal'].show()
+      },
+      closeTeamsModal() {
+        this.$refs['teamsModal'].hide()
       },
       person (id) {
           return this.$store.getters['dims/person'](id)
