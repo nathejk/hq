@@ -143,6 +143,26 @@ func (m *teamModel) HandleMessage(msg streaminterface.Message) error {
 		if m.live {
 			m.ap.Publish(team)
 		}
+	case "nathejk:team.splited":
+		var body messages.NathejkTeamSplited
+		msg.Body(&body)
+		team := m.get(body.TeamID)
+		parentTeamID := team.ParentTeamID
+		team.ParentTeamID = ""
+		if m.live {
+			m.ap.Publish(team)
+		}
+		team = m.get(parentTeamID)
+		subTeamIDs := []types.TeamID{}
+		for _, teamID := range team.SubTeamIDs {
+			if teamID != body.TeamID {
+				subTeamIDs = append(subTeamIDs, teamID)
+			}
+		}
+		team.SubTeamIDs = subTeamIDs
+		if m.live {
+			m.ap.Publish(team)
+		}
 
 	case "nathejk:team.updated":
 		var body messages.NathejkTeamUpdated
