@@ -31,6 +31,7 @@ type Models struct {
 	Scans interface {
 		GetCheckgroupsScans(Filters) ([]*CheckgroupScan, Metadata, error)
 		GetNewestCheckgroupTeamTime(Filters) (CheckgroupTeamTime, Metadata, error)
+		GetTeamScans(types.TeamID) ([]*TeamScan, error)
 	}
 	Sos interface {
 		GetByTeam(types.TeamID) ([]*Sos, error)

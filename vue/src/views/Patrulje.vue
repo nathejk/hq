@@ -106,10 +106,10 @@
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(member, i) in members">
-                  <td>{{ member.birthdate }}</td>
-                  <td>{{ member.name }}</td>
-                  <td>{{ member.mail }}</td>
+                <tr v-for="(scan, i) in scans">
+                  <td>{{ scan.time | formatDate }}</td>
+                  <td><span v-if="scan.bandit">Bandit</span><span v-if="scan.checkpointName">{{ scan.checkpointName }}</span><span v-else>{{ scan.userTeamName }}</span></td>
+                  <td>{{ scan.userName }}</td>
                 </tr>
               </tbody>
             </table>
@@ -306,6 +306,7 @@ export default {
         mail: {},
         member: {},
         members: [],
+        scans: [],
         soses: [],
         team: {},
         teamUrl : "",
@@ -329,6 +330,7 @@ export default {
                 if (rsp.status == 200) {
                     this.team = rsp.data.patrulje
                     this.members = rsp.data.spejdere
+                    this.scans = rsp.data.scans
                     this.soses = rsp.data.soses
                     this.teamUrl = rsp.data.url
                 }

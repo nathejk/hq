@@ -65,10 +65,15 @@ func (app *application) viewPatruljerHandler(w http.ResponseWriter, r *http.Requ
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}
+	scans, err := app.models.Scans.GetTeamScans(filters.TeamID)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
 	envelope := jsonapi.Envelope{
 		"patrulje": patrulje,
 		"spejdere": spejdere,
 		"soses":    soses,
+		"scans":    scans,
 		"url":      fmt.Sprintf("https://tilmelding.nathejk.dk/spejder/%s:%s", filters.TeamID, types.LegacyID(filters.TeamID).Checksum()),
 	}
 	err = app.WriteJSON(w, http.StatusOK, envelope, nil)

@@ -26,6 +26,6 @@ import moment from 'moment';
 Vue.filter('formatDate', function(value) {
     moment.locale('da')
     if (value) {
-        return moment(String(value)).format('ddd [d.] DD. HH:mm')
+        return moment(String(value)).format('ddd [kl.] HH:mm')
     }
 });

@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"strconv"
 	"time"
 
 	"nathejk.dk/internal/validator"
@@ -130,4 +131,64 @@ func (m ScanModel) GetNewestCheckgroupTeamTime(filters Filters) (CheckgroupTeamT
 	metadata := calculateMetadata(filters.Year, totalRecords, filters.Page, filters.PageSize)
 
 	return ctt, metadata, nil
+}
+
+type TeamScan struct {
+	TeamID         types.TeamID     `json:"teamId"`
+	ScanID         types.ScanID     `json:"scanId"`
+	Time           *time.Time       `json:"time"`
+	Coordinate     types.Coordinate `json:"coordinate"`
+	UserID         types.UserID     `json:"userId"`
+	UserName       *string          `json:"userName"`
+	UserTeamName   *string          `json:"userTeamName"`
+	CheckpointName *string          `json:"checkpointName"`
+	Bandit         bool             `json:"bandit"`
+}
+
+func (m ScanModel) GetTeamScans(teamID types.TeamID) ([]*TeamScan, error) {
+	// Create a context with a 3-second timeout.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	query := `select p.teamId, s.id, uts, s.latitude, s.longitude, s.scannerId, u.name, u.department, cp.controlName, u.userId IS NULL
+from scan s
+join patrulje p on s.teamId = p.teamId
+left join controlgroup_user cgu on s.scannerId = cgu.userId and s.uts <= cgu.endUts AND s.uts >= cgu.startUts
+left join controlpoint cp on  cgu.controlGroupId = cp.controlGroupId AND cgu.controlIndex = cp.controlIndex
+left join personnel u on s.scannerId = u.userId
+where p.teamId = ? ORDER BY uts`
+	args := []any{teamID}
+	rows, err := m.DB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	tss := []*TeamScan{}
+	for rows.Next() {
+		var r TeamScan
+		var lat, lng string
+		var uts types.UnixtimeInteger
+
+		err := rows.Scan(&r.TeamID, &r.ScanID, &uts, &lat, &lng, &r.UserID, &r.UserName, &r.UserTeamName, &r.CheckpointName, &r.Bandit)
+		if err != nil {
+			return nil, err
+		}
+		r.Time = uts.Time()
+		if s, err := strconv.ParseFloat(lat, 64); err == nil {
+			r.Coordinate.Latitude = s
+		}
+		if s, err := strconv.ParseFloat(lng, 64); err == nil {
+			r.Coordinate.Longitude = s
+		}
+		tss = append(tss, &r)
+	}
+
+	// When the rows.Next() loop has finished, call rows.Err() to retrieve any error
+	// that was encountered during the iteration.
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return tss, nil
 }

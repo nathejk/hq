@@ -46,6 +46,7 @@ func (m TeamMock) GetPatrulje(types.TeamID) (*data.Patrulje, error) {
 
 type ScanMock struct {
 	CheckgroupsScans   []*data.CheckgroupScan
+	TeamScans          []*data.TeamScan
 	CheckgroupTeamTime data.CheckgroupTeamTime
 	Metadata           data.Metadata
 	Error              error
@@ -56,6 +57,9 @@ func (m ScanMock) GetCheckgroupsScans(filters data.Filters) ([]*data.CheckgroupS
 }
 func (m ScanMock) GetNewestCheckgroupTeamTime(filters data.Filters) (data.CheckgroupTeamTime, data.Metadata, error) {
 	return m.CheckgroupTeamTime, m.Metadata, m.Error
+}
+func (m ScanMock) GetTeamScans(types.TeamID) ([]*data.TeamScan, error) {
+	return m.TeamScans, m.Error
 }
 
 func TestTeamOnlyCountedOnce(t *testing.T) {
