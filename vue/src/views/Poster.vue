@@ -45,7 +45,7 @@
                             <div class="col">{{ cp.name }}</div>
                             <div class="col"><i v-if="false" class="fas fa-map-marker-alt"></i></div>
                             <div class="col text-center">{{ cp.openFrom | dateHHmm }} <i class="far fa-clock mx-1"></i> {{ cp.openUntil | dateHHmm }}</div>
-                            <div class="col text-right"><small>(- %) {{ scanCount(cp) }}</small></div>
+                            <div class="col text-right"><small>({{ cp.scanPercent }} %) {{ cp.scanCount }}</small></div>
                         </div>
                         <div class="row" v-if="cp._showScanners" v-for="scanner in cp.scanners">
                             <div class="col"><small class="px-2">{{ person(scanner.userId).name }}</small></div>
@@ -480,9 +480,12 @@ export default {
           console.log('stats', this.stats, this.checkgroups)
         for (const cg of this.checkgroups) {
             //const counts = this.stats[cg.controlGroupId] || { NotArrived:[], OnTime:[], OverTime:[], Inactive:[] }
+            const totalScanCount = [...(cg.onTimeTeamIds || []), ...(cg.overTimeTeamIds || [])].length
             const cps = []
             for (const cp of cg.checkpoints) {
-                cps.push({name:cp.name, scanners:cp.scanners, openFrom:cp.openFrom, openUntil:cp.openUntil, _showScanners:false})
+                const scanCount = [...(cp.onTimeTeamIds || []), ...(cp.overTimeTeamIds || [])].length
+                const scanPercent = totalScanCount > 0 ? Math.round((scanCount / totalScanCount) * 100) : 0
+                cps.push({name:cp.name, scanners:cp.scanners, openFrom:cp.openFrom, openUntil:cp.openUntil, _showScanners:false, scanCount:scanCount, scanPercent:scanPercent})
             }
             const row = {
                 rowId: cg.id,
