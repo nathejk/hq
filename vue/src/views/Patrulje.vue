@@ -130,7 +130,7 @@
               </thead>
               <tbody>
                 <tr v-for="sos in soses" @click="sosClicked(sos)">
-                  <td>{{ sos.createdAt }}</td>
+                  <td>{{ sos.createdAt | formatDate }}</td>
                   <td>{{ sos.headline }}</td>
                   <td><span v-if="sos.status=='closed'" class="badge badge-secondary">Lukket</span><span v-else class="badge badge-primary">Åben</span></td>
                 </tr>
