@@ -625,8 +625,8 @@ export default {
       },
       newControlGroup() {
           //this.rows.push({rowId:this.uuid(), _edit:true, _showDetails:true})
-        //this.edit = { controls:[] }
-        //this.$refs['modal'].show()
+        this.edit = { controls:[] }
+        this.$refs['modal'].show()
       },
       saveControlGroup() {
         const cps = []
@@ -639,6 +639,7 @@ export default {
         this.edit.controls = cps
         this.$store.dispatch("dims/updateControlGroup", this.edit);
         this.$refs['modal'].hide()
+        this.load()
       },
       deleteControlGroup() {
         this.$store.dispatch("dims/deleteControlGroup", this.edit.controlGroupId);
