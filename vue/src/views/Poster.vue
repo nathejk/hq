@@ -142,9 +142,9 @@
     </tr>
   </thead>
   <tbody>
-    <tr v-for="teamId in teamsModalTeamIds">
-        <th scope="row">{{ patrulje(teamId).teamNumber }}</th>
-        <td><router-link :to="{ name: 'patrulje', params: { id: teamId }}">{{ patrulje(teamId).name}}</router-link></td>
+    <tr v-for="patrulje in teamsModalPatruljer">
+        <th scope="row">{{ patrulje.number }}</th>
+        <td><router-link :to="{ name: 'patrulje', params: { id: patrulje.id }}">{{ patrulje.name}}</router-link></td>
       <td></td>
       <td></td>
     </tr>
@@ -381,7 +381,7 @@ export default {
       checkgroups: [],
       viewControlGroupId: String,
       edit:{ controls:Array },
-      teamsModalTeamIds: [],
+      teamsModalPatruljer: [],
       stats: {},
       list:[],
         test: 'HEAST',
@@ -540,7 +540,12 @@ export default {
           return [...onTime, ...overTime].length
       },
       showTeamsModal(teamIds) {
-        this.teamsModalTeamIds = teamIds
+        const patruljer = []
+        for (const teamId of teamIds) {
+            const p = this.$store.getters['dims/patrulje'](teamId)
+            patruljer.push({ id:teamId, number:p.teamNumber, n:parseInt((p.teamNumber || '').split('-')[0]), name:p.name })
+        }
+        this.teamsModalPatruljer = patruljer.sort((a, b) => (a.n > b.n ? 1 : -1))
         this.$refs['teamsModal'].show()
       },
       closeTeamsModal() {
