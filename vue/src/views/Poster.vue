@@ -198,7 +198,7 @@
           <div class="offset-sm-2 col-sm-5">
             <div class="form-group">
             <select class="form-control form-control-sm col mr-3" v-model="control.relativeControlGroupId">
-              <option v-for="cg in controlgroups" :key="cg.controlGroupId" :value="cg.controlGroupId">{{ cg.name }}</option>
+                <option v-for="cg in relativeCheckgroups" :value="cg.id">{{ cg.name }}</option>
             </select>
             </div>
           </div>
@@ -434,10 +434,16 @@ export default {
       totalCount() {
         return this.counts.NotArrived.length + this.counts.OnTime.length + this.counts.OverTime.length + this.counts.Inactive.length
       },
+      relativeCheckgroups() {
+        const cgs = []
+        for (const cg of this.checkgroups) {
+            cgs.push({ id:cg.id, name:cg.name })
+        }
+        return JSON.parse(JSON.stringify(cgs))
+      },
       controlgroups() {
           return this.checkgroups;
         const cgs = this.$store.getters['dims/controlGroups']
-          console.log('cgs', cgs)
         return cgs.sort((a, b) => (this.controlGroupStartDate(a) > this.controlGroupStartDate(b) ? 1 : -1))
       },
       controlgroup() {
@@ -449,6 +455,7 @@ export default {
         return {}
       },
       users() {
+            const personnel = this.$store.getters['dims/personnel'].sort((a, b) => (a.name > b.name ? 1 : -1))
             const users = {}
             for (const user of this.$store.getters['dims/personnel']) {
 
@@ -460,7 +467,6 @@ export default {
                 users[label].push(user)
 
             }
-                console.log('users', users)
             const scanners = []
                 for(    let [i, group] of Object.entries(users)) {
             //for (const group, i of users) {
@@ -470,14 +476,12 @@ export default {
             }
                 scanners.push(scanner)
             }
-                console.log('scanners', scanners)
             return scanners
       },
       rows() {
         const rows = []
         //const cgs = this.$store.getters['dims/controlGroups']
         //cgs.sort((a, b) => (this.controlGroupStartDate(a) > this.controlGroupStartDate(b) ? 1 : -1))
-          console.log('stats', this.stats, this.checkgroups)
         for (const cg of this.checkgroups) {
             //const counts = this.stats[cg.controlGroupId] || { NotArrived:[], OnTime:[], OverTime:[], Inactive:[] }
             const totalScanCount = [...(cg.onTimeTeamIds || []), ...(cg.overTimeTeamIds || [])].length
@@ -524,7 +528,6 @@ export default {
       },
       checkgroup(id) {
         for (const grp of this.checkgroups) {
-            console.log(grp, grp.id, id)
           if (grp.id == id) {
             return grp
           }
@@ -559,13 +562,6 @@ export default {
       isEditControlGroupName(cgId) {
           return this.editing[cgId]
       },
-        /*
-      cgRows(cgId) {
-          console.log('cgID', cgId)
-          return this._controlgroup(cgId).controls
-
-      },
-        */
       rowClicked(item, index, event) {
               item._showDetails = !item._showDetails
           },
