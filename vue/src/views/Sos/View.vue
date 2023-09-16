@@ -163,7 +163,7 @@
                     <div class="card-body">
                         <select class="form-control" v-model="teamId" @change="associateTeam">
                             <option value="">Patrulje...</option>
-                            <option v-for="patrulje of patruljer" :key="patrulje.teamId" :value="patrulje.teamId">{{ patrulje.teamNumber }} {{ patrulje.name }}</option>
+                            <option v-for="patrulje of patruljer" :key="patrulje.id" :value="patrulje.id">{{ patrulje.name }}</option>
                         </select>
 
                         <div v-for="(foumd, teamId)  of sos.teamIds" :key="teamId" class="associated  list-group-flush mt-3">
@@ -356,9 +356,19 @@ export default {
       assignees: {
         guide: 'Guide',
         samarit: 'Samarit',
+        sam1: 'Samarit 1',
+        sam2: 'Samarit 2',
+        sam3: 'Samarit 3',
+        sam4: 'Samarit 4',
         rover: 'Rover',
+        rover1: 'Rover 1',
+        rover2: 'Rover 2',
+        rover3: 'Rover 3',
+        rover4: 'Rover 4',
+        rover5: 'Rover 5',
         logistik: 'Logistik',
         hoens: 'Hønemor',
+        team: 'Team',
       },
       memberStatuses: {
         active: 'Aktiv i løbet',
@@ -393,7 +403,11 @@ export default {
         return sos
       },
       patruljer() {
-        return this.$store.getters['dims/patruljer']
+        const patruljer = [];
+        for (const p of this.$store.getters['dims/patruljer']) {
+            patruljer.push({id: p.teamId, number: parseInt(p.teamNumber.split('-')[0]), name: p.teamNumber + ' ' + p.name})
+        }
+        return patruljer.sort((a, b) => (a.number > b.number ? 1 : -1))
       },
       smsDisabled() {
               console.log(this.smsSpejder)
