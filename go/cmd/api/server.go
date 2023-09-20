@@ -143,8 +143,11 @@ func auth(next http.Handler) http.HandlerFunc {
 	// $json = @file_get_contents(getenv('AUTH_BASEURL')."/token/" . $jwt);
 	// if ($USER = json_decode($json)) {
 	return func(w http.ResponseWriter, r *http.Request) {
-		log.Println("STARTING WEBSICKER")
 		cookie, _ := r.Cookie(os.Getenv("JWT_COOKIE_NAME"))
+		if cookie == nil {
+			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
+			return
+		}
 		resp, err := http.Get(os.Getenv("AUTH_BASEURL") + "/token/" + cookie.Value)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			http.Error(w, http.StatusText(http.StatusUnauthorized), http.StatusUnauthorized)
