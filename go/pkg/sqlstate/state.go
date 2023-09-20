@@ -7,7 +7,6 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/davecgh/go-spew/spew"
 	_ "github.com/go-sql-driver/mysql"
 
 	"nathejk.dk/pkg/streamtable"
@@ -100,7 +99,7 @@ func (s *state) Init(entity streamtable.Entity) error {
 }
 
 func (s *state) Write(entity streamtable.Entity) error {
-	spew.Dump(entity)
+	//spew.Dump(entity)
 	return nil
 }
 
