@@ -17,10 +17,10 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/rs/cors"
 
-	"nathejk.dk/cmd/api/commands"
 	"nathejk.dk/cmd/api/handlers"
 	"nathejk.dk/cmd/api/user"
 	"nathejk.dk/nathejk/aggregate/team"
+	"nathejk.dk/nathejk/commands"
 	"nathejk.dk/nathejk/table"
 	"nathejk.dk/nathejk/types"
 	"nathejk.dk/pkg/notification"
