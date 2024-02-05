@@ -36,6 +36,10 @@ type Models struct {
 	Sos interface {
 		GetByTeam(types.TeamID) ([]*Sos, error)
 	}
+	Years interface {
+		GetAll(filters Filters) ([]*Year, Metadata, error)
+		Get(types.YearSlug) (*Year, error)
+	}
 	Permissions interface {
 		AddForUser(int64, ...string) error
 		GetAllForUser(int64) (Permissions, error)
@@ -60,6 +64,7 @@ func NewModels(db *sql.DB) Models {
 		Members:     MemberModel{DB: db},
 		Scans:       ScanModel{DB: db},
 		Sos:         SosModel{DB: db},
+		Years:       YearModel{DB: db},
 		Permissions: PermissionModel{DB: db},
 		Tokens:      TokenModel{DB: db},
 		Users:       UserModel{DB: db},

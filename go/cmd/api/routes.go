@@ -8,9 +8,9 @@ import (
 	"os"
 
 	"github.com/julienschmidt/httprouter"
-	"nathejk.dk/cmd/api/commands"
 	"nathejk.dk/cmd/api/handlers"
 	"nathejk.dk/cmd/api/user"
+	"nathejk.dk/nathejk/commands"
 	"nathejk.dk/nathejk/table"
 )
 
@@ -63,6 +63,8 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodGet, "/api/checkgroups", app.listCheckgroupsHandler)
 	router.HandlerFunc(http.MethodGet, "/api/patruljer", app.listPatruljerHandler)
 	router.HandlerFunc(http.MethodGet, "/api/patrulje/:id", app.viewPatruljerHandler)
+
+	router.HandlerFunc(http.MethodGet, "/api/years", app.listYearsHandler)
 
 	depQuerier := table.DepartmentQuerier(db)
 	depCmd := commands.NewDepartment(depQuerier, app.publisher)

@@ -31,6 +31,8 @@ type Enum = string
  }
 */
 
+type YearSlug Slug
+
 type MemberID ID
 
 func (ID MemberID) New() MemberID {

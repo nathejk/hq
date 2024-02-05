@@ -21,6 +21,13 @@
             <template #button-content>
               <i class="far fa-user fa-fw"></i> {{ user.name }}
             </template>
+            <b-dropdown-item :to="{ name: 'years' }"><i class="far fa-calendar-times fa-fw"></i> Udgaver</b-dropdown-item>
+                <b-dropdown-divider></b-dropdown-divider>
+            <b-dropdown-item :to="{ name: 'years' }"><i class="far fa-file fa-fw"></i> Filer <i class="fas fa-external-link-alt fa-xs"></i></b-dropdown-item>
+            <b-dropdown-item :to="{ name: 'years' }"><i class="fas fa-users fa-fw"></i> Tilmelding <i class="fas fa-external-link-alt fa-xs"></i></b-dropdown-item>
+
+                    <b-dropdown-divider></b-dropdown-divider>
+
             <b-dropdown-item href="http://lukmigind.nathejk.dk/logout"><i class="fas fa-sign-out-alt fa-fw"></i> Log ud</b-dropdown-item>
           </b-nav-item-dropdown>
         </b-navbar-nav>

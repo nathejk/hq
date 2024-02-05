@@ -18,6 +18,7 @@ const routes = [
 //  { path: '/klan',          component: () => import('@/views/List.vue'), name: 'klan-list', props: { team: "klan" } },
   { path: '/klan/:id',      component: () => import('@/views/Team.vue'), name: 'klan-view', props: { team: "klan" } },
   { path: '/senior/:id',    component: () => import('@/views/Team.vue') },
+  { path: '/years',         component: () => import('@/views/Year.vue'), name:'years' },
   // Notfound
   { path: '*',  component: () => import('@/views/NotFound.vue') },
 ]
