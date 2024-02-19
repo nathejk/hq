@@ -5,8 +5,10 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"log"
 	"os"
 
 	"nathejk.dk/cmd/api/app"
@@ -20,6 +22,8 @@ import (
 	websync "nathejk.dk/pkg/sockethub"
 	"nathejk.dk/pkg/sqlstate"
 	"nathejk.dk/pkg/streaminterface"
+	"nathejk.dk/superfluids/jetstream"
+	"nathejk.dk/superfluids/xstream"
 
 	"github.com/go-redis/redis"
 )
@@ -37,6 +41,9 @@ type config struct {
 	}
 	redis struct {
 		addr string
+	}
+	jetstream struct {
+		dsn string
 	}
 	stan struct {
 		dsn string
@@ -59,9 +66,11 @@ type application struct {
 	config    config
 	logger    *jsonlog.Logger
 	models    data.Models
+	commands  Commands
 	mailer    mailer.Mailer
 	sms       notification.SmsSender
 	publisher streaminterface.Publisher
+	jetstream streaminterface.Stream
 	state     StateReader
 }
 
@@ -73,6 +82,7 @@ func main() {
 	flag.StringVar(&cfg.webroot, "webroot", getEnv("WEBROOT", "/www"), "Static web root")
 	flag.StringVar(&cfg.sms.dsn, "sms-dsn", os.Getenv("SMS_DSN"), "SMS DSN")
 	flag.StringVar(&cfg.stan.dsn, "stan-dsn", os.Getenv("STAN_DSN"), "NATS Streaming DSN")
+	flag.StringVar(&cfg.jetstream.dsn, "jetstream-dsn", os.Getenv("JETSTREAM_DSN"), "NATS Streaming DSN")
 	flag.StringVar(&cfg.redis.addr, "redis-addr", os.Getenv("REDIS_ADDR"), "Redis Address")
 
 	flag.StringVar(&cfg.db.dsn, "db-dsn", os.Getenv("DB_DSN"), "Database DSN")
@@ -100,6 +110,20 @@ func main() {
 	closer := closers.New().ExitOnSigInt()
 	defer closer.Close()
 
+	js, err := jetstream.New(cfg.jetstream.dsn)
+	if err != nil {
+		log.Printf("Error connecting %q", err)
+	}
+
+	msg := js.MessageFunc()(streaminterface.SubjectFromStr("NATHEJK:hello"))
+	msg.SetBody("world")
+	if err := js.Publish(msg); err != nil {
+		log.Printf("Error publishing %q", err)
+	}
+	mux := xstream.NewMux(js)
+	mux.AddConsumer(&y{})
+	mux.Run(context.Background())
+
 	natsstream := nats.NewNATSStreamUnique(cfg.stan.dsn, "hq-api")
 	//defer natsstream.Close()
 	//natsstream := nats.NatsStreamConnectUnique(os.Getenv("STAN_DSN"), "hq-api").Buffered(1000)
@@ -109,8 +133,7 @@ func main() {
 	closer.AddCloser(redisclient)
 
 	hub := websync.NewHub(redisclient)
-
-	state := sqlstate.New(os.Getenv("MYSQL_DSN"))
+	state := sqlstate.New(cfg.db.dsn)
 
 	dims := NewDims(natsstream, hub, state)
 	dims.Subscribe()
@@ -120,16 +143,15 @@ func main() {
 
 	//server := NewServer(natsstream, hub, smsclient)
 
+	models := data.NewModels(db.DB())
 	app := &application{
 		JsonApi: app.JsonApi{
 			Logger: logger,
 		},
-		//cleo:   socrat.NewCleoClient(cfg.cleoDsn, cfg.cleoAllowInsecure),
-		//nova:   socrat.NewNovaClient(cfg.novaDsn),
-		//asr:    asr.NewClient(cfg.asrDsn),
 		config:    cfg,
 		logger:    logger,
-		models:    data.NewModels(db.DB()),
+		models:    models,
+		commands:  NewCommands(natsstream, models),
 		mailer:    mailer.New(cfg.smtp.host, cfg.smtp.port, cfg.smtp.username, cfg.smtp.password, cfg.smtp.sender),
 		sms:       smsclient,
 		publisher: natsstream,
