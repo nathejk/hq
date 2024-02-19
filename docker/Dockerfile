@@ -4,7 +4,7 @@ ARG BUILD_NUMBER
 ARG BUILD_VERSION
 
 # DEV - BASE
-FROM golang:1.19 AS api-dev
+FROM golang:1.20 AS api-dev
 
 RUN mkdir -p /app/docker/bin
 WORKDIR /app

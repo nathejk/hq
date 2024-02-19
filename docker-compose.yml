@@ -46,6 +46,7 @@ services:
     environment:
       #GO_BUILD_FLAGS: -race
       STAN_DSN: stan://dev.nathejk.dk:4222/nathejk
+      JETSTREAM_DSN: nats://nats:4222
       DB_DSN: root:ib@tcp(mysql:3306)/hq?parseTime=true
       REDIS_ADDR: redis:6379
       MONOLITH_BASEURL: https://natpas.nathejk.dk
@@ -85,3 +86,6 @@ services:
     environment:
       REDIS_HOSTS: auth:redis:6379
 
+  nats:
+    image: nats:2.10-alpine
+    command: -js
