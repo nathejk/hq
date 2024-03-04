@@ -130,7 +130,7 @@ func (s *stream) Subscribe(subjects []streaminterface.Subject, h streaminterface
 		contxt, err := consumer.Consume(func(msg jetstream.Msg) {
 			var data jetstreamMessage
 			if err := json.Unmarshal(msg.Data(), &data); err != nil {
-				log.Printf("Error consuming unmarshal %q", err)
+				log.Printf("Error consuming subject %q, unmarshal %q", msg.Subject(), err)
 				return
 			}
 			meta, err := msg.Metadata()
@@ -150,7 +150,7 @@ func (s *stream) Subscribe(subjects []streaminterface.Subject, h streaminterface
 				meta:          data.Meta,
 			}
 			err = h.HandleMessage(m)
-			if err == nil {
+			if err != nil {
 				log.Printf("Error consuming handling %q", err)
 				return
 			}
