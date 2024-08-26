@@ -1,8 +1,11 @@
-version: '3.4'
-
 volumes:
   go:
   vue:
+
+networks:
+  local:
+  traefik:
+    external: true
 
 services:
   gw:
@@ -13,8 +16,13 @@ services:
         hq:ui
         mysql:adminer:8080
         redis:redis-commander:8081
-    ports:
-    - 80
+    networks:
+    - local
+    - traefik
+    labels:
+      traefik.enable: true
+      traefik.docker.network: traefik
+      traefik.http.routers.hq.rule: Host(`hq.dev.nathejk.dk`) || HostRegexp(`.+\.hq\.dev\.nathejk\.dk`)
 
   ui:
     build:
@@ -32,6 +40,8 @@ services:
       API_BASEURL: http://api.hq.dev.nathejk.dk
     depends_on:
     - gw
+    networks:
+    - local
 
   api:
     build:
@@ -43,6 +53,8 @@ services:
     volumes:
     - ./go:/app
     - go:/go
+    networks:
+    - local
     environment:
       #GO_BUILD_FLAGS: -race
       STAN_DSN: stan://dev.nathejk.dk:4222/nathejk
@@ -65,6 +77,8 @@ services:
       MYSQL_USER: nathejk
       MYSQL_PASSWORD: kodeord
       TZ: Europe/Copenhagen
+    networks:
+    - local
 
   adminer:
     image: adminer
@@ -73,6 +87,8 @@ services:
       ADMINER_DEFAULT_USER: nathejk
       ADMINER_DEFAULT_PASSWORD: kodeord
       ADMINER_DEFAULT_DB: hq
+    networks:
+    - local
     depends_on:
     - gw
     - mysql
@@ -80,12 +96,19 @@ services:
   redis:
     image: redis:4.0-alpine3.8
     entrypoint: redis-server --appendonly yes
+    networks:
+    - local
 
   redis-commander:
     image: rediscommander/redis-commander:latest
+    platform: linux/x86_64
     environment:
       REDIS_HOSTS: auth:redis:6379
+    networks:
+    - local
 
   nats:
     image: nats:2.10-alpine
     command: -js
+    networks:
+    - local
