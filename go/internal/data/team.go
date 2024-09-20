@@ -64,6 +64,41 @@ func (m TeamModel) GetDiscontinuedTeamIDs(filters Filters) ([]types.TeamID, Meta
 	return m.query(filters, sql, args)
 }
 
+type PatruljeStatus struct {
+	Year        string
+	Status      string
+	TeamCount   int
+	MemberCount int
+}
+
+func (m TeamModel) GetStatus(filters Filters) ([]PatruljeStatus, Metadata, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	query := `SELECT COUNT(teamId), SUM(memberCount), year, signupStatus FROM patrulje WHERE (LOWER(year) = LOWER(?) OR ? = '') GROUP BY signupStatus`
+	args := []any{filters.Year, filters.Year}
+	rows, err := m.DB.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, Metadata{}, err
+	}
+	defer rows.Close()
+
+	ps := []PatruljeStatus{}
+	for rows.Next() {
+		var s PatruljeStatus
+		if err := rows.Scan(&s.TeamCount, &s.MemberCount, &s.Year, &s.Status); err != nil {
+			return nil, Metadata{}, err
+		}
+		ps = append(ps, s)
+	}
+	// When the rows.Next() loop has finished, call rows.Err() to retrieve any error
+	// that was encountered during the iteration.
+	if err = rows.Err(); err != nil {
+		return nil, Metadata{}, err
+	}
+	return ps, Metadata{}, nil
+}
+
 type Patrulje struct {
 	ID          types.TeamID `json:"id"`
 	Number      string       `json:"number"`

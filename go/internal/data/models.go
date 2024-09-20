@@ -21,6 +21,7 @@ type Models struct {
 	Teams interface {
 		GetStartedTeamIDs(Filters) ([]types.TeamID, Metadata, error)
 		GetDiscontinuedTeamIDs(Filters) ([]types.TeamID, Metadata, error)
+		GetStatus(Filters) ([]PatruljeStatus, Metadata, error)
 		GetPatruljer(Filters) ([]*Patrulje, Metadata, error)
 		GetPatrulje(types.TeamID) (*Patrulje, error)
 	}

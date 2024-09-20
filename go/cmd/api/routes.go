@@ -44,7 +44,7 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodGet, "/api/base", NewBaseHandler())
 	router.HandlerFunc(http.MethodGet, "/api/user", user.ShowUserFromCookieHandler(os.Getenv("JWT_COOKIE_NAME"), os.Getenv("AUTH_BASEURL")))
 	router.HandlerFunc(http.MethodGet, "/api/cgstatus", NewControlgroupStatusHandler(db))
-	router.HandlerFunc(http.MethodGet, "/api/patrulje/", patruljeHandler(app.state))
+	//router.HandlerFunc(http.MethodGet, "/api/patrulje/", patruljeHandler(app.state))
 	router.HandlerFunc(http.MethodGet, "/api/teams", monolithHandler)
 	router.HandlerFunc(http.MethodGet, "/api/teams/", monolithTeamHandler)
 	router.HandlerFunc(http.MethodDelete, "/api/personnel", api.HandleUser)
@@ -63,6 +63,8 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodGet, "/api/checkgroups", app.listCheckgroupsHandler)
 	router.HandlerFunc(http.MethodGet, "/api/patruljer", app.listPatruljerHandler)
 	router.HandlerFunc(http.MethodGet, "/api/patrulje/:id", app.viewPatruljerHandler)
+	router.HandlerFunc(http.MethodGet, "/api/status", app.viewStatusHandler)
+	router.HandlerFunc(http.MethodGet, "/api/spejder", app.listSpejderHandler)
 
 	router.HandlerFunc(http.MethodGet, "/api/years", app.listYearsHandler)
 

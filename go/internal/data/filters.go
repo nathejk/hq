@@ -15,6 +15,14 @@ type Filters struct {
 	Sort         string
 	SortSafelist []string
 	TeamID       types.TeamID
+	Search       map[string][]any
+}
+
+func (f *Filters) AddSearchCriteria(key string, values []any) {
+	if f.Search == nil {
+		f.Search = map[string][]any{}
+	}
+	f.Search[key] = values
 }
 
 func (f *Filters) Validate(v validator.Validator) {
@@ -56,13 +64,14 @@ func (f Filters) limit() int {
 }
 
 type Metadata struct {
-	Year         string       `json:"year"`
-	TeamID       types.TeamID `json:"teamId,omitempty"`
-	CurrentPage  int          `json:"current_page,omitempty"`
-	PageSize     int          `json:"page_size,omitempty"`
-	FirstPage    int          `json:"first_page,omitempty"`
-	LastPage     int          `json:"last_page,omitempty"`
-	TotalRecords int          `json:"total_records,omitempty"`
+	Year         string              `json:"year"`
+	TeamID       types.TeamID        `json:"teamId,omitempty"`
+	CurrentPage  int                 `json:"current_page,omitempty"`
+	PageSize     int                 `json:"page_size,omitempty"`
+	FirstPage    int                 `json:"first_page,omitempty"`
+	LastPage     int                 `json:"last_page,omitempty"`
+	TotalRecords int                 `json:"total_records,omitempty"`
+	Search       map[string][]string `json:"search,omitempty"`
 }
 
 // The calculateMetadata() function calculates the appropriate pagination metadata

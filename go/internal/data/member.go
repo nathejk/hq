@@ -7,9 +7,13 @@ import (
 	"log"
 	"time"
 
+	sq "github.com/Masterminds/squirrel"
+	"github.com/davecgh/go-spew/spew"
 	"nathejk.dk/internal/validator"
 	"nathejk.dk/nathejk/types"
 )
+
+// https://github.com/sunary/sqlize
 
 type Member struct {
 }
@@ -96,7 +100,7 @@ type SpejderStatus struct {
 	Status    types.MemberStatus
 	Name      string
 	TeamName  string
-	UpdatedAt time.Time
+	UpdatedAt string
 }
 
 func (m MemberModel) GetInactive(filters Filters) ([]*SpejderStatus, Metadata, error) {
@@ -104,15 +108,36 @@ func (m MemberModel) GetInactive(filters Filters) ([]*SpejderStatus, Metadata, e
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	query := `
-	select s.memberId, s.name, s.teamId, p.name, ss.status, ss.updatedAt
-from spejder s
-join patrulje p on s.teamId = p.teamId
-join spejderstatus ss on s.memberId = ss.id and s.year = ss.year
-WHERE (LOWER(s.year) = LOWER(?) OR ? = '')`
+	query := sq.Select("s.memberId", "s.name", "s.teamId", "p.name", "ss.status", "ss.updatedAt").
+		From("spejder s").
+		Join("patrulje p ON s.teamId = p.teamId").
+		Join("spejderstatus ss ON s.memberId = ss.id AND s.year = ss.year")
+	if filters.Year != "" {
+		query = query.Where(sq.Eq{"s.year": filters.Year})
+	}
+	if values, found := filters.Search["status"]; found && len(values) > 0 {
+		query = query.Where(sq.Eq{"ss.status": values})
+	}
 
-	args := []any{filters.Year, filters.Year, filters.TeamID, filters.TeamID}
-	rows, err := m.DB.QueryContext(ctx, query, args...)
+	/*
+			Where(Or{Expr("s.year = LOWER(?)", 10), And{Eq{"k": 11}, Expr("true")}}).
+		active := users.Where(sq.Eq{"deleted_at": nil})
+	*/
+	sql, args, err := query.ToSql()
+
+	spew.Dump(sql, args, err)
+	/*
+	   	query := `
+	   	select s.memberId, s.name, s.teamId, p.name, ss.status, ss.updatedAt
+	   from spejder s
+	   join patrulje p on s.teamId = p.teamId
+	   join spejderstatus ss on s.memberId = ss.id and s.year = ss.year
+	   WHERE (LOWER(s.year) = LOWER(?) OR ? = '')` // AND (ss.status IN (?) )`
+
+	   	args := []any{filters.Year, filters.Year} //, filters.TeamID, filters.TeamID}
+	   	rows, err := m.DB.QueryContext(ctx, query, args...)
+	*/
+	rows, err := m.DB.QueryContext(ctx, sql, args...)
 	if err != nil {
 		log.Print(err)
 		return nil, Metadata{}, err
@@ -127,6 +152,7 @@ WHERE (LOWER(s.year) = LOWER(?) OR ? = '')`
 			return nil, Metadata{}, err
 		}
 		sss = append(sss, &s)
+		totalRecords++
 	}
 	// When the rows.Next() loop has finished, call rows.Err() to retrieve any error
 	// that was encountered during the iteration.

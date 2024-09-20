@@ -3,6 +3,7 @@ module nathejk.dk
 go 1.18
 
 require (
+	github.com/Masterminds/squirrel v1.5.4
 	github.com/cnf/structhash v0.0.0-20201127153200-e1b16c1ebc08
 	github.com/davecgh/go-spew v1.1.1
 	github.com/globalsign/mgo v0.0.0-20181015135952-eeefdecb41b8
@@ -32,6 +33,8 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.17.0 // indirect
+	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
+	github.com/lann/ps v0.0.0-20150810152359-62de8c46ede0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180228061459-e0a39a4cb421 // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/nats-io/nats-server/v2 v2.9.0 // indirect

@@ -335,6 +335,7 @@ table tr.done {
 
 <script>
 //import MapModal from '../MapModal.vue'
+import axios from 'axios';
 import ActivityLine from './ActivityLine.vue'
 import { BPopover } from 'bootstrap-vue'
 
@@ -378,6 +379,7 @@ export default {
         hq: 'Hønemor',
         out: 'Afhentet',
       },
+      patruljer: [],
     }),
     components: { ActivityLine, BPopover },
     filters: {
@@ -402,7 +404,7 @@ export default {
    */
         return sos
       },
-      patruljer() {
+      patruljer_store() {
         const patruljer = [];
         for (const p of this.$store.getters['dims/patruljer']) {
             patruljer.push({id: p.teamId, number: parseInt(p.teamNumber.split('-')[0]), name: p.teamNumber + ' ' + p.name})
@@ -499,7 +501,20 @@ export default {
         return teams
       },
     },
-    mounted() {
+    async mounted() {
+      const response = await axios.get('/api/patruljer', { withCredentials: true });
+      console.log(response)
+      if (response.status != 200) {
+          console.log("failed statuscode:", response.statusCode)
+          return
+      }
+        for (const p of response.data.patruljer) {
+            this.patruljer.push({id: p.teamId, number: p.number, name: p.number + '-' + p.memberCount + ' ' + p.name})
+        }
+        //return patruljer.sort((a, b) => (a.number > b.number ? 1 : -1))
+      //response.data.patruljer.sort((a, b) => (a.number > b.number ? 1 : -1))
+      //this.patruljer = response.data.patruljer
+        console.log(this.patruljer)
     },
     beforeDestroy() {
     }

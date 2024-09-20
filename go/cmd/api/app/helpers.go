@@ -154,7 +154,7 @@ func (app *JsonApi) ReadString(qs url.Values, key string, defaultValue string) s
 // The readCSV() helper reads a string value from the query string and then splits it
 // into a slice on the comma character. If no matching key could be found, it returns
 // the provided default value.
-func (app *JsonApi) ReadCSV(qs url.Values, key string, defaultValue []string) []string {
+func (app *JsonApi) ReadCSV(qs url.Values, key string, defaultValue []any) []any {
 	// Extract the value from the query string.
 	csv := qs.Get(key)
 	// If no key exists (or the value is empty) then return the default value.
@@ -162,7 +162,11 @@ func (app *JsonApi) ReadCSV(qs url.Values, key string, defaultValue []string) []
 		return defaultValue
 	}
 	// Otherwise parse the value into a []string slice and return it.
-	return strings.Split(csv, ",")
+	anies := []any{}
+	for _, v := range strings.Split(csv, ",") {
+		anies = append(anies, v)
+	}
+	return anies
 }
 
 // The readInt() helper reads a string value from the query string and converts it to an

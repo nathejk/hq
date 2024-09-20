@@ -5,10 +5,8 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
-	"log"
 	"os"
 
 	"nathejk.dk/cmd/api/app"
@@ -22,8 +20,6 @@ import (
 	websync "nathejk.dk/pkg/sockethub"
 	"nathejk.dk/pkg/sqlstate"
 	"nathejk.dk/pkg/streaminterface"
-	"nathejk.dk/superfluids/jetstream"
-	"nathejk.dk/superfluids/xstream"
 
 	"github.com/go-redis/redis"
 )
@@ -109,21 +105,21 @@ func main() {
 
 	closer := closers.New().ExitOnSigInt()
 	defer closer.Close()
+	/*
+		js, err := jetstream.New(cfg.jetstream.dsn)
+		if err != nil {
+			log.Printf("Error connecting %q", err)
+		}
 
-	js, err := jetstream.New(cfg.jetstream.dsn)
-	if err != nil {
-		log.Printf("Error connecting %q", err)
-	}
-
-	msg := js.MessageFunc()(streaminterface.SubjectFromStr("NATHEJK:hello"))
-	msg.SetBody("world")
-	if err := js.Publish(msg); err != nil {
-		log.Printf("Error publishing %q", err)
-	}
-	mux := xstream.NewMux(js)
-	mux.AddConsumer(&y{})
-	mux.Run(context.Background())
-
+		msg := js.MessageFunc()(streaminterface.SubjectFromStr("NATHEJK:hello"))
+		msg.SetBody("world")
+		if err := js.Publish(msg); err != nil {
+			log.Printf("Error publishing %q", err)
+		}
+		mux := xstream.NewMux(js)
+		mux.AddConsumer(&y{})
+		mux.Run(context.Background())
+	*/
 	natsstream := nats.NewNATSStreamUnique(cfg.stan.dsn, "hq-api")
 	//defer natsstream.Close()
 	//natsstream := nats.NatsStreamConnectUnique(os.Getenv("STAN_DSN"), "hq-api").Buffered(1000)

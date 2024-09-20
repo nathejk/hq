@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -9,10 +8,9 @@ import (
 	jsonapi "nathejk.dk/cmd/api/app"
 	"nathejk.dk/internal/data"
 	"nathejk.dk/internal/validator"
-	"nathejk.dk/nathejk/types"
 )
 
-func (app *application) listPatruljerHandler(w http.ResponseWriter, r *http.Request) {
+func (app *application) listSpejderHandler(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		data.Filters
 	}
@@ -24,26 +22,29 @@ func (app *application) listPatruljerHandler(w http.ResponseWriter, r *http.Requ
 	input.Filters.PageSize = app.ReadInt(qs, "page_size", 1000, v)
 	input.Filters.Sort = app.ReadString(qs, "sort", "id")
 	input.Filters.SortSafelist = []string{"id"}
+	input.Filters.AddSearchCriteria("status", app.ReadCSV(qs, "status", []any{}))
 
 	if input.Filters.Validate(v); !v.Valid() {
 		app.FailedValidationResponse(w, r, v.Errors)
 		return
 	}
 
-	patruljer, metadata, err := app.models.Teams.GetPatruljer(input.Filters)
+	list, metadata, err := app.models.Members.GetInactive(input.Filters)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 		return
 	}
 	envelope := jsonapi.Envelope{
-		"metadata":  metadata,
-		"patruljer": patruljer,
+		"metadata": metadata,
+		"spejder":  list,
 	}
 	err = app.WriteJSON(w, http.StatusOK, envelope, nil)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}
 }
+
+/*
 func (app *application) viewPatruljerHandler(w http.ResponseWriter, r *http.Request) {
 	filters := data.Filters{}
 	filters.TeamID = types.TeamID(app.ReadNamedParam(r, "id"))
@@ -81,18 +82,4 @@ func (app *application) viewPatruljerHandler(w http.ResponseWriter, r *http.Requ
 		app.ServerErrorResponse(w, r, err)
 	}
 }
-func (app *application) viewStatusHandler(w http.ResponseWriter, r *http.Request) {
-	filters := data.Filters{}
-	filters.Year = app.ReadString(r.URL.Query(), "year", fmt.Sprintf("%d", time.Now().Year()))
-	status, _, err := app.models.Teams.GetStatus(filters)
-	if err != nil {
-		app.ServerErrorResponse(w, r, err)
-	}
-	envelope := jsonapi.Envelope{
-		"status": status,
-	}
-	err = app.WriteJSON(w, http.StatusOK, envelope, nil)
-	if err != nil {
-		app.ServerErrorResponse(w, r, err)
-	}
-}
+*/

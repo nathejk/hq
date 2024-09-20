@@ -15,16 +15,17 @@ const (
 )
 
 var CorpsSlugs = CorpsSlugList{CorpsSlugDDS, CorpsSlugKFUM, CorpsSlugKFUK, CorpsSlugDBS, CorpsSlugDGS, CorpsSlugDSS, CorpsSlugFDF, CorpsSlugOther}
+var CorpsLabels = map[CorpsSlug]string{
+	CorpsSlugDDS:   "Det Danske Spejderkorps",
+	CorpsSlugKFUM:  "KFUM-Spejderne",
+	CorpsSlugKFUK:  "De grønne pigespejdere",
+	CorpsSlugDBS:   "Danske Baptisters Spejderkorps",
+	CorpsSlugDGS:   "De Gule Spejdere",
+	CorpsSlugDSS:   "Dansk Spejderkorps Sydslesvig",
+	CorpsSlugFDF:   "FDF / FPF",
+	CorpsSlugOther: "Andet",
+}
 
 func (slug CorpsSlug) String() string {
-	return map[CorpsSlug]string{
-		CorpsSlugDDS:   "Det Danske Spejderkorps",
-		CorpsSlugKFUM:  "KFUM-Spejderne",
-		CorpsSlugKFUK:  "De grønne pigespejdere",
-		CorpsSlugDBS:   "Danske Baptisters Spejderkorps",
-		CorpsSlugDGS:   "De Gule Spejdere",
-		CorpsSlugDSS:   "Dansk Spejderkorps Sydslesvig",
-		CorpsSlugFDF:   "FDF / FPF",
-		CorpsSlugOther: "Andet",
-	}[slug]
+	return CorpsLabels[slug]
 }

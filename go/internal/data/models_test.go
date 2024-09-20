@@ -37,6 +37,9 @@ func (m TeamMock) GetStartedTeamIDs(filters data.Filters) ([]types.TeamID, data.
 func (m TeamMock) GetDiscontinuedTeamIDs(filters data.Filters) ([]types.TeamID, data.Metadata, error) {
 	return m.DiscontinuedTeamIDs, m.Metadata, m.Error
 }
+func (m TeamMock) GetStatus(data.Filters) ([]data.PatruljeStatus, data.Metadata, error) {
+	return nil, m.Metadata, m.Error
+}
 func (m TeamMock) GetPatruljer(data.Filters) ([]*data.Patrulje, data.Metadata, error) {
 	return nil, m.Metadata, m.Error
 }
