@@ -76,10 +76,10 @@ func (m *memberModel) Produces() []string {
 }
 
 func (m *memberModel) HandleMessage(msg streaminterface.Message) error {
-	//if msg.Time().Year() != time.Now().Year() {
-	// only handle messages from this year
-	//return nil
-	//}
+	if msg.Time().Year() != time.Now().Year() {
+		// only handle messages from this year
+		//	return nil
+	}
 	/*msg, ok := i.(eventstream.Message)
 	if !ok {
 		return

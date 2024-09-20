@@ -509,7 +509,7 @@ export default {
           return
       }
         for (const p of response.data.patruljer) {
-            this.patruljer.push({id: p.teamId, number: p.number, name: p.number + '-' + p.memberCount + ' ' + p.name})
+            this.patruljer.push({id: p.id, number: p.number, name: p.number + '-' + p.memberCount + ' ' + p.name})
         }
         //return patruljer.sort((a, b) => (a.number > b.number ? 1 : -1))
       //response.data.patruljer.sort((a, b) => (a.number > b.number ? 1 : -1))
