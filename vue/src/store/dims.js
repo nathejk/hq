@@ -211,9 +211,9 @@ const mutations = {
       const protocol = location.protocol == 'https:' ? 'wss:' : 'ws:'
       state.ws = new WebSocket(protocol + '//' + location.host + '/ws');
     } catch(e) {
-        console.log(e)
+        console.log("No connect", e)
     }
-      console.log(state)
+      console.log("after connect", state)
     const that = this
     state.ws.addEventListener('open', function() {
         console.log("ws connected")
@@ -272,12 +272,12 @@ fetchUser()
 function fetchUser() {
     fetch("/api/user").then(response => {
         if( !response.ok ){
+            if (response.status == 401) {
+                location.href = "https://lukmigind.nathejk.dk/?goto=" + encodeURI(location.href)
+            }
             console.log("!response.ok", response)
         } else {
-response.json().then(body => {body.name = body.sub; state.user =body;})
-            console.log('fetched user', u)
-state.user.name = u.sub
-
+            response.json().then(body => {body.name = body.sub; state.user =body;})
             console.log("all ok", response)
             return true
         }
