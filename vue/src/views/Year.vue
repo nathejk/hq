@@ -110,7 +110,7 @@ export default {
           }
         }
         return null
-      }
+      },
       showModal(slug) {
         this.year = JSON.parse(JSON.stringify(this.getYear(slug)))
         this.$refs['modal'].show()
