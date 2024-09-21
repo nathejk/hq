@@ -62,6 +62,9 @@ export default {
                 if (spejder.status == 'active') {
                     continue
                 }
+                if (parseInt(spejder.teamId) < 2024300) {
+                    continue
+                }
                 if (!groups[spejder.status]) {
                     groups[spejder.status] = []
                 }
