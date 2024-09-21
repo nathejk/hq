@@ -3,6 +3,7 @@ package data
 import (
 	"context"
 	"database/sql"
+	"log"
 	"time"
 
 	"nathejk.dk/internal/validator"
@@ -17,7 +18,7 @@ type Sos struct {
 	Severity    string      `json:"severity"`
 	Status      string      `json:"status"`
 
-	CreatedAt       string       `json:"createdAt"`
+	CreatedAt       time.Time    `json:"createdAt"`
 	CreatedByUserID types.UserID `json:"createdByUserId"`
 }
 
@@ -45,9 +46,14 @@ func (m SosModel) GetByTeam(teamID types.TeamID) ([]*Sos, error) {
 	ss := []*Sos{}
 	for rows.Next() {
 		var s Sos
-		err := rows.Scan(&s.SosID, &s.Year, &s.Headline, &s.Description, &s.CreatedAt, &s.CreatedByUserID, &s.Status, &s.Severity)
+		var ts string
+		err := rows.Scan(&s.SosID, &s.Year, &s.Headline, &s.Description, &ts, &s.CreatedByUserID, &s.Status, &s.Severity)
 		if err != nil {
 			return nil, err
+		}
+		s.CreatedAt, err = time.Parse(time.RFC3339, ts)
+		if err != nil {
+			log.Printf("Datofejl: %q", err)
 		}
 		ss = append(ss, &s)
 	}

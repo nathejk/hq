@@ -65,6 +65,7 @@ func (d *dims) Subscribe() *dims {
 		table.NewControlGroupUser(sqlw, memstream),
 		table.NewControlGroup(sqlw, memstream),
 		table.NewScan(sqlw, memstream),
+		table.NewScanner(sqlw, memstream),
 
 		member.NewMemberModel(bufferedPublisher),
 		team.NewSpejderModel(bufferedPublisher),

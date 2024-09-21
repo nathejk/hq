@@ -1,0 +1,12 @@
+CREATE TABLE IF NOT EXISTS scanner (
+    userId VARCHAR(99) NOT NULL,
+    year VARCHAR(99) NOT NULL DEFAULT "",
+    teamId VARCHAR(99) NOT NULL DEFAULT "",
+    name VARCHAR(99) NOT NULL,
+    phone VARCHAR(99) NOT NULL,
+    department VARCHAR(99) NOT NULL,
+    bandit SMALLINT NOT NULL,
+    createdAt VARCHAR(99) NOT NULL,
+    updatedAt VARCHAR(99) NOT NULL,
+    PRIMARY KEY (userId)
+);

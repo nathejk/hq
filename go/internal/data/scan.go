@@ -142,7 +142,7 @@ type TeamScan struct {
 	UserName       *string          `json:"userName"`
 	UserTeamName   *string          `json:"userTeamName"`
 	CheckpointName *string          `json:"checkpointName"`
-	Bandit         bool             `json:"bandit"`
+	Bandit         *int             `json:"bandit"`
 }
 
 func (m ScanModel) GetTeamScans(teamID types.TeamID) ([]*TeamScan, error) {
@@ -150,12 +150,12 @@ func (m ScanModel) GetTeamScans(teamID types.TeamID) ([]*TeamScan, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	query := `select p.teamId, s.id, uts, s.latitude, s.longitude, s.scannerId, u.name, u.department, cp.controlName, u.userId IS NULL
+	query := `select p.teamId, s.id, uts, s.latitude, s.longitude, s.scannerId, u.name, u.department, cp.controlName, u.bandit
 from scan s
 join patrulje p on s.teamId = p.teamId
 left join controlgroup_user cgu on s.scannerId = cgu.userId and s.uts <= cgu.endUts AND s.uts >= cgu.startUts
 left join controlpoint cp on  cgu.controlGroupId = cp.controlGroupId AND cgu.controlIndex = cp.controlIndex
-left join personnel u on s.scannerId = u.userId
+left join scanner u on s.scannerPhone = u.phone AND (u.year = '' OR u.year = s.year)
 where p.teamId = ? ORDER BY uts`
 	args := []any{teamID}
 	rows, err := m.DB.QueryContext(ctx, query, args...)

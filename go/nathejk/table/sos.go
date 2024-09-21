@@ -67,12 +67,13 @@ func (m *sos) HandleMessage(msg streaminterface.Message) error {
 			return err
 		}
 		query := "INSERT INTO sos SET id=%q, year=\"%d\", headline=%q, description=%q, createdAt=%q, createdBy=%q, status='open' ON DUPLICATE KEY UPDATE headline=VALUES(headline), description=VALUES(description)"
+
 		args := []any{
 			body.SosID,
 			msg.Time().Year(),
 			body.Headline,
 			body.Description,
-			msg.Time(),
+			msg.Time().Format(time.RFC3339),
 			body.UserID,
 		}
 		sql := fmt.Sprintf(query, args...)

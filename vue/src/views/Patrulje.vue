@@ -108,8 +108,8 @@
               <tbody>
                 <tr v-for="(scan, i) in scans">
                   <td>{{ scan.time | formatDate }}</td>
-                  <td><span v-if="scan.bandit">Bandit</span><span v-if="scan.checkpointName">{{ scan.checkpointName }}</span><span v-else>{{ scan.userTeamName }}</span></td>
-                  <td>{{ scan.userName }}</td>
+                  <td><span v-if="scan.bandit">Bandit</span><span v-else-if="scan.checkpointName">{{ scan.checkpointName }}</span><span v-else>{{ scan.userTeamName }}</span></td>
+                  <td><span v-if="scan.bandit > 1">{{ scan.bandit }}. </span>{{ scan.userName }}</td>
                 </tr>
               </tbody>
             </table>
