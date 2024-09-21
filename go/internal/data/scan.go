@@ -155,7 +155,7 @@ from scan s
 join patrulje p on s.teamId = p.teamId
 left join controlgroup_user cgu on s.scannerId = cgu.userId and s.uts <= cgu.endUts AND s.uts >= cgu.startUts
 left join controlpoint cp on  cgu.controlGroupId = cp.controlGroupId AND cgu.controlIndex = cp.controlIndex
-left join scanner u on s.scannerPhone = u.phone AND (u.year = '' OR u.year = s.year)
+left join scanner u on s.scannerId = u.userId AND (u.year = '' OR u.year = s.year)
 where p.teamId = ? ORDER BY uts`
 	args := []any{teamID}
 	rows, err := m.DB.QueryContext(ctx, query, args...)
