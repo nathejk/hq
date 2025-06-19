@@ -2,7 +2,6 @@ package jetstream
 
 import (
 	"github.com/nats-io/nats.go/jetstream"
-	"nathejk.dk/superfluids/streaminterface"
 )
 
 type consumeContexts []jetstream.ConsumeContext
@@ -12,8 +11,8 @@ func (cc consumeContexts) Close() error {
 }
 
 type subscription struct {
-	consumers []jetstream.Consumer
-	handler   streaminterface.MessageHandler
+	// consumers []jetstream.Consumer
+	// handler   streaminterface.MessageHandler
 }
 
 /*

@@ -1,7 +1,7 @@
 package tablerow
 
 import (
-	"nathejk.dk/pkg/streaminterface"
+	"nathejk.dk/superfluids/streaminterface"
 )
 
 type SQLPrimaryKeys map[string]interface{}

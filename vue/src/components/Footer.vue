@@ -1,19 +1,18 @@
 <template>
-        <footer v-if="show" class="footer mt-auto  mt-3 py-3">
-            <div class="container">
-                <div class="row">
-                    <div class="col-1">
+        <footer v-if="show" class=" sticky top-full bottom-0 w-full ">
+            <div class="container mx-auto pt-5">
+                <div class="grid grid-cols-12 gap-4">
+                    <div class="col-start-2">
                             <img src="/img/logomoonsmall.png" alt="Nathejk" width="59" height="40" class="mr-3 mt-1">
                     </div>
-                    <div class="col-sm-9 col-md-8 col-lg-5 col-xl-4">
+                    <div class="col-span-4">
                         <div class="media">
                             <div class="media-body">
                                 <p>Nathejk {{ year }}<br><small>Vi ses i mørket...</small></p>
-                                <p>
+                                <p class="mb-3">
                                     <a href="https://facebook.com/nathejk" target="_blank" rel="nofollow"><i class="fab fa-facebook-square mr-1"></i></a>
                                     <a href="https://www.instagram.com/nathejk/" target="_blank" rel="nofollow"><i class="fab fa-instagram"></i></a>
                                 </p>
-                                <hr class="d-md-none mt-4">
                                 <p class="grey mb-0">
                                 <small>2011-{{ year }} Nathejk.<br>Bygget i halvmånens skær <small class="yellow">&#9790;</small> et sted på Sjælland.</small>
                                 </p>
@@ -21,7 +20,7 @@
                             </div>
                         </div>
                     </div>
-                    <div class="col-lg-2 col-xl-3 d-none d-lg-block">
+                    <div class="col-span-3">
                         <ul class="list-unstyled">
                             <li><small><a href="http://nathejk.dk">Nathejk</a></small></li>
                             <li><small><a href="https://tilmelding.nathejk.dk">Nathejk tilmelding</a></small></li>
@@ -29,7 +28,7 @@
                             <li><small><a href="https://tilmelding.nathejk.dk/diplom">Patrulje diplomer</a></small></li>
                         </ul>
                     </div>
-                    <div class="col-lg-3 d-none d-lg-block">
+                    <div class="col-span-3">
                         <ul class="list-unstyled">
                             <li><small><a href="https://dds.dk">Det Danske Spejderkorps</a></small></li>
                             <li><small><a href="http://adventurespejd.dk/forside/">Adventurespejd liga</a></small></li>
@@ -40,8 +39,8 @@
         </footer>
 </template>
 
-<style lang="scss">
-.footer {
+<style>
+footer {
     background-color: rgb(50,67,68);
     color: rgba(255, 255, 255, 0.5);
     font-size: .9rem;

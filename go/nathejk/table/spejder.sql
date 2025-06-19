@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS spejder (
     phone VARCHAR(99) NOT NULL,
     phoneParent VARCHAR(99) NOT NULL,
     birthday VARCHAR(99) NOT NULL,
+    tshirtSize VARCHAR(9) NOT NULL DEFAULT '',
     `returning` TINYINT NOT NULL,
     createdAt VARCHAR(99) NOT NULL,
     updatedAt VARCHAR(99) NOT NULL,

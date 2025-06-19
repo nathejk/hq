@@ -6,6 +6,9 @@ import (
 	"time"
 
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/golang-migrate/migrate/v4"
+	"github.com/golang-migrate/migrate/v4/database/postgres"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 )
 
 type DatabaseConfig struct {
@@ -26,6 +29,22 @@ func NewDatabase(cfg DatabaseConfig) *database {
 
 func (db *database) DB() *sql.DB {
 	return db.db
+}
+
+func (db *database) Migrate() error {
+	migrationDriver, err := postgres.WithInstance(db.db, &postgres.Config{})
+	if err != nil {
+		return err
+	}
+	migrator, err := migrate.NewWithDatabaseInstance("file:///app/migrations", "postgres", migrationDriver)
+	if err != nil {
+		return err
+	}
+	err = migrator.Up()
+	if err != nil && err != migrate.ErrNoChange {
+		return err
+	}
+	return nil
 }
 
 func (db *database) Open() (err error) {

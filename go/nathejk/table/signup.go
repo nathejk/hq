@@ -3,21 +3,11 @@ package table
 import (
 	"fmt"
 	"log"
-	"time"
 
-	"nathejk.dk/nathejk/messages"
-	"nathejk.dk/nathejk/types"
-	"nathejk.dk/pkg/streaminterface"
+	"github.com/nathejk/shared-go/messages"
 	"nathejk.dk/pkg/tablerow"
-
-	_ "embed"
+	"nathejk.dk/superfluids/streaminterface"
 )
-
-type Signup struct {
-	TeamType     types.TeamType `sql:"teamType"`
-	IsOpen       bool           `sql:"isOpen"`
-	MaxSeatCount int            `sql:"maxSeatCount"`
-}
 
 type signup struct {
 	w tablerow.Consumer
@@ -31,65 +21,60 @@ func NewSignup(w tablerow.Consumer) *signup {
 	return table
 }
 
-//go:embed signup.sql
-var signupSchema string
-
 func (t *signup) CreateTableSql() string {
-	return signupSchema
+	return `
+CREATE TABLE IF NOT EXISTS signup (
+    teamId VARCHAR(99) NOT NULL,
+    teamType VARCHAR(99) NOT NULL,
+    name VARCHAR(99) NOT NULL,
+    emailPending VARCHAR(99) NOT NULL,
+    email VARCHAR(99),
+	phonePending VARCHAR(99) NOT NULL,
+	phone VARCHAR(99),
+	pincode VARCHAR(9),
+	createdAt VARCHAR(99),
+    PRIMARY KEY (teamId)
+);
+`
 }
 
-func (c *signup) Consumes() (subjs []streaminterface.Subject) {
+func (t *signup) Consumes() []streaminterface.Subject {
 	return []streaminterface.Subject{
-		streaminterface.SubjectFromStr("nathejk"),
+		streaminterface.SubjectFromStr("NATHEJK:*.*.*.signedup"),
 	}
 }
 
-func (c *signup) HandleMessage(msg streaminterface.Message) {
-	switch msg.Subject().Subject() {
-	case "nathejk:patrulje.signup.opened":
-		var body messages.NathejkPatruljeSignupOpened
+func (t *signup) HandleMessage(msg streaminterface.Message) error {
+	switch true {
+	case msg.Subject().Match("NATHEJK.*.*.*.signedup"):
+		//case "NATHEJK.year.created":
+		var body messages.NathejkTeamSignedUp
 		if err := msg.Body(&body); err != nil {
-			return
+			return err
 		}
-		sql := fmt.Sprintf("INSERT INTO signup SET teamType=%q, isOpen=%d, maxSeatCount=%d ON DUPLICATE KEY UPDATE isOpen=VALUES(isOpen), maxSeatCount=VALUES(maxSeatCount)", types.TeamTypePatrulje, 1, body.MaxSeatCount)
-		if err := c.w.Consume(sql); err != nil {
-			log.Fatalf("Error consuming sql %q", err)
+		sql := "INSERT INTO signup SET teamId=%q, teamType=%q, name=%q, emailPending=%q, phonePending=%q, pincode=%q, createdAt=%q ON DUPLICATE KEY UPDATE name=VALUES(name), emailPending=VALUES(emailPending), phonePending=VALUES(phonePending), pincode=VALUES(pincode)"
+		args := []any{
+			body.TeamID,
+			msg.Subject().Parts()[2],
+			body.Name,
+			body.Email,
+			body.Phone,
+			body.Pincode,
+			msg.Time(),
 		}
-	case "nathejk:patrulje.signup.closed":
-		var body messages.NathejkPatruljeSignupClosed
-		if err := msg.Body(&body); err != nil {
-			return
+		if err := t.w.Consume(fmt.Sprintf(sql, args...)); err != nil {
+			return err
 		}
-		sql := fmt.Sprintf("INSERT INTO signup SET teamType=%q, isOpen=%d ON DUPLICATE KEY UPDATE isOpen=VALUES(isOpen)", types.TeamTypePatrulje, 0)
-		if err := c.w.Consume(sql); err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
-	case "nathejk:klan.signup.opened":
-		var body messages.NathejkKlanSignupOpened
-		if err := msg.Body(&body); err != nil {
-			return
-		}
-		sql := fmt.Sprintf("INSERT INTO signup SET teamType=%q, isOpen=%d, maxSeatCount=%d ON DUPLICATE KEY UPDATE isOpen=VALUES(isOpen), maxSeatCount=VALUES(maxSeatCount)", types.TeamTypeKlan, 1, body.MaxSeatCount)
-		if err := c.w.Consume(sql); err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
-	case "nathejk:klan.signup.closed":
-		var body messages.NathejkKlanSignupClosed
-		if err := msg.Body(&body); err != nil {
-			return
-		}
-		sql := fmt.Sprintf("INSERT INTO signup SET teamType=%q, isOpen=%d ON DUPLICATE KEY UPDATE isOpen=VALUES(isOpen)", types.TeamTypeKlan, 0)
-		if err := c.w.Consume(sql); err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
-	case "nathejk:klan.signup.start.specified":
-		var body messages.NathejkKlanSignupStartSpecified
-		if err := msg.Body(&body); err != nil {
-			return
-		}
-		sql := fmt.Sprintf("INSERT INTO signup SET teamType=%q, startDate=%q ON DUPLICATE KEY UPDATE startDate=VALUES(startDate)", types.TeamTypeKlan, body.Time.Format(time.RFC3339))
-		if err := c.w.Consume(sql); err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		//default:
+		//	return fmt.Errorf("unhandled subject %q", msg.Subject().Subject())
 	}
+	return nil
 }
+
+/*
+func escapeNull(s *time.Time) string {
+	if s == nil {
+		return "NULL"
+	}
+	return fmt.Sprintf("%q", s)
+}*/

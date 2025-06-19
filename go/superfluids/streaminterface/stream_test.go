@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"nathejk.dk/pkg/streaminterface"
+	"nathejk.dk/superfluids/streaminterface"
 )
 
 type message struct {

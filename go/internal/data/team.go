@@ -6,8 +6,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/internal/validator"
-	"nathejk.dk/nathejk/types"
 )
 
 type Team struct {
@@ -64,49 +64,39 @@ func (m TeamModel) GetDiscontinuedTeamIDs(filters Filters) ([]types.TeamID, Meta
 	return m.query(filters, sql, args)
 }
 
-type PatruljeStatus struct {
-	Year        string
-	Status      string
-	TeamCount   int
-	MemberCount int
-}
-
-func (m TeamModel) GetStatus(filters Filters) ([]PatruljeStatus, Metadata, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	query := `SELECT COUNT(teamId), SUM(memberCount), year, signupStatus FROM patrulje WHERE (LOWER(year) = LOWER(?) OR ? = '') GROUP BY signupStatus`
-	args := []any{filters.Year, filters.Year}
-	rows, err := m.DB.QueryContext(ctx, query, args...)
-	if err != nil {
-		return nil, Metadata{}, err
-	}
-	defer rows.Close()
-
-	ps := []PatruljeStatus{}
-	for rows.Next() {
-		var s PatruljeStatus
-		if err := rows.Scan(&s.TeamCount, &s.MemberCount, &s.Year, &s.Status); err != nil {
-			return nil, Metadata{}, err
-		}
-		ps = append(ps, s)
-	}
-	// When the rows.Next() loop has finished, call rows.Err() to retrieve any error
-	// that was encountered during the iteration.
-	if err = rows.Err(); err != nil {
-		return nil, Metadata{}, err
-	}
-	return ps, Metadata{}, nil
-}
-
 type Patrulje struct {
 	ID          types.TeamID `json:"id"`
 	Number      string       `json:"number"`
 	Status      string       `json:"status"`
 	Name        string       `json:"name"`
 	Group       string       `json:"group"`
-	Corps       string       `json:"corps"`
+	Korps       string       `json:"korps"`
+	Liga        string       `json:"liga"`
 	MemberCount int          `json:"memberCount"`
+}
+type Klan struct {
+	ID          types.TeamID       `json:"id"`
+	Status      types.SignupStatus `json:"status"`
+	Name        string             `json:"name"`
+	Group       string             `json:"group"`
+	Korps       string             `json:"korps"`
+	MemberCount int                `json:"memberCount"`
+}
+type Contact struct {
+	TeamID     types.TeamID       `json:"teamId"`
+	Name       string             `json:"name"`
+	Address    string             `json:"address"`
+	PostalCode string             `json:"postal"`
+	Email      types.EmailAddress `json:"email"`
+	Phone      types.PhoneNumber  `json:"phone"`
+	Role       string             `json:"role"`
+}
+
+func (m TeamModel) RequestedSeniorCount() int {
+	query := `SELECT COUNT(memberId) FROM senior WHERE year=%d`
+	var count int
+	_ = m.DB.QueryRow(query, 2024).Scan(&count)
+	return count
 }
 
 func (m TeamModel) GetPatruljer(filters Filters) ([]*Patrulje, Metadata, error) {
@@ -114,10 +104,9 @@ func (m TeamModel) GetPatruljer(filters Filters) ([]*Patrulje, Metadata, error) 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	query := `SELECT p.teamId, p.teamNumber, p.name, p.groupName, p.korps, p.memberCount, IF(pm.parentTeamId IS NOT NULL, "JOIN", IF(startedUts > 0, "STARTED",  signupStatus)) 
-		FROM patrulje p 
-		JOIN patruljestatus ps ON p.teamId = ps.teamID AND (LOWER(p.year) = LOWER(?) OR ? = '')
-		LEFT JOIN patruljemerged pm ON p.teamId = pm.teamId`
+	query := `SELECT p.teamId, p.teamNumber, p.name, p.groupName, p.korps, p.liga, p.memberCount, IF(pm.parentTeamId IS NOT NULL, "JOIN", IF(startedUts > 0, "STARTED",  signupStatus)) 
+		FROM patrulje p
+		JOIN patruljestatus ps ON p.teamId = ps.teamID AND (LOWER(p.year) = LOWER(?) OR ? = '')`
 	args := []any{filters.Year, filters.Year}
 	rows, err := m.DB.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -129,7 +118,7 @@ func (m TeamModel) GetPatruljer(filters Filters) ([]*Patrulje, Metadata, error) 
 	patruljer := []*Patrulje{}
 	for rows.Next() {
 		var p Patrulje
-		if err := rows.Scan(&p.ID, &p.Number, &p.Name, &p.Group, &p.Corps, &p.MemberCount, &p.Status); err != nil {
+		if err := rows.Scan(&p.ID, &p.Number, &p.Name, &p.Group, &p.Korps, &p.Liga, &p.MemberCount, &p.Status); err != nil {
 			return nil, Metadata{}, err
 		}
 		patruljer = append(patruljer, &p)
@@ -149,10 +138,9 @@ func (m TeamModel) GetPatrulje(teamID types.TeamID) (*Patrulje, error) {
 		return nil, ErrRecordNotFound
 	}
 
-	query := `SELECT p.teamId, p.teamNumber, p.name, p.groupName, p.korps, p.memberCount, IF(pm.parentTeamId IS NOT NULL, "JOIN", IF(startedUts > 0, "STARTED",  signupStatus)) 
-		FROM patrulje p 
+	query := `SELECT p.teamId, p.teamNumber, p.name, p.groupName, p.korps, p.liga, p.memberCount
+		FROM patrulje p
 		JOIN patruljestatus ps ON p.teamId = ps.teamID
-		LEFT JOIN patruljemerged pm ON p.teamId = pm.teamId
 		WHERE p.teamId = ?`
 	var p Patrulje
 	err := m.DB.QueryRow(query, teamID).Scan(
@@ -160,9 +148,9 @@ func (m TeamModel) GetPatrulje(teamID types.TeamID) (*Patrulje, error) {
 		&p.Number,
 		&p.Name,
 		&p.Group,
-		&p.Corps,
+		&p.Korps,
+		&p.Liga,
 		&p.MemberCount,
-		&p.Status,
 	)
 	if err != nil {
 		switch {
@@ -173,4 +161,60 @@ func (m TeamModel) GetPatrulje(teamID types.TeamID) (*Patrulje, error) {
 		}
 	}
 	return &p, nil
+}
+
+func (m TeamModel) GetKlan(teamID types.TeamID) (*Klan, error) {
+	if len(teamID) == 0 {
+		return nil, ErrRecordNotFound
+	}
+
+	query := `SELECT t.teamId, t.name, t.groupName, t.korps, t.memberCount, t.signupStatus
+		FROM klan t
+		JOIN patruljestatus ts ON t.teamId = ts.teamID
+		WHERE t.teamId = ?`
+	var t Klan
+	err := m.DB.QueryRow(query, teamID).Scan(
+		&t.ID,
+		&t.Name,
+		&t.Group,
+		&t.Korps,
+		&t.MemberCount,
+		&t.Status,
+	)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, ErrRecordNotFound
+		default:
+			return nil, err
+		}
+	}
+	return &t, nil
+}
+
+func (m TeamModel) GetContact(teamID types.TeamID) (*Contact, error) {
+	if len(teamID) == 0 {
+		return nil, ErrRecordNotFound
+	}
+
+	query := `SELECT p.contactName, p.contactPhone, p.contactEmail, p.contactRole
+		FROM patrulje p
+		JOIN patruljestatus ps ON p.teamId = ps.teamID
+		WHERE p.teamId = ?`
+	c := Contact{TeamID: teamID}
+	err := m.DB.QueryRow(query, teamID).Scan(
+		&c.Name,
+		&c.Phone,
+		&c.Email,
+		&c.Role,
+	)
+	if err != nil {
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return nil, ErrRecordNotFound
+		default:
+			return nil, err
+		}
+	}
+	return &c, nil
 }

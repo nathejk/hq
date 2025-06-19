@@ -1,13 +1,11 @@
 package table
 
 import (
-	"fmt"
 	"log"
 
-	"nathejk.dk/nathejk/messages"
-	"nathejk.dk/nathejk/types"
-	"nathejk.dk/pkg/streaminterface"
+	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/pkg/tablerow"
+	"nathejk.dk/superfluids/streaminterface"
 
 	_ "embed"
 )
@@ -40,29 +38,31 @@ func (t *spejderstatus) CreateTableSql() string {
 
 func (c *spejderstatus) Consumes() (subjs []streaminterface.Subject) {
 	return []streaminterface.Subject{
-		streaminterface.SubjectFromStr("nathejk"),
+		//	streaminterface.SubjectFromStr("nathejk"),
 	}
 }
 
 func (c *spejderstatus) HandleMessage(msg streaminterface.Message) error {
-	switch msg.Subject().Subject() {
-	case "nathejk:member.status.changed":
-		var body messages.NathejkMemberStatusChanged
-		if err := msg.Body(&body); err != nil {
-			return err
-		}
-		query := "INSERT INTO spejderstatus SET id=%q, year=\"%d\", status=%q, updatedAt=%q ON DUPLICATE KEY UPDATE status=VALUES(status), updatedAt=VALUES(updatedAt)"
-		args := []any{
-			body.MemberID,
-			msg.Time().Year(),
-			body.Status,
-			msg.Time(),
-		}
+	/*
+		switch msg.Subject().Subject() {
+			case "nathejk:member.status.changed":
+				var body messages.NathejkMemberStatusChanged
+				if err := msg.Body(&body); err != nil {
+					return err
+				}
+				query := "INSERT INTO spejderstatus SET id=%q, year=\"%d\", status=%q, updatedAt=%q ON DUPLICATE KEY UPDATE status=VALUES(status), updatedAt=VALUES(updatedAt)"
+				args := []any{
+					body.MemberID,
+					msg.Time().Year(),
+					body.Status,
+					msg.Time(),
+				}
 
-		sql := fmt.Sprintf(query, args...)
-		if err := c.w.Consume(sql); err != nil {
-			log.Printf("Error consuming sql %q", err)
+				sql := fmt.Sprintf(query, args...)
+				if err := c.w.Consume(sql); err != nil {
+					log.Printf("Error consuming sql %q", err)
+				}
 		}
-	}
+	*/
 	return nil
 }

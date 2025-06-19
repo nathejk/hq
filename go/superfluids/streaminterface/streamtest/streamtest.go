@@ -5,7 +5,7 @@ import (
 
 	json "github.com/json-iterator/go"
 
-	"nathejk.dk/pkg/streaminterface"
+	"nathejk.dk/superfluids/streaminterface"
 )
 
 type SingleDomainPublisher chan streaminterface.Message

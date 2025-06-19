@@ -1,165 +1,171 @@
-/*
- * Genarate rsa keys.
- */
-
 package main
 
 import (
+	"context"
+	"expvar"
 	"flag"
 	"fmt"
+	"log"
 	"os"
+	"runtime"
+	"time"
 
 	"nathejk.dk/cmd/api/app"
 	"nathejk.dk/internal/data"
 	"nathejk.dk/internal/jsonlog"
 	"nathejk.dk/internal/mailer"
+	"nathejk.dk/internal/payment/mobilepay"
 	"nathejk.dk/internal/sms"
-	"nathejk.dk/pkg/closers"
-	"nathejk.dk/pkg/nats"
-	"nathejk.dk/pkg/notification"
-	websync "nathejk.dk/pkg/sockethub"
-	"nathejk.dk/pkg/sqlstate"
-	"nathejk.dk/pkg/streaminterface"
+	"nathejk.dk/internal/vcs"
+	"nathejk.dk/nathejk/commands"
+	"nathejk.dk/nathejk/table"
+	"nathejk.dk/nathejk/table/klan"
+	"nathejk.dk/nathejk/table/patrulje"
+	"nathejk.dk/nathejk/table/payment"
+	"nathejk.dk/nathejk/table/personnel"
+	"nathejk.dk/pkg/sqlpersister"
+	"nathejk.dk/superfluids/jetstream"
+	"nathejk.dk/superfluids/streaminterface"
+	"nathejk.dk/superfluids/xstream"
+)
 
-	"github.com/go-redis/redis"
+var (
+	version = vcs.Version()
 )
 
 // Define a config struct to hold all the configuration settings for our application.
 type config struct {
-	port    int
-	webroot string
-
+	port      int
+	webroot   string
+	baseurl   string
+	countdown struct {
+		time   string
+		videos []string
+	}
+	payment struct {
+		dsn string
+	}
 	db struct {
 		dsn          string
 		maxOpenConns int
 		maxIdleConns int
 		maxIdleTime  string
 	}
-	redis struct {
-		addr string
-	}
 	jetstream struct {
-		dsn string
-	}
-	stan struct {
 		dsn string
 	}
 	sms struct {
 		dsn string
 	}
-	smtp struct {
-		host     string
-		port     int
-		username string
-		password string
-		sender   string
-	}
+	smtp mailer.Config
 }
 
 type application struct {
 	app.JsonApi
 
 	config    config
-	logger    *jsonlog.Logger
 	models    data.Models
-	commands  Commands
-	mailer    mailer.Mailer
-	sms       notification.SmsSender
-	publisher streaminterface.Publisher
 	jetstream streaminterface.Stream
-	state     StateReader
+	commands  commands.Commands
+	mailer    mailer.Mailer
+	sms       sms.Sender
+	payment   mobilepay.Client
+	logger    *jsonlog.Logger
 }
 
 func main() {
-	fmt.Println("Starting API service")
 	var cfg config
 
 	flag.IntVar(&cfg.port, "port", 80, "API server port")
 	flag.StringVar(&cfg.webroot, "webroot", getEnv("WEBROOT", "/www"), "Static web root")
+	flag.StringVar(&cfg.baseurl, "baseurl", getEnv("BASEURL", "https://tilmelding.nathejk.dk"), "Base url of website")
+
 	flag.StringVar(&cfg.sms.dsn, "sms-dsn", os.Getenv("SMS_DSN"), "SMS DSN")
-	flag.StringVar(&cfg.stan.dsn, "stan-dsn", os.Getenv("STAN_DSN"), "NATS Streaming DSN")
 	flag.StringVar(&cfg.jetstream.dsn, "jetstream-dsn", os.Getenv("JETSTREAM_DSN"), "NATS Streaming DSN")
-	flag.StringVar(&cfg.redis.addr, "redis-addr", os.Getenv("REDIS_ADDR"), "Redis Address")
 
 	flag.StringVar(&cfg.db.dsn, "db-dsn", os.Getenv("DB_DSN"), "Database DSN")
 	flag.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", 25, "Database max open connections")
 	flag.IntVar(&cfg.db.maxIdleConns, "db-max-idle-conns", 25, "Database max idle connections")
 	flag.StringVar(&cfg.db.maxIdleTime, "db-max-idle-time", "15m", "Database max connection idle time")
 
-	flag.StringVar(&cfg.smtp.host, "smtp-host", os.Getenv("SMTP_HOST"), "SMTP host")
-	flag.IntVar(&cfg.smtp.port, "smtp-port", getEnvAsInt("SMTP_PORT", 25), "SMTP port")
-	flag.StringVar(&cfg.smtp.username, "smtp-username", os.Getenv("SMTP_USERNAME"), "SMTP username")
-	flag.StringVar(&cfg.smtp.password, "smtp-password", os.Getenv("SMTP_PASSWORD"), "SMTP password")
-	flag.StringVar(&cfg.smtp.sender, "smtp-sender", "Nathejk <hej@nathejk.dk>", "SMTP sender")
+	flag.StringVar(&cfg.smtp.Host, "smtp-host", os.Getenv("SMTP_HOST"), "SMTP host")
+	flag.IntVar(&cfg.smtp.Port, "smtp-port", getEnvAsInt("SMTP_PORT", 25), "SMTP port")
+	flag.StringVar(&cfg.smtp.Username, "smtp-username", os.Getenv("SMTP_USERNAME"), "SMTP username")
+	flag.StringVar(&cfg.smtp.Password, "smtp-password", os.Getenv("SMTP_PASSWORD"), "SMTP password")
+	flag.StringVar(&cfg.smtp.Sender, "smtp-sender", "Nathejk <kontakt@nathejk.dk>", "SMTP sender")
+
+	flag.StringVar(&cfg.countdown.time, "countdown", getEnv("COUNTDOWN", ""), "Time for countdown")
+	flag.StringVar(&cfg.payment.dsn, "payment-dsn", getEnv("PAYMENT_DSN", ""), "DSN specifing a valid payment provider")
+	cfg.countdown.videos = getEnvAsSlice("COUNTDOWN_VIDEOS", []string{}, "\n")
 
 	flag.Parse()
 
 	//logger := log.New(os.Stdout, "", log.Ldate|log.Ltime)
 	logger := jsonlog.New(os.Stdout, jsonlog.LevelInfo)
+	logger.PrintInfo("Starting API...", nil)
+
+	js, err := jetstream.New(cfg.jetstream.dsn)
+	if err != nil {
+		log.Printf("Error connecting %q", err)
+	}
+	logger.PrintInfo("Jetstream connected", nil)
+	/*msg, err := js.LastMessage(streaminterface.SubjectFromStr("NATHEJK.2024.>"))
+	if err != nil {
+		log.Fatalf("Last message: %q", err)
+	}
+	log.Printf("Last message (%d) %v", msg.Sequence(), msg)
+	*/
 
 	db := NewDatabase(cfg.db)
 	if err := db.Open(); err != nil {
 		logger.PrintFatal(err, nil)
 	}
 	defer db.Close()
+	logger.PrintInfo("Database connected", nil)
 
-	closer := closers.New().ExitOnSigInt()
-	defer closer.Close()
-	/*
-		js, err := jetstream.New(cfg.jetstream.dsn)
-		if err != nil {
-			log.Printf("Error connecting %q", err)
-		}
+	sqlw := sqlpersister.New(db.DB())
 
-		msg := js.MessageFunc()(streaminterface.SubjectFromStr("NATHEJK:hello"))
-		msg.SetBody("world")
-		if err := js.Publish(msg); err != nil {
-			log.Printf("Error publishing %q", err)
-		}
-		mux := xstream.NewMux(js)
-		mux.AddConsumer(&y{})
-		mux.Run(context.Background())
-	*/
-	natsstream := nats.NewNATSStreamUnique(cfg.stan.dsn, "hq-api")
-	//defer natsstream.Close()
-	//natsstream := nats.NatsStreamConnectUnique(os.Getenv("STAN_DSN"), "hq-api").Buffered(1000)
-	closer.AddCloser(natsstream)
+	klantable := klan.New(sqlw, db.DB())
+	patruljetable := patrulje.New(sqlw, db.DB())
+	personneltable := personnel.New(sqlw, db.DB())
+	paymenttable := payment.New(sqlw, db.DB())
 
-	redisclient := redis.NewClient(&redis.Options{Addr: cfg.redis.addr})
-	closer.AddCloser(redisclient)
+	mux := xstream.NewMux(js)
+	mux.AddConsumer(table.NewSignup(sqlw), table.NewConfirm(sqlw), klantable, table.NewSenior(sqlw), patruljetable, table.NewPatruljeStatus(sqlw) /*table.NewPatruljeMerged(sqlw),*/, table.NewSpejder(sqlw), table.NewSpejderStatus(sqlw), personneltable, paymenttable)
+	//mux.AddConsumer(table.NewSpejder(sqlw), table.NewSpejderStatus(sqlw))
+	if err := mux.Run(context.Background()); err != nil {
+		logger.PrintFatal(err, nil)
+	}
 
-	hub := websync.NewHub(redisclient)
-	state := sqlstate.New(cfg.db.dsn)
+	models := data.NewModels(db.DB(), klantable, patruljetable, personneltable, paymenttable)
 
-	dims := NewDims(natsstream, hub, state)
-	dims.Subscribe()
-	dims.WaitLive()
+	expvar.NewString("version").Set(version)
+	expvar.NewInt("timestamp").Set(time.Now().Unix())
+	expvar.NewInt("goroutines").Set(int64(runtime.NumGoroutine()))
 
-	smsclient, _ := sms.NewClient(cfg.sms.dsn)
+	smsclient, err := sms.NewClient(cfg.sms.dsn)
+	if err != nil {
+		logger.PrintFatal(err, nil)
+	}
 
-	//server := NewServer(natsstream, hub, smsclient)
-
-	models := data.NewModels(db.DB())
+	payment, err := mobilepay.New(cfg.payment.dsn)
+	if err != nil {
+		logger.PrintFatal(err, nil)
+	}
 	app := &application{
 		JsonApi: app.JsonApi{
 			Logger: logger,
 		},
 		config:    cfg,
-		logger:    logger,
+		payment:   payment,
 		models:    models,
-		commands:  NewCommands(natsstream, models),
-		mailer:    mailer.New(cfg.smtp.host, cfg.smtp.port, cfg.smtp.username, cfg.smtp.password, cfg.smtp.sender),
+		jetstream: js,
+		commands:  commands.New(js, models),
+		mailer:    mailer.NewFromConfig(cfg.smtp),
 		sms:       smsclient,
-		publisher: natsstream,
-		state:     hub,
+		logger:    logger,
 	}
-
-	// Start listening for incoming messages to websocket
-	go handleMessages()
+	logger.PrintInfo("Application initialized", nil)
 
 	logger.PrintFatal(app.Serve(fmt.Sprintf(":%d", cfg.port), app.routes()), nil)
-
-	//fmt.Println("Running webserver")
-	//log.Fatal(server.ListenAndServe(":80"))
-
 }

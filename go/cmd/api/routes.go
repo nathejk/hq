@@ -1,17 +1,11 @@
 package main
 
 import (
-	"database/sql"
 	"expvar"
-	"log"
 	"net/http"
 	"os"
 
 	"github.com/julienschmidt/httprouter"
-	"nathejk.dk/cmd/api/handlers"
-	"nathejk.dk/cmd/api/user"
-	"nathejk.dk/nathejk/commands"
-	"nathejk.dk/nathejk/table"
 )
 
 func (app *application) routes() http.Handler {
@@ -20,64 +14,29 @@ func (app *application) routes() http.Handler {
 	router.NotFound = http.HandlerFunc(app.NotFoundResponse)
 	router.MethodNotAllowed = http.HandlerFunc(app.MethodNotAllowedResponse)
 
-	router.HandlerFunc(http.MethodGet, "/api/v1/healthcheck", app.HealthcheckHandler)
-
-	cmd := NewCommander(app.publisher)
-	api := NewApi(cmd)
-
-	db, err := sql.Open("mysql", app.config.db.dsn)
-	if err != nil {
-		log.Fatal(err)
-		panic("Can't connect to " + app.config.db.dsn)
-		return nil
-	}
-	log.Printf("Connected to " + app.config.db.dsn)
-
-	ctrlgrp := NewCrudRoute(NewControlGroupCmd(app.publisher), &CreateRequest{}, &ReadRequest{}, &UpdateRequest{}, &DeleteRequest{})
-	sos := NewSosRoutes(NewSosCmd(app.publisher, app.state, app.sms))
-
-	//s := server{router: http.NewServeMux()}
-	//mux := http.NewServeMux()
-	//mux := chi.NewRouter()
-	//mux.Use(middleware.Logger)
-
-	router.HandlerFunc(http.MethodGet, "/api/base", NewBaseHandler())
-	router.HandlerFunc(http.MethodGet, "/api/user", user.ShowUserFromCookieHandler(os.Getenv("JWT_COOKIE_NAME"), os.Getenv("AUTH_BASEURL")))
-	router.HandlerFunc(http.MethodGet, "/api/cgstatus", NewControlgroupStatusHandler(db))
-	//router.HandlerFunc(http.MethodGet, "/api/patrulje/", patruljeHandler(app.state))
-	router.HandlerFunc(http.MethodGet, "/api/teams", monolithHandler)
-	router.HandlerFunc(http.MethodGet, "/api/teams/", monolithTeamHandler)
-	router.HandlerFunc(http.MethodDelete, "/api/personnel", api.HandleUser)
-	router.HandlerFunc(http.MethodPost, "/api/personnel", api.HandleUser)
-	router.HandlerFunc(http.MethodGet, "/api/controlgroup", ctrlgrp.Handler)
-	router.HandlerFunc(http.MethodPut, "/api/controlgroup", ctrlgrp.Handler)
-	router.HandlerFunc(http.MethodPost, "/api/controlgroup", ctrlgrp.Handler)
-	router.HandlerFunc(http.MethodDelete, "/api/controlgroup", ctrlgrp.Handler)
-	router.HandlerFunc(http.MethodPut, "/api/sos", sos.Handler)
-	router.HandlerFunc(http.MethodPost, "/api/sos", sos.Handler)
-	router.HandlerFunc(http.MethodDelete, "/api/sos", sos.Handler)
-	router.HandlerFunc(http.MethodPut, "/api/sos/:cmd", sos.Handler)
-	router.HandlerFunc(http.MethodPost, "/api/sos/:cmd", sos.Handler)
-	router.HandlerFunc(http.MethodDelete, "/api/sos/:cmd", sos.Handler)
-
-	router.HandlerFunc(http.MethodGet, "/api/checkgroups", app.listCheckgroupsHandler)
-	router.HandlerFunc(http.MethodGet, "/api/patruljer", app.listPatruljerHandler)
-	router.HandlerFunc(http.MethodGet, "/api/patrulje/:id", app.viewPatruljerHandler)
-	router.HandlerFunc(http.MethodGet, "/api/status", app.viewStatusHandler)
-	router.HandlerFunc(http.MethodGet, "/api/spejder", app.listSpejderHandler)
-
-	router.HandlerFunc(http.MethodGet, "/api/years", app.listYearsHandler)
-
-	depQuerier := table.DepartmentQuerier(db)
-	depCmd := commands.NewDepartment(depQuerier, app.publisher)
-	router.HandlerFunc(http.MethodPut, "/api/department", handlers.CreateDepartment(depCmd))
-	router.HandlerFunc(http.MethodPost, "/api/department", handlers.UpdateDepartment(depCmd))
-	router.HandlerFunc(http.MethodDelete, "/api/department", handlers.DeleteDepartment(depCmd))
-
+	router.HandlerFunc(http.MethodGet, "/api/home", app.homeHandler)
+	router.HandlerFunc(http.MethodPost, "/api/signup", app.signupHandler)
+	router.HandlerFunc(http.MethodPost, "/api/signup/pincode", app.signupPincodeHandler)
+	router.HandlerFunc(http.MethodGet, "/api/signup/:id", app.showSignupHandler)
+	router.HandlerFunc(http.MethodGet, "/api/patrulje", app.showPatruljeListHandler)
+	router.HandlerFunc(http.MethodGet, "/api/patrulje/:id", app.showPatruljeHandler)
+	router.HandlerFunc(http.MethodPut, "/api/patrulje/:id", app.updatePatruljeHandler)
+	router.HandlerFunc(http.MethodGet, "/api/klan", app.showKlanListHandler)
+	router.HandlerFunc(http.MethodGet, "/api/klan/:id", app.showKlanHandler)
+	router.HandlerFunc(http.MethodPut, "/api/klan/:id", app.updateKlanHandler)
+	router.HandlerFunc(http.MethodGet, "/api/badut", app.showBadutListHandler)
+	/*
+		router.HandlerFunc(http.MethodPut, "/api/*filepath", app.cleo.ProxyHandler)
+		router.HandlerFunc(http.MethodGet, "/api/*filepath", app.cleo.ProxyHandler)
+		router.HandlerFunc(http.MethodPost, "/api/*filepath", app.cleo.ProxyHandler)
+		router.HandlerFunc(http.MethodDelete, "/api/*filepath", app.cleo.ProxyHandler)
+		router.HandlerFunc(http.MethodPatch, "/api/*filepath", app.cleo.ProxyHandler)
+	*/
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(SpaFileSystem(http.Dir(app.config.webroot))))
+	mux.HandleFunc("/api/v1/healthcheck", app.HealthcheckHandler)
 	mux.Handle("/api/", app.Metrics(router))
-	mux.Handle("/ws", auth(app.state))
+	mux.Handle("/confirm/", router)
 	mux.Handle("/debug/vars", expvar.Handler())
 
 	return mux

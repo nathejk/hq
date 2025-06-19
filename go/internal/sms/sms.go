@@ -18,5 +18,5 @@ func NewClient(dsn string) (Sender, error) {
 	case "cpsms":
 		return NewCpsms(u.Host, u.User.Username())
 	}
-	return nil, fmt.Errorf("Unknown sms provider %q", u.Scheme)
+	return nil, fmt.Errorf("unknown sms provider %q", u.Scheme)
 }

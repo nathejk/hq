@@ -3,8 +3,8 @@ package streamtest_test
 import (
 	"testing"
 
-	"nathejk.dk/pkg/streaminterface"
-	"nathejk.dk/pkg/streaminterface/streamtest"
+	"nathejk.dk/superfluids/streaminterface"
+	"nathejk.dk/superfluids/streaminterface/streamtest"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -29,5 +29,5 @@ func TestModel(t *testing.T) {
 		streamtest.StubBody("channel2", "type2", nil),
 	)
 
-	assert.Equal("+channel1:type1+channel2:type2", m.result)
+	assert.Equal("+channel1.type1+channel2.type2", m.result)
 }

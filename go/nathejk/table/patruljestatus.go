@@ -3,13 +3,11 @@ package table
 import (
 	"fmt"
 	"log"
-	"strconv"
-	"time"
 
-	"nathejk.dk/nathejk/messages"
-	"nathejk.dk/nathejk/types"
-	"nathejk.dk/pkg/streaminterface"
+	"github.com/nathejk/shared-go/messages"
+	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/pkg/tablerow"
+	"nathejk.dk/superfluids/streaminterface"
 
 	_ "embed"
 )
@@ -21,7 +19,7 @@ type PatruljeStatus struct {
 	Korps        string             `sql:"korps"`
 	ContactName  string             `sql:"contactName"`
 	ContactPhone types.PhoneNumber  `sql:"contactPhone"`
-	ContactEmail types.Email        `sql:"contactEmail"`
+	ContactEmail types.EmailAddress `sql:"contactEmail"`
 	ContactRole  string             `sql:"contactRole"`
 	SignupStatus types.SignupStatus `sql:"signupStatus"`
 	Started      uint
@@ -48,18 +46,22 @@ func (t *patruljeStatus) CreateTableSql() string {
 
 func (c *patruljeStatus) Consumes() (subjs []streaminterface.Subject) {
 	return []streaminterface.Subject{
-		streaminterface.SubjectFromStr("monolith:nathejk_team"),
+		streaminterface.SubjectFromStr("NATHEJK:*.*.*.signedup"),
+		//streaminterface.SubjectFromStr("monolith:nathejk_team"),
 	}
 }
 
 func (c *patruljeStatus) HandleMessage(msg streaminterface.Message) error {
-	if msg.Time().Year() != time.Now().Year() {
-		// only handle messages from this year
-		//return nil
-	}
-	switch msg.Subject().Subject() {
-	case "monolith:nathejk_team":
-		var body messages.Nathejk_Team
+	//	log.Printf("patruljestatus.go RECEIVED %q", msg.Subject().Subject())
+	/*
+		if msg.Time().Year() != time.Now().Year() {
+			// only handle messages from this year
+			//return nil
+		}
+	*/
+	switch true {
+	case msg.Subject().Match("NATHEJK.*.*.*.signedup"):
+		var body messages.NathejkTeamSignedUp
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
@@ -67,24 +69,26 @@ func (c *patruljeStatus) HandleMessage(msg streaminterface.Message) error {
 		//log.Printf("TeamNumber: %q %q", body.Entity.ID, body.Entity.TeamNumber)
 		//			return nil
 		//		}
+		/*
+			if body.Entity.TeamNumber == "0" {
+				//log.Printf("TeamNumber: %q %q", body.Entity.ID, body.Entity.TeamNumber)
+				return nil
+			}
+			if body.Entity.DeletedUts != "0" {
+				//log.Printf("Deleted: %q %q", body.Entity.ID, body.Entity.DeletedUts)
 
-		if body.Entity.TeamNumber == "0" {
-			//log.Printf("TeamNumber: %q %q", body.Entity.ID, body.Entity.TeamNumber)
-			return nil
-		}
-		if body.Entity.DeletedUts != "0" {
-			//log.Printf("Deleted: %q %q", body.Entity.ID, body.Entity.DeletedUts)
-
-			return c.w.Consume(fmt.Sprintf("DELETE FROM patruljestatus WHERE teamId=%q", body.Entity.ID))
-		}
-
-		uts, _ := strconv.ParseInt(body.Entity.CreatedUts, 10, 64)
-		year := time.Unix(uts, 0).Year()
-		startedUts, _ := strconv.Atoi(body.Entity.StartUts)
-		sql := fmt.Sprintf("INSERT INTO patruljestatus SET teamId=%q, year=\"%d\", startedUts=%d ON DUPLICATE KEY UPDATE startedUts=VALUES(startedUts)", body.Entity.ID, year, startedUts)
-		if err := c.w.Consume(sql); err != nil {
+				return c.w.Consume(fmt.Sprintf("DELETE FROM patruljestatus WHERE teamId=%q", body.Entity.ID))
+			}
+		*/
+		//			uts, _ := strconv.ParseInt(body.Entity.CreatedUts, 10, 64)
+		//			year := time.Unix(uts, 0).Year()
+		//startedUts, _ := strconv.Atoi(body.Entity.StartUts)
+		query := "INSERT INTO patruljestatus SET teamId=%q, year=%q, startedUts=%d ON DUPLICATE KEY UPDATE startedUts=VALUES(startedUts)"
+		args := []any{body.TeamID, msg.Subject().Parts()[1], 1}
+		if err := c.w.Consume(fmt.Sprintf(query, args...)); err != nil {
 			log.Fatalf("Error consuming sql %q", err)
 		}
+
 	}
 	return nil
 }

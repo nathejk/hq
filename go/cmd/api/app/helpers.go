@@ -57,7 +57,7 @@ func (app *JsonApi) ReadJSON(w http.ResponseWriter, r *http.Request, dst any) er
 	// field which cannot be mapped to the target destination, the decoder will return
 	// an error instead of just ignoring the field.
 	dec := json.NewDecoder(r.Body)
-	dec.DisallowUnknownFields()
+	//dec.DisallowUnknownFields()
 
 	// Decode the request body into the target destination.
 	err := dec.Decode(dst)
@@ -154,7 +154,7 @@ func (app *JsonApi) ReadString(qs url.Values, key string, defaultValue string) s
 // The readCSV() helper reads a string value from the query string and then splits it
 // into a slice on the comma character. If no matching key could be found, it returns
 // the provided default value.
-func (app *JsonApi) ReadCSV(qs url.Values, key string, defaultValue []any) []any {
+func (app *JsonApi) ReadCSV(qs url.Values, key string, defaultValue []string) []string {
 	// Extract the value from the query string.
 	csv := qs.Get(key)
 	// If no key exists (or the value is empty) then return the default value.
@@ -162,11 +162,7 @@ func (app *JsonApi) ReadCSV(qs url.Values, key string, defaultValue []any) []any
 		return defaultValue
 	}
 	// Otherwise parse the value into a []string slice and return it.
-	anies := []any{}
-	for _, v := range strings.Split(csv, ",") {
-		anies = append(anies, v)
-	}
-	return anies
+	return strings.Split(csv, ",")
 }
 
 // The readInt() helper reads a string value from the query string and converts it to an

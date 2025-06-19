@@ -4,8 +4,8 @@ import (
 	"math"
 	"strings"
 
+	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/internal/validator"
-	"nathejk.dk/nathejk/types"
 )
 
 type Filters struct {
@@ -15,14 +15,6 @@ type Filters struct {
 	Sort         string
 	SortSafelist []string
 	TeamID       types.TeamID
-	Search       map[string][]any
-}
-
-func (f *Filters) AddSearchCriteria(key string, values []any) {
-	if f.Search == nil {
-		f.Search = map[string][]any{}
-	}
-	f.Search[key] = values
 }
 
 func (f *Filters) Validate(v validator.Validator) {
@@ -37,7 +29,7 @@ func (f *Filters) Validate(v validator.Validator) {
 // Check that the client-provided Sort field matches one of the entries in our safelist
 // and if it does, extract the column name from the Sort field by stripping the leading
 // hyphen character (if one exists).
-func (f Filters) sortColumn() string {
+func (f Filters) SortColumn() string {
 	for _, safeValue := range f.SortSafelist {
 		if f.Sort == safeValue {
 			return strings.TrimPrefix(f.Sort, "-")
@@ -48,30 +40,29 @@ func (f Filters) sortColumn() string {
 
 // Return the sort direction ("ASC" or "DESC") depending on the prefix character of the
 // Sort field.
-func (f Filters) sortDirection() string {
+func (f Filters) SortDirection() string {
 	if strings.HasPrefix(f.Sort, "-") {
 		return "DESC"
 	}
 	return "ASC"
 }
 
-func (f Filters) offset() int {
+func (f Filters) Offset() int {
 	return (f.Page - 1) * f.PageSize
 }
 
-func (f Filters) limit() int {
+func (f Filters) Limit() int {
 	return f.PageSize
 }
 
 type Metadata struct {
-	Year         string              `json:"year"`
-	TeamID       types.TeamID        `json:"teamId,omitempty"`
-	CurrentPage  int                 `json:"current_page,omitempty"`
-	PageSize     int                 `json:"page_size,omitempty"`
-	FirstPage    int                 `json:"first_page,omitempty"`
-	LastPage     int                 `json:"last_page,omitempty"`
-	TotalRecords int                 `json:"total_records,omitempty"`
-	Search       map[string][]string `json:"search,omitempty"`
+	Year         string       `json:"year"`
+	TeamID       types.TeamID `json:"teamId,omitempty"`
+	CurrentPage  int          `json:"current_page,omitempty"`
+	PageSize     int          `json:"page_size,omitempty"`
+	FirstPage    int          `json:"first_page,omitempty"`
+	LastPage     int          `json:"last_page,omitempty"`
+	TotalRecords int          `json:"total_records,omitempty"`
 }
 
 // The calculateMetadata() function calculates the appropriate pagination metadata

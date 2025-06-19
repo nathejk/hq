@@ -6,6 +6,8 @@ networks:
   local:
   traefik:
     external: true
+  jetstream:
+    external: true
 
 services:
   gw:
@@ -22,14 +24,14 @@ services:
     labels:
       traefik.enable: true
       traefik.docker.network: traefik
-      traefik.http.routers.hq.rule: Host(`hq.dev.nathejk.dk`) || HostRegexp(`.+\.hq\.dev\.nathejk\.dk`)
+      traefik.http.routers.hq.rule: Host(`hq.dev.nathejk.dk`) || Host(`hq.local.nathejk.dk`) || HostRegexp(`.+\.hq\..+\.nathejk\.dk`)
 
   ui:
     build:
       context: .
       target: ui-dev
       dockerfile: docker/Dockerfile
-    #entrypoint: ["sleep", "infinity"]
+        #entrypoint: ["sleep", "infinity"]
     volumes:
     - ./vue:/app
     - vue:/app/node_modules
@@ -55,18 +57,19 @@ services:
     - go:/go
     networks:
     - local
+    - jetstream
     environment:
       #GO_BUILD_FLAGS: -race
-      STAN_DSN: stan://dev.nathejk.dk:4222/nathejk
-      JETSTREAM_DSN: nats://nats:4222
+      JETSTREAM_DSN: nats://dev.nathejk.dk:4222
       DB_DSN: root:ib@tcp(mysql:3306)/hq?parseTime=true
-      REDIS_ADDR: redis:6379
-      MONOLITH_BASEURL: https://natpas.nathejk.dk
+      SMS_DSN: cpsms://TOKEN@api.cpsms.dk
+      #REDIS_ADDR: redis:6379
+      #MONOLITH_BASEURL: https://natpas.nathejk.dk
       JWT_COOKIE_NAME: jwttoken
       AUTH_BASEURL: https://lukmigind.nathejk.dk
     depends_on:
     - gw
-    - redis
+    #- redis
     - mysql
 
   mysql:
@@ -93,22 +96,17 @@ services:
     - gw
     - mysql
 
-  redis:
-    image: redis:4.0-alpine3.8
-    entrypoint: redis-server --appendonly yes
-    networks:
-    - local
+#  redis:
+#    image: redis:4.0-alpine3.8
+#    entrypoint: redis-server --appendonly yes
+#    networks:
+#    - local
+#
+#  redis-commander:
+#    image: rediscommander/redis-commander:latest
+#    platform: linux/x86_64
+#    environment:
+#      REDIS_HOSTS: auth:redis:6379
+#    networks:
+#    - local
 
-  redis-commander:
-    image: rediscommander/redis-commander:latest
-    platform: linux/x86_64
-    environment:
-      REDIS_HOSTS: auth:redis:6379
-    networks:
-    - local
-
-  nats:
-    image: nats:2.10-alpine
-    command: -js
-    networks:
-    - local

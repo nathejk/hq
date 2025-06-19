@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"nathejk.dk/pkg/streaminterface"
+	"nathejk.dk/superfluids/streaminterface"
 )
 
 func TestSubject(t *testing.T) {
@@ -30,7 +30,7 @@ func TestSubject(t *testing.T) {
 		t.Run("FromStr:"+test.name, func(t *testing.T) {
 			both := test.dom
 			if test.typ != "" {
-				both += ":" + test.typ
+				both += "." + test.typ
 			}
 			s := streaminterface.SubjectFromStr(both)
 			if both != s.String() {
@@ -46,7 +46,7 @@ func TestSubject(t *testing.T) {
 		t.Run("FromParts:"+test.name, func(t *testing.T) {
 			both := test.dom
 			if test.typ != "" {
-				both += ":" + test.typ
+				both += "." + test.typ
 			}
 			s := streaminterface.SubjectFromParts(test.dom, test.typ)
 			if both != s.Subject() {

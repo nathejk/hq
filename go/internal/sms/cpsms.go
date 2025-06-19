@@ -43,6 +43,9 @@ func (s *cpsms) Send(phone, message string) error {
 		Message: message,
 	})
 	req, err := http.NewRequest("POST", s.apiurl, bytes.NewBuffer(jsonStr))
+	if err != nil {
+		return err
+	}
 	req.Header.Set("Authorization", "Basic "+s.apikey)
 	req.Header.Set("Content-Type", "application/json")
 

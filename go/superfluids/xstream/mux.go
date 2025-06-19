@@ -34,9 +34,9 @@ func (m *mux) Run(ctx context.Context) error {
 		return err
 	}
 
-	if m.opts.blockUntilLive {
-		//wait
-	}
+	//if m.opts.blockUntilLive {
+	//wait
+	//}
 	return nil
 }
 

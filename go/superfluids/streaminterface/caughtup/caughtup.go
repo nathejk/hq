@@ -3,7 +3,7 @@ package caughtup
 import (
 	"time"
 
-	"nathejk.dk/pkg/streaminterface"
+	"nathejk.dk/superfluids/streaminterface"
 )
 
 // CaughtupType is a sentinel used to communicate 'caughtup' for streams.
