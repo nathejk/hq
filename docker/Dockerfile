@@ -108,6 +108,6 @@ COPY --from=ui-builder /app/dist /www
 COPY docker/bin/init /init
 
 #HEALTHCHECK --interval=30s --timeout=15s --start-period=900s --retries=3 CMD test -f /tmp/healthy
-
+EXPOSE 80
 ENTRYPOINT ["/init"]
 CMD ["/api"]
