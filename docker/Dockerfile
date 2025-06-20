@@ -1,7 +1,7 @@
-ARG GIT_COMMIT
-ARG GIT_BRANCH
-ARG BUILD_NUMBER
-ARG BUILD_VERSION
+ARG GIT_COMMIT="none"
+ARG GIT_BRANCH="-"
+ARG BUILD_NUMBER="0"
+ARG BUILD_VERSION="0"
 
 # DEV - BASE
 FROM golang:1.23 AS api-dev
@@ -9,13 +9,14 @@ FROM golang:1.23 AS api-dev
 RUN mkdir -p /app/docker/bin
 WORKDIR /app
 
-ENV DEBIAN_FRONTEND noninteractive
+ENV DEBIAN_FRONTEND=noninteractive
 RUN set -eux; \
-	apt -qq update && \
-    apt install -qq -y --no-install-recommends \
+    apt-get -qq clean && \
+	apt-get -qq update && \
+    apt-get install -qq -y --no-install-recommends \
         bash \
         inotify-tools && \
-    apt -qq clean
+    apt-get -qq clean
 
 #RUN printf "#!/bin/sh\necho 'Please mount repo into /app'" > /app/docker/bin/init-dev && \
 #    chmod +x /app/docker/bin/init-dev
@@ -83,6 +84,10 @@ RUN npm run build
 # PROD
 FROM alpine:3.14.1 AS prod
 
+ARG GIT_COMMIT
+ARG GIT_BRANCH
+ARG BUILD_NUMBER
+ARG BUILD_VERSION
 ENV GIT_COMMIT=$GIT_COMMIT
 ENV GIT_BRANCH=$GIT_BRANCH
 ENV BUILD_NUMBER=$BUILD_NUMBER
