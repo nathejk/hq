@@ -11,6 +11,7 @@ import (
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/payment"
 	"nathejk.dk/nathejk/table/personnel"
+	"nathejk.dk/nathejk/table/spejder"
 )
 
 var (
@@ -33,6 +34,10 @@ type PersonnelInterface interface {
 type PaymentInterface interface {
 	GetAll(context.Context, types.TeamID) ([]*payment.Payment, error)
 	GetByReference(context.Context, string) (*payment.Payment, error)
+}
+type SpejderInterface interface {
+	GetAll(context.Context, spejder.Filter) ([]*spejder.Spejder, spejder.Metadata, error)
+	GetByID(context.Context, types.MemberID) (*spejder.Spejder, error)
 }
 
 type Models struct {
@@ -73,9 +78,10 @@ type Models struct {
 	Patrulje  PatruljeInterface
 	Personnel PersonnelInterface
 	Payment   PaymentInterface
+	Spejder   SpejderInterface
 }
 
-func NewModels(db *sql.DB, klan KlanInterface, patrulje PatruljeInterface, personnel PersonnelInterface, payment PaymentInterface) Models {
+func NewModels(db *sql.DB, klan KlanInterface, patrulje PatruljeInterface, personnel PersonnelInterface, payment PaymentInterface, spejder SpejderInterface) Models {
 	return Models{
 		Teams:       TeamModel{DB: db},
 		Members:     MemberModel{DB: db},
@@ -87,5 +93,6 @@ func NewModels(db *sql.DB, klan KlanInterface, patrulje PatruljeInterface, perso
 		Patrulje:    patrulje,
 		Personnel:   personnel,
 		Payment:     payment,
+		Spejder:     spejder,
 	}
 }

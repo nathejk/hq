@@ -85,6 +85,10 @@ func (app *application) showPatruljeHandler(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		log.Printf("GetSpejdere %q", err)
 	}
+	payments, err := app.models.Payment.GetAll(r.Context(), teamId)
+	if err != nil {
+		log.Printf("GetSpejdere %q", err)
+	}
 
 	config := TeamConfig{
 		MinMemberCount: 3,
@@ -96,7 +100,7 @@ func (app *application) showPatruljeHandler(w http.ResponseWriter, r *http.Reque
 	}
 	contact, _ := app.models.Teams.GetContact(teamId)
 
-	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"config": config, "team": team, "contact": contact, "members": members, "payments": []any{}}, nil)
+	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"config": config, "team": team, "contact": contact, "members": members, "payments": payments}, nil)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}

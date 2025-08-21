@@ -1,5 +1,5 @@
 <template>
-        <footer v-if="show" class=" sticky top-full bottom-0 w-full ">
+        <footer v-if="show" class="sticky top-[100vh] w-full">
             <div class="container mx-auto pt-5">
                 <div class="grid grid-cols-12 gap-4">
                     <div class="col-start-2">

@@ -23,6 +23,7 @@ import (
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/payment"
 	"nathejk.dk/nathejk/table/personnel"
+	"nathejk.dk/nathejk/table/spejder"
 	"nathejk.dk/pkg/sqlpersister"
 	"nathejk.dk/superfluids/jetstream"
 	"nathejk.dk/superfluids/streaminterface"
@@ -129,15 +130,16 @@ func main() {
 	patruljetable := patrulje.New(sqlw, db.DB())
 	personneltable := personnel.New(sqlw, db.DB())
 	paymenttable := payment.New(sqlw, db.DB())
+	spejdertable := spejder.New(sqlw, db.DB())
 
 	mux := xstream.NewMux(js)
-	mux.AddConsumer(table.NewSignup(sqlw), table.NewConfirm(sqlw), klantable, table.NewSenior(sqlw), patruljetable, table.NewPatruljeStatus(sqlw) /*table.NewPatruljeMerged(sqlw),*/, table.NewSpejder(sqlw), table.NewSpejderStatus(sqlw), personneltable, paymenttable)
+	mux.AddConsumer(table.NewSignup(sqlw), table.NewConfirm(sqlw), klantable, table.NewSenior(sqlw), patruljetable, table.NewPatruljeStatus(sqlw) /*table.NewPatruljeMerged(sqlw),, table.NewSpejder(sqlw)*/, table.NewSpejderStatus(sqlw), personneltable, paymenttable, spejdertable)
 	//mux.AddConsumer(table.NewSpejder(sqlw), table.NewSpejderStatus(sqlw))
 	if err := mux.Run(context.Background()); err != nil {
 		logger.PrintFatal(err, nil)
 	}
 
-	models := data.NewModels(db.DB(), klantable, patruljetable, personneltable, paymenttable)
+	models := data.NewModels(db.DB(), klantable, patruljetable, personneltable, paymenttable, spejdertable)
 
 	expvar.NewString("version").Set(version)
 	expvar.NewInt("timestamp").Set(time.Now().Unix())

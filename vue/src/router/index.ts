@@ -20,6 +20,12 @@ const router = createRouter({
       component: () => import('../views/PatruljeListView.vue')
     },
     {
+      path: '/patrulje/:teamId',
+      name: 'patrulje',
+      component: () => import('../views/PatruljeView.vue'),
+      props: true,
+    },
+    {
       path: '/badut',
       name: 'badutter',
       component: () => import('../views/BadutListView.vue')

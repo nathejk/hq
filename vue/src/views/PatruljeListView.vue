@@ -68,7 +68,11 @@ const getSeverity = (status) => {
         </div>
             </template>
             <Column expander />
-            <Column field="name" header="Navn" sortable></Column>
+            <Column field="name" header="Navn" sortable>
+                <template #body="{data}">
+                    <router-link :to="{  name: `patrulje`, params: { teamId: data.teamId } }">{{ data.name }}</router-link>
+                </template>
+            </Column>
             <Column field="group" header="Gruppe / Division" sortable></Column>
             <Column field="korps" header="Korps"></Column>
             <Column field="memberCount" header="Spejdere" dataType="numeric" ></Column>
@@ -90,6 +94,10 @@ const getSeverity = (status) => {
 <style>
 #patruljer td {
     padding: 0.25rem 0.75rem;
+}
+#patruljer a:hover {
+    color: #0000cc;
+    text-decoration:underline;
 }
 @media (min-width: 1024px) {
   .about {
