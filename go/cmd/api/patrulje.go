@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"errors"
 	"log"
 	"net/http"
@@ -52,7 +51,7 @@ func TShirtSizes() []SlugLabel {
 
 func (app *application) showPatruljeListHandler(w http.ResponseWriter, r *http.Request) {
 	filter := patrulje.Filter{YearSlug: "2025"}
-	teams, err := app.models.Patrulje.GetAll(context.Background(), filter)
+	teams, err := app.models.Patrulje.GetAll(r.Context(), filter)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}

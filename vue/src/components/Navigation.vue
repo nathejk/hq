@@ -135,7 +135,7 @@ import 'primeicons/primeicons.css'
         <div class="container mx-auto">
             <div class="flex justify-between items-center">
                 <!-- Logo and Brand Name -->
-      <a class="font-nathejk text-2xl leading-relaxed pr-5 uppercase" href="./"><FontAwesomeIcon :icon="['fas', 'moon']" flip="vertical" class="align-top text-yellow-400" />Nathejk</a>
+      <a class="font-nathejk text-2xl leading-relaxed pr-5 uppercase" href="/"><FontAwesomeIcon :icon="['fas', 'moon']" flip="vertical" class="align-top text-yellow-400" />Nathejk</a>
                 
                 <!-- Navigation Icons -->
                 <div class="flex">
