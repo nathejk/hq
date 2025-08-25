@@ -20,14 +20,20 @@ func (app *application) homeHandler(w http.ResponseWriter, r *http.Request) {
 		teamCount++
 		memberCount = memberCount + t.MemberCount
 	}
+	badutCount := 0
 	badutter, _ := app.models.Personnel.GetAll(r.Context(), personnel.Filter{YearSlug: "2025", UserTypes: []string{"gøgler"}})
-
+	for _, b := range badutter {
+		if b.PaidAmount == 0 {
+			continue
+		}
+		badutCount++
+	}
 	config := map[string]any{
 		"timeCountdown": app.config.countdown.time,
 		"videos":        app.config.countdown.videos,
 		"patruljeCount": teamCount,
 		"spejderCount":  memberCount,
-		"badutCount":    len(badutter),
+		"badutCount":    badutCount,
 	}
 	err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"config": config}, nil)
 	if err != nil {
