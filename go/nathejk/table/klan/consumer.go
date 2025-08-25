@@ -22,6 +22,7 @@ func (_ *consumer) Consumes() []streaminterface.Subject {
 		streaminterface.SubjectFromStr("NATHEJK:*.klan.*.updated"),
 		streaminterface.SubjectFromStr("NATHEJK:*.klan.*.signedup"),
 		streaminterface.SubjectFromStr("NATHEJK.*.klan.*.status.changed"),
+		streaminterface.SubjectFromStr("NATHEJK.*.klan.*.assigned"),
 	}
 }
 
@@ -76,6 +77,17 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 		if err != nil {
 			log.Fatalf("Error consuming sql %q", err)
 		}
+
+	case msg.Subject().Match("NATHEJK.*.klan.*.assigned"):
+		var body messages.NathejkKlanAssigned
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		err := c.w.Consume(fmt.Sprintf("UPDATE klan SET lok=%q WHERE teamId=%q", body.Lok, body.TeamID))
+		if err != nil {
+			log.Fatalf("Error consuming sql %q", err)
+		}
+
 	default:
 		log.Printf("Unhandled message %q", msg.Subject().Subject())
 		/*

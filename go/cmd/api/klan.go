@@ -63,6 +63,34 @@ func (app *application) showKlanHandler(w http.ResponseWriter, r *http.Request) 
 		app.ServerErrorResponse(w, r, err)
 	}
 }
+func (app *application) patchKlanHandler(w http.ResponseWriter, r *http.Request) {
+	teamID := types.TeamID(app.ReadNamedParam(r, "id"))
+	var input struct {
+		Lok *string `json:"lok"`
+	}
+	if err := app.ReadJSON(w, r, &input); err != nil {
+		log.Printf("ReadJSON %q", err)
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+
+	if _, err := app.models.Teams.GetKlan(teamID); err != nil {
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+	if input.Lok != nil {
+		if err := app.commands.Team.AssignToLok(teamID, *input.Lok); err != nil {
+			app.BadRequestResponse(w, r, err)
+			return
+		}
+	}
+	team, _ := app.models.Teams.GetKlan(teamID)
+	err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"team": team}, nil)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
 func (app *application) updateKlanHandler(w http.ResponseWriter, r *http.Request) {
 	teamID := types.TeamID(app.ReadNamedParam(r, "id"))
 	var input struct {

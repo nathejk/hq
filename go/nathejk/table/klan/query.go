@@ -45,7 +45,9 @@ type querier struct {
 	}
 */
 func (q *querier) GetAll(ctx context.Context, filter Filter) ([]Klan, error) {
-	query := `SELECT t.teamId, t.name, t.groupName, t.korps, t.memberCount, t.signupStatus
+	query := `SELECT t.teamId, t.name, t.groupName, t.korps, t.signupStatus, t.lok,
+			(SELECT COUNT(*) FROM senior s where t.teamId = s.teamId) memberCount,
+			(SELECT COALESCE(SUM(amount), 0) FROM payment where t.teamId = payment.orderForeignKey AND status IN ('reserved', 'received')) as paidAmount
 		FROM klan t
 		JOIN patruljestatus ts ON t.teamId = ts.teamId AND t.signupStatus != ''
 		` //WHERE (LOWER(p.year) = LOWER(?) OR ? = '')`
@@ -60,7 +62,7 @@ func (q *querier) GetAll(ctx context.Context, filter Filter) ([]Klan, error) {
 	klans := []Klan{}
 	for rows.Next() {
 		var k Klan
-		if err := rows.Scan(&k.ID, &k.Name, &k.Group, &k.Korps, &k.MemberCount, &k.Status); err != nil {
+		if err := rows.Scan(&k.ID, &k.Name, &k.Group, &k.Korps, &k.Status, &k.Lok, &k.MemberCount, &k.PaidAmount); err != nil {
 			//if err := rows.Scan(&klan.TeamID); err != nil {
 			return nil, err
 		}
@@ -79,7 +81,7 @@ func (q *querier) GetByID(ctx context.Context, teamID types.TeamID) (*Klan, erro
 		return nil, tables.ErrRecordNotFound
 	}
 
-	query := `SELECT t.teamId, t.name, t.groupName, t.korps, t.memberCount, t.signupStatus
+	query := `SELECT t.teamId, t.name, t.groupName, t.korps, t.memberCount, t.signupStatus, t.lok
 		FROM klan t
 		JOIN patruljestatus ts ON t.teamId = ts.teamID
 		WHERE t.teamId = ?`
@@ -91,6 +93,7 @@ func (q *querier) GetByID(ctx context.Context, teamID types.TeamID) (*Klan, erro
 		&t.Korps,
 		&t.MemberCount,
 		&t.Status,
+		&t.Lok,
 	)
 	if err != nil {
 		switch {

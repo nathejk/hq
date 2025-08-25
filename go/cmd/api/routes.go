@@ -24,6 +24,7 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodGet, "/api/klan", app.showKlanListHandler)
 	router.HandlerFunc(http.MethodGet, "/api/klan/:id", app.showKlanHandler)
 	router.HandlerFunc(http.MethodPut, "/api/klan/:id", app.updateKlanHandler)
+	router.HandlerFunc(http.MethodPatch, "/api/klan/:id", app.patchKlanHandler)
 	router.HandlerFunc(http.MethodGet, "/api/badut", app.showBadutListHandler)
 	router.HandlerFunc(http.MethodGet, "/api/mail/recipients", app.mailRecipientsHandler)
 	/*

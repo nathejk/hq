@@ -12,6 +12,7 @@ type Commands struct {
 		Signup(types.TeamType, *messages.NathejkTeamSignedUp) error
 		UpdatePatrulje(types.TeamID, Patrulje, Contact, []Spejder) error
 		UpdateKlan(types.TeamID, Klan, []Senior) error
+		AssignToLok(types.TeamID, string) error
 	}
 }
 

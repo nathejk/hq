@@ -189,6 +189,20 @@ func (c *team) UpdateKlan(teamID types.TeamID, team Klan, members []Senior) erro
 	return nil
 }
 
+func (c *team) AssignToLok(teamID types.TeamID, lok string) error {
+	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.klan.%s.assigned", "2025", teamID)))
+	msg.SetBody(&messages.NathejkKlanAssigned{
+		TeamID: teamID,
+		Lok:    lok,
+	})
+	msg.SetMeta(&messages.Metadata{Producer: "tilmelding-api"})
+	if err := c.p.Publish(msg); err != nil {
+		return err
+	}
+	return nil
+	//klan, _ := c.q.GetKlan(teamID)
+}
+
 /*
 func (c *team) ConfirmEmail(secret string) error {
 

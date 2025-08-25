@@ -18,6 +18,7 @@ type Klan struct {
 	Korps       string             `json:"korps"`
 	MemberCount int                `json:"memberCount"`
 	Lok         string             `json:"lok"`
+	PaidAmount  int                `json:"paidAmount"`
 }
 type Klan2 struct {
 	TeamID       types.TeamID       `sql:"teamId"`

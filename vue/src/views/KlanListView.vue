@@ -9,14 +9,14 @@ const klans = ref([])
 const load = async () => {
   try {
     const response = await http.get('/klan');
-    klans.value = response.data.teams;
+    klans.value = response.data.teams.filter(k => k.paidAmount > 0);
     console.log("læams", klans)
   } catch (error) {
     console.log('klan list load failed', error);
   }
 }
 const selectedValue = ref(null);
-const expandedRowGroups = ref([1,2,3,4,5]);
+const expandedRowGroups = ref(['1','2','3','4','5']);
 const toast = useToast();
 const onRowGroupExpand = (event) => {
  console.log(expandedRowGroups.value)
@@ -31,6 +31,18 @@ const calculateCustomerTotal = (lok) => {
         for (let klan of klans.value) {
             if (klan.lok === lok) {
                 total++;
+            }
+        }
+    }
+
+    return total;
+};
+const calculateMemberCount = (lok) => {
+    let total = 0;
+    if (klans.value) {
+        for (let klan of klans.value) {
+            if (klan.lok === lok) {
+                total+=klan.memberCount;
             }
         }
     }
@@ -63,7 +75,15 @@ const lokoptions = [
     { label: 'LOK 5', value:5 },
     { label: 'Intet', value:null },
 ];
-const updateLok = (e, o) => {
+const updateLok = async (e, o) => {
+  try {
+  console.log(e.value)
+    await http.patch(`/klan/${o.data.id}`, {
+      lok: ''+e.value.value,
+    });
+  } catch (error) {
+    console.log('udate lok failed', error);
+  }
     klans.value.map(t => {
         t.lok = (t.id == o.data.id) ? e.value.value : t.lok
     })
@@ -102,11 +122,11 @@ const updateLok = (e, o) => {
     <template #groupheader="row" style="background:yellow" :pt="{class:'bg-sky-600'}">
                     <span class="align-middle ml-2 leading-normal"><span class="font-bold" v-if="row.data.lok > 0">LOK {{ row.data.lok }}</span><span v-else>ingen placering</span></span>
                     <div class="float-right"><span class="font-bold">{{ calculateCustomerTotal(row.data.lok) }}</span><span class="pl-1">klaner</span></div>
-                    <div class="float-right"><span class="font-bold">{{ calculateCustomerTotal(row.data.lok) }}</span><span class="pl-1 pr-5">banditter</span></div>
+                    <div class="float-right"><span class="font-bold">{{ calculateMemberCount(row.data.lok) }}</span><span class="pl-1 pr-5">banditter</span></div>
             </template>
             <Column dataType="numeric" header="LOK">
                 <template #body="row">
-                    {{ row.data.lok }}
+                    {{ row.data.lok || '&times;' }}
                 </template>
                 <template #editor="row">
                     <FloatLabel>
@@ -126,6 +146,7 @@ const updateLok = (e, o) => {
                 </template-->
             </Column>
             <Column field="korps" header="Korps" style="width: 20%"></Column>
+            <Column field="memberCount" header="Seniore" style="width: 20%"></Column>
             <Column field="status" header="Status" style="width: 20%">
                 <template #body="slotProps">
                     <Tag :value="slotProps.data.status" :severity="getSeverity(slotProps.data.status)" />
