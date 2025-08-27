@@ -19,7 +19,7 @@ func (q *querier) GetAll(ctx context.Context, filters Filter) ([]*Patrulje, erro
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	query := `SELECT p.teamId, teamNumber, name, groupName, korps, liga,
+	query := `SELECT p.teamId, teamNumber, name, groupName, korps, liga, contactName, contactPhone, contactEmail, contactRole,
 			(SELECT COUNT(*) FROM spejder s where p.teamId = s.teamId) memberCount,
 			(SELECT COALESCE(SUM(amount), 0) FROM payment where p.teamId = payment.orderForeignKey AND status IN ('reserved', 'received')) as paidAmount
 		FROM patrulje p
@@ -35,7 +35,7 @@ func (q *querier) GetAll(ctx context.Context, filters Filter) ([]*Patrulje, erro
 	patruljer := []*Patrulje{}
 	for rows.Next() {
 		var p Patrulje
-		if err := rows.Scan(&p.TeamID, &p.TeamNumber, &p.Name, &p.Group, &p.Korps, &p.Liga, &p.MemberCount, &p.PaidAmount); err != nil {
+		if err := rows.Scan(&p.TeamID, &p.TeamNumber, &p.Name, &p.Group, &p.Korps, &p.Liga, &p.ContactName, &p.ContactPhone, &p.ContactEmail, &p.ContactRole, &p.MemberCount, &p.PaidAmount); err != nil {
 			return nil, err
 		}
 		patruljer = append(patruljer, &p)
