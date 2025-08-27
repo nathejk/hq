@@ -127,7 +127,7 @@ const updateLok = async (e, o) => {
             </template>
             <Column dataType="numeric" header="LOK">
                 <template #body="row">
-                    {{ row.data.lok || '&times;' }}
+                    <span class="lok cursor-pointer">{{ row.data.lok || '&times;' }}</span>
                 </template>
                 <template #editor="row">
                     <FloatLabel>
@@ -165,5 +165,9 @@ const updateLok = async (e, o) => {
     display: flex;
     align-items: center;
   }
+}
+ tr:hover .lok {
+    color:#000099;
+    text-decoration:underline;
 }
 </style>
