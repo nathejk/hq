@@ -92,6 +92,7 @@ const updateLok = async (e, o) => {
 
 <template>
     <h1 class="font-nathejk text-2xl">Banditter</h1>
+    <a href="/api/excel/klan">Eksport til Excel</a>
     <div class="card">
         <DataTable v-model:expandedRowGroups="expandedRowGroups" :value="klans"  editMode="cell" tableStyle="min-width: 50rem"
                 expandableRowGroups rowGroupMode="subheader" groupRowsBy="lok" @rowgroup-expand="onRowGroupExpand" @rowgroup-collapse="onRowGroupCollapse"

@@ -23,6 +23,7 @@ import (
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/payment"
 	"nathejk.dk/nathejk/table/personnel"
+	"nathejk.dk/nathejk/table/signup"
 	"nathejk.dk/nathejk/table/spejder"
 	"nathejk.dk/pkg/sqlpersister"
 	"nathejk.dk/superfluids/jetstream"
@@ -126,6 +127,7 @@ func main() {
 
 	sqlw := sqlpersister.New(db.DB())
 
+	signuptable := signup.New(sqlw, db.DB())
 	klantable := klan.New(sqlw, db.DB())
 	patruljetable := patrulje.New(sqlw, db.DB())
 	personneltable := personnel.New(sqlw, db.DB())
@@ -133,7 +135,7 @@ func main() {
 	spejdertable := spejder.New(sqlw, db.DB())
 
 	mux := xstream.NewMux(js)
-	mux.AddConsumer(table.NewSignup(sqlw), table.NewConfirm(sqlw), klantable, table.NewSenior(sqlw), patruljetable, table.NewPatruljeStatus(sqlw) /*table.NewPatruljeMerged(sqlw),, table.NewSpejder(sqlw)*/, table.NewSpejderStatus(sqlw), personneltable, paymenttable, spejdertable)
+	mux.AddConsumer(signuptable, table.NewConfirm(sqlw), klantable, table.NewSenior(sqlw), patruljetable, table.NewPatruljeStatus(sqlw) /*table.NewPatruljeMerged(sqlw),, table.NewSpejder(sqlw)*/, table.NewSpejderStatus(sqlw), personneltable, paymenttable, spejdertable)
 	//mux.AddConsumer(table.NewSpejder(sqlw), table.NewSpejderStatus(sqlw))
 	if err := mux.Run(context.Background()); err != nil {
 		logger.PrintFatal(err, nil)
