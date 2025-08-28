@@ -12,6 +12,7 @@ import (
 
 type Person struct {
 	ID          types.UserID       `json:"id"`
+	UserType    types.TeamType     `json:"userType"`
 	Status      types.SignupStatus `json:"status"`
 	Name        string             `json:"name"`
 	Email       types.EmailAddress `json:"email"`

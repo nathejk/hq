@@ -49,6 +49,7 @@ const getSeverity = (status) => {
 
 <template>
     <h1 class="font-nathejk text-2xl">Gøglere</h1>
+    <a href="/api/excel/personnel">Eksport til Excel</a>
     <div class="card" id="badut">
         <DataTable :value="badutter" sortMode="single" sortField="lok" :sortOrder="1" :stripedRows="true"
             v-model:expandedRows="expandedRows" dataKey="id" @rowExpand="onRowExpand" @rowCollapse="onRowCollapse"

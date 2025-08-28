@@ -6,11 +6,13 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/nathejk/shared-go/types"
 	"github.com/xuri/excelize/v2"
 
 	"nathejk.dk/internal/data"
 	"nathejk.dk/nathejk/table/klan"
 	"nathejk.dk/nathejk/table/patrulje"
+	"nathejk.dk/nathejk/table/personnel"
 )
 
 func (app *application) excelPatruljeHandler(w http.ResponseWriter, r *http.Request) {
@@ -208,6 +210,88 @@ func (app *application) excelKlanHandler(w http.ResponseWriter, r *http.Request)
 
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Disposition", "attachment; filename="+"banditter-"+time.Now().Format("20060102150405")+".xlsx")
+	w.Header().Set("Content-Transfer-Encoding", "binary")
+	w.Header().Set("Expires", "0")
+	xlsx.Write(w)
+}
+
+func (app *application) excelPersonnelHandler(w http.ResponseWriter, r *http.Request) {
+	filter := personnel.Filter{}
+	personnel, err := app.models.Personnel.GetAll(r.Context(), filter)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+
+	xlsx := excelize.NewFile()
+	styleTitle, _ := xlsx.NewStyle(&excelize.Style{
+		Fill: excelize.Fill{
+			Type:    "pattern",
+			Color:   []string{"#000080"}, // navy blue
+			Pattern: 1,
+		},
+		Font:      &excelize.Font{Bold: true, Color: "FFFFFF"},
+		Alignment: &excelize.Alignment{Horizontal: "center"},
+	})
+	zoomScale := 150.0
+	sheetViewOptions := &excelize.ViewOptions{
+		ZoomScale: &zoomScale,
+	}
+
+	xlsx.SetSheetView("Sheet1", 0, sheetViewOptions)
+	xlsx.SetRowStyle("Sheet1", 1, 1, styleTitle)
+	headers := []string{"TeamID", "Navn", "Gruppe", "Korps", "Klan", "T-shirt", "Betalt", "Email", "Telefon", "Bil", "Sæder", "Dage", "Sytten+", "Vegetar"}
+	widths := []int{40, 30, 30, 10, 30, 10, 10, 30, 10, 10, 10, 10, 10, 10}
+	for i, header := range headers {
+		col := string(rune(65 + i))
+		xlsx.SetCellValue("Sheet1", fmt.Sprintf("%s%d", col, 1), header)
+		xlsx.SetColWidth("Sheet1", col, col, float64(widths[i]))
+	}
+
+	xlsx.NewSheet("Sheet2")
+	xlsx.SetSheetView("Sheet2", 0, sheetViewOptions)
+	xlsx.SetRowStyle("Sheet2", 1, 1, styleTitle)
+	headers = []string{"TeamID", "Navn", "Gruppe", "Korps", "Klan", "T-shirt", "Betalt", "Email", "Telefon", "Enhed", "Vegetar"}
+	widths = []int{40, 30, 30, 10, 30, 10, 10, 30, 10, 10, 10}
+	for i, header := range headers {
+		col := string(rune(65 + i))
+		xlsx.SetCellValue("Sheet2", fmt.Sprintf("%s%d", col, 1), header)
+		xlsx.SetColWidth("Sheet2", col, col, float64(widths[i]))
+	}
+
+	row1, row2 := 2, 2
+	for _, person := range personnel {
+		signup, _ := app.models.Signup.GetByID(types.TeamID(person.ID))
+		row := []any{
+			person.ID,
+			person.Name,
+			person.Group,
+			person.Korps,
+			person.Klan,
+			person.TshirtSize,
+			person.PaidAmount / 100,
+			signup.EmailPending,
+			signup.PhonePending,
+		}
+		if person.UserType == "gøgler" {
+			row = append(row, person.Additionals["car"], person.Additionals["seatcount"], person.Additionals["days"], person.Additionals["seventeen"], person.Additionals["diet"])
+			for j, value := range row {
+				xlsx.SetCellValue("Sheet1", fmt.Sprintf("%s%d", string(rune(65+j)), row1), value)
+			}
+			row1++
+		} else {
+			row = append(row, person.Additionals["department"], person.Additionals["diet"])
+			for j, value := range row {
+				xlsx.SetCellValue("Sheet2", fmt.Sprintf("%s%d", string(rune(65+j)), row2), value)
+			}
+			row2++
+		}
+	}
+
+	xlsx.SetSheetName("Sheet1", "Gøglere")
+	xlsx.SetSheetName("Sheet2", "Hjælpere")
+
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", "attachment; filename="+"personnel-"+time.Now().Format("20060102150405")+".xlsx")
 	w.Header().Set("Content-Transfer-Encoding", "binary")
 	w.Header().Set("Expires", "0")
 	xlsx.Write(w)

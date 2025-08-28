@@ -16,7 +16,7 @@ type querier struct {
 }
 
 func (q *querier) GetAll(ctx context.Context, filter Filter) ([]*Person, error) {
-	query := `SELECT userId, name, phone, email, groupName, korps, klan, signupStatus, tshirtSize, additionals,
+	query := `SELECT userId, userType, name, phone, email, groupName, korps, klan, signupStatus, tshirtSize, additionals,
 		(SELECT COALESCE(SUM(amount),0) FROM payment WHERE userId = orderForeignKey AND status IN ('reserved', 'received')) as paidAmount
 		FROM personnel
 		WHERE (LOWER(year) = LOWER(?) OR ? = '')`
@@ -32,7 +32,7 @@ func (q *querier) GetAll(ctx context.Context, filter Filter) ([]*Person, error) 
 	for rows.Next() {
 		var p Person
 		var additionals []byte
-		if err := rows.Scan(&p.ID, &p.Name, &p.Phone, &p.Email, &p.Group, &p.Korps, &p.Klan, &p.Status, &p.TshirtSize, &additionals, &p.PaidAmount); err != nil {
+		if err := rows.Scan(&p.ID, &p.UserType, &p.Name, &p.Phone, &p.Email, &p.Group, &p.Korps, &p.Klan, &p.Status, &p.TshirtSize, &additionals, &p.PaidAmount); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(additionals, &p.Additionals); err != nil {
