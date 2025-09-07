@@ -139,3 +139,41 @@ func (app *application) updatePatruljeHandler(w http.ResponseWriter, r *http.Req
 		app.ServerErrorResponse(w, r, err)
 	}
 }
+func (app *application) startPatruljeHandler(w http.ResponseWriter, r *http.Request) {
+	teamID := types.TeamID(app.ReadNamedParam(r, "id"))
+	var input struct {
+		TeamID  types.TeamID `json:"teamId"`
+		Members []struct {
+			MemberID    types.MemberID    `json:"memberId"`
+			Name        string            `json:"name"`
+			Phone       types.PhoneNumber `json:"phone"`
+			PhoneParent types.PhoneNumber `json:"phoneParent"`
+			Starter     bool              `json:"starter"`
+		} `json:"members"`
+	}
+	if err := app.ReadJSON(w, r, &input); err != nil {
+		log.Printf("ReadJSON %q", err)
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+	var members []commands.StartPatruljeMember
+	for _, m := range input.Members {
+		members = append(members, commands.StartPatruljeMember{MemberID: m.MemberID, Phone: m.Phone, PhoneParent: m.PhoneParent, Starter: m.Starter})
+	}
+	err := app.commands.Team.StartPatrulje(teamID, members)
+	if err != nil {
+		log.Printf("StartPatrulje  %q", err)
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+	team, err := app.models.Teams.GetPatrulje(teamID)
+	if err != nil {
+		log.Printf("Teams.GetPatrulje  %q", err)
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"team": team}, nil)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}

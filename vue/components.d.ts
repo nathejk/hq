@@ -35,6 +35,7 @@ declare module 'vue' {
     Tag: typeof import('primevue/tag')['default']
     TheWelcome: typeof import('./src/components/TheWelcome.vue')['default']
     Toast: typeof import('primevue/toast')['default']
+    ToggleSwitch: typeof import('primevue/toggleswitch')['default']
     TreeSelect: typeof import('primevue/treeselect')['default']
     WelcomeItem: typeof import('./src/components/WelcomeItem.vue')['default']
   }

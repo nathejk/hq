@@ -19,12 +19,18 @@ type teamQuerier interface {
 type team struct {
 	p streaminterface.Publisher
 	q teamQuerier
+
+	producerSlug string
+	yearSlug     string
 }
 
 func NewTeam(p streaminterface.Publisher, q teamQuerier) *team {
 	return &team{
 		p: p,
 		q: q,
+
+		producerSlug: "hq-api",
+		yearSlug:     "2025",
 	}
 }
 
@@ -105,6 +111,84 @@ func (c *team) UpdatePatrulje(teamID types.TeamID, team Patrulje, contact Contac
 		}
 	}
 
+	return nil
+}
+
+type StartPatruljeMember struct {
+	MemberID    types.MemberID
+	Phone       types.PhoneNumber
+	PhoneParent types.PhoneNumber
+	Starter     bool
+}
+
+func (c *team) StartPatrulje(teamID types.TeamID, members []StartPatruljeMember) error {
+	body := &messages.NathejkTeamStarted{
+		TeamID: teamID,
+	}
+	for _, m := range members {
+		if m.Starter {
+			body.Members = append(body.Members, messages.NathejkTeamStarted_Member{
+				MemberID:      m.MemberID,
+				Phone:         m.Phone,
+				PhoneGuardian: m.PhoneParent,
+			})
+			continue
+		}
+		msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.spejder.%s.deleted", c.yearSlug, m.MemberID)))
+		msg.SetBody(&messages.NathejkMemberDeleted{
+			MemberID: m.MemberID,
+			TeamID:   teamID,
+		})
+		msg.SetMeta(&messages.Metadata{Producer: c.producerSlug})
+		if err := c.p.Publish(msg); err != nil {
+			return err
+		}
+	}
+
+	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK.%s.patrulje.%s.started", c.yearSlug, teamID)))
+	msg.SetBody(body)
+	msg.SetMeta(&messages.Metadata{Producer: c.producerSlug})
+	if err := c.p.Publish(msg); err != nil {
+		return err
+	}
+	/*
+		for _, m := range members {
+			if m.Deleted {
+				msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.spejder.%s.deleted", c.yearSlug, m.MemberID)))
+				msg.SetBody(&messages.NathejkMemberDeleted{
+					MemberID: m.MemberID,
+					TeamID:   teamID,
+				})
+				msg.SetMeta(&messages.Metadata{Producer: c.producerSlug})
+				if err := c.p.Publish(msg); err != nil {
+					return err
+				}
+				continue
+			}
+
+			// TODO test if MemberID exits or not
+			if m.MemberID == "" {
+				m.MemberID = types.MemberID(uuid.New().String())
+			}
+			msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.spejder.%s.updated", "2024", m.MemberID)))
+			msg.SetBody(&messages.NathejkScoutUpdated{
+				MemberID:     m.MemberID,
+				TeamID:       teamID,
+				Name:         m.Name,
+				Address:      m.Address,
+				PostalCode:   m.PostalCode,
+				Email:        m.Email,
+				Phone:        m.Phone,
+				PhoneContact: m.PhoneContact,
+				BirthDate:    m.Birthday,
+				TShirtSize:   m.TShirtSize,
+			})
+			msg.SetMeta(&messages.Metadata{Producer: "tilmelding-api"})
+			if err := c.p.Publish(msg); err != nil {
+				return err
+			}
+		}
+	*/
 	return nil
 }
 
@@ -190,12 +274,12 @@ func (c *team) UpdateKlan(teamID types.TeamID, team Klan, members []Senior) erro
 }
 
 func (c *team) AssignToLok(teamID types.TeamID, lok string) error {
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.klan.%s.assigned", "2025", teamID)))
+	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.klan.%s.assigned", c.yearSlug, teamID)))
 	msg.SetBody(&messages.NathejkKlanAssigned{
 		TeamID: teamID,
 		Lok:    lok,
 	})
-	msg.SetMeta(&messages.Metadata{Producer: "tilmelding-api"})
+	msg.SetMeta(&messages.Metadata{Producer: c.producerSlug})
 	if err := c.p.Publish(msg); err != nil {
 		return err
 	}

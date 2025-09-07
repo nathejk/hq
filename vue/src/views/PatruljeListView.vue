@@ -3,6 +3,10 @@ import { ref, onMounted } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import { FilterMatchMode } from '@primevue/core/api';
 import { http } from '@/plugins/axios';
+import PatruljeEmbeddedView, {
+   rewardLevel,
+   rewardLevels,
+} from '@/views/PatruljeEmbeddedView.vue';
 
 const toast = useToast();
 
@@ -33,13 +37,13 @@ const onRowCollapse = (event) => {
 
 const getSeverity = (status) => {
     switch (status) {
-        case 'unqualified':
+        case 'unqualified', 'PAY':
             return 'danger';
 
-        case 'qualified':
+        case 'qualified', 'STARTED':
             return 'success';
 
-        case 'new':
+        case 'new', 'PAID':
             return 'info';
 
         case 'negotiation':
@@ -79,14 +83,12 @@ const getSeverity = (status) => {
             <Column field="memberCount" header="Spejdere" dataType="numeric" ></Column>
             <Column field="status" header="Status">
                 <template #body="{data}">
-                    <Tag :value="data.paidAmount/100" :severity="getSeverity(data.status)" />
+                    <Tag :value="data.paidAmount/100" :severity="getSeverity(data.signupStatus)" />
                 </template>
             </Column>
             <Column field="date" header="Date"></Column>
             <template #expansion="{data}">
-                <div class="">
-                    {{ data }}
-                </div>
+                <PatruljeEmbeddedView :teamId="data.teamId" />
             </template>
         </DataTable>
     </div>

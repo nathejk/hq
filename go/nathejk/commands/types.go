@@ -31,6 +31,7 @@ type Contact struct {
 type Spejder struct {
 	MemberID     types.MemberID     `json:"memberId"`
 	Deleted      bool               `json:"deleted"`
+	Started      bool               `json:"started"`
 	Name         string             `json:"name"`
 	Address      string             `json:"address"`
 	PostalCode   string             `json:"postalCode"`

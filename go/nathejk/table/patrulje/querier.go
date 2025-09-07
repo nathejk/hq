@@ -19,8 +19,9 @@ func (q *querier) GetAll(ctx context.Context, filters Filter) ([]*Patrulje, erro
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 
-	query := `SELECT p.teamId, teamNumber, name, groupName, korps, liga, contactName, contactPhone, contactEmail, contactRole,
+	query := `SELECT p.teamId, teamNumber, name, groupName, korps, liga, contactName, contactPhone, contactEmail, contactRole, signupStatus,
 			(SELECT COUNT(*) FROM spejder s where p.teamId = s.teamId) memberCount,
+			(SELECT COUNT(*) FROM spejder s where p.teamId = s.teamId AND s.tshirtSize != '') tshirtCount,
 			(SELECT COALESCE(SUM(amount), 0) FROM payment where p.teamId = payment.orderForeignKey AND status IN ('reserved', 'received')) as paidAmount
 		FROM patrulje p
 		WHERE (LOWER(p.year) = LOWER(?) OR ? = '')`
@@ -35,8 +36,17 @@ func (q *querier) GetAll(ctx context.Context, filters Filter) ([]*Patrulje, erro
 	patruljer := []*Patrulje{}
 	for rows.Next() {
 		var p Patrulje
-		if err := rows.Scan(&p.TeamID, &p.TeamNumber, &p.Name, &p.Group, &p.Korps, &p.Liga, &p.ContactName, &p.ContactPhone, &p.ContactEmail, &p.ContactRole, &p.MemberCount, &p.PaidAmount); err != nil {
+		if err := rows.Scan(&p.TeamID, &p.TeamNumber, &p.Name, &p.Group, &p.Korps, &p.Liga, &p.ContactName, &p.ContactPhone, &p.ContactEmail, &p.ContactRole, &p.SignupStatus, &p.MemberCount, &p.TshirtCount, &p.PaidAmount); err != nil {
 			return nil, err
+		}
+		payableAmount := p.TshirtCount*175 + p.MemberCount*250
+		if p.SignupStatus != "" {
+		} else if p.PaidAmount == 0 {
+			p.SignupStatus = types.SignupStatusPay
+		} else if p.PaidAmount >= payableAmount {
+			p.SignupStatus = types.SignupStatusPaid
+		} else {
+			p.SignupStatus = types.SignupStatusSemipaid
 		}
 		patruljer = append(patruljer, &p)
 	}

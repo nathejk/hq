@@ -11,6 +11,7 @@ type Commands struct {
 	Team interface {
 		Signup(types.TeamType, *messages.NathejkTeamSignedUp) error
 		UpdatePatrulje(types.TeamID, Patrulje, Contact, []Spejder) error
+		StartPatrulje(types.TeamID, []StartPatruljeMember) error
 		UpdateKlan(types.TeamID, Klan, []Senior) error
 		AssignToLok(types.TeamID, string) error
 	}

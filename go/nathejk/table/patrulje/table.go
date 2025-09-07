@@ -23,6 +23,7 @@ type Patrulje struct {
 	ContactEmail types.EmailAddress `json:"contactEmail"`
 	ContactRole  string             `json:"contactRole"`
 	MemberCount  int                `json:"memberCount"`
+	TshirtCount  int                `json:"tshirtCount"`
 	SignupStatus types.SignupStatus `json:"signupStatus"`
 	PaidAmount   int                `json:"paidAmount"`
 }
