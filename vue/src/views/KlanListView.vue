@@ -88,6 +88,9 @@ const updateLok = async (e, o) => {
         t.lok = (t.id == o.data.id) ? e.value.value : t.lok
     })
 }
+const linkToSignUp = (id) => {
+    window.open("http://tilmelding.nathejk.dk/klan/" + id, '_blank')
+}
 </script>
 
 <template>
@@ -153,7 +156,12 @@ const updateLok = async (e, o) => {
                     <Tag :value="slotProps.data.status" :severity="getSeverity(slotProps.data.status)" />
                 </template>
             </Column>
-            <Column field="date" header="Date" style="width: 20%"></Column>
+            <Column field="date" header="" >
+                <template #body="row">
+        <Button label="Tilmelding" size="small" icon="pi pi-external-link" iconPos="right" @click="linkToSignUp(row.data.id)" />
+                </template>
+
+            </Column>
         </DataTable>
     </div>
 </template>
