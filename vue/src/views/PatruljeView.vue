@@ -64,7 +64,7 @@ const linkToSignUp = () => {
 
 <template>
     <div class="card" id="patruljer">
-        <h1 class="font-nathejk text-2xl">&times;&times;&times; - &times; {{ patrulje.name }}</h1>
+        <h1 class="font-nathejk text-2xl">{{ patrulje.number | '&times;' }} - &times; {{ patrulje.name }}</h1>
 
         <Button label="Tilmelding" icon="pi pi-external-link" iconPos="right" @click="linkToSignUp" />
 

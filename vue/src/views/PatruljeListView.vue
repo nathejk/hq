@@ -73,6 +73,7 @@ const getSeverity = (status) => {
         </div>
             </template>
             <Column expander />
+            <Column field="teamNumber" header="#" sortable></Column>
             <Column field="name" header="Navn" sortable>
                 <template #body="{data}">
                     <router-link :to="{  name: `patrulje`, params: { teamId: data.teamId } }">{{ data.name }}</router-link>
