@@ -6,13 +6,13 @@ import { PrimeIcons } from '@primevue/core/api';
 
 const nodes = ref([{
     key: '0',
-    label: 'Documents',
+    label: 'Patruljer',
     data: 'Documents Folder',
     icon: 'pi pi-fw pi-inbox',
     children: [
         {
             key: '0-0',
-            label: 'Work',
+            label: 'Kontaktpersoner',
             data: 'Work Folder',
             icon: 'pi pi-fw pi-cog',
             children: [
@@ -22,7 +22,55 @@ const nodes = ref([{
         },
         {
             key: '0-1',
-            label: 'Home',
+            label: 'Spejdere',
+            data: 'Home Folder',
+            icon: 'pi pi-fw pi-home',
+            children: [{ key: '0-1-0', label: 'Invoices.txt', icon: 'pi pi-fw pi-file', data: 'Invoices for this month' }]
+        }
+    ]
+},{
+    key: '1',
+    label: 'Banditter',
+    data: 'Documents Folder',
+    icon: 'pi pi-fw pi-inbox',
+    children: [
+        {
+            key: '1-0',
+            label: 'Kontaktpersoner',
+            data: 'Work Folder',
+            icon: 'pi pi-fw pi-cog',
+            children: [
+                { key: '0-0-0', label: 'Expenses.doc', icon: 'pi pi-fw pi-file', data: 'Expenses Document' },
+                { key: '0-0-1', label: 'Resume.doc', icon: 'pi pi-fw pi-file', data: 'Resume Document' }
+            ]
+        },
+        {
+            key: '1-1',
+            label: 'Seniorer',
+            data: 'Home Folder',
+            icon: 'pi pi-fw pi-home',
+            children: [{ key: '0-1-0', label: 'Invoices.txt', icon: 'pi pi-fw pi-file', data: 'Invoices for this month' }]
+        }
+    ]
+},{
+    key: '2',
+    label: 'Gøglere',
+    data: 'Documents Folder',
+    icon: 'pi pi-fw pi-inbox',
+    children: [
+        {
+            key: '2-0',
+            label: 'Arne',
+            data: 'Work Folder',
+            icon: 'pi pi-fw pi-cog',
+            children: [
+                { key: '0-0-0', label: 'Expenses.doc', icon: 'pi pi-fw pi-file', data: 'Expenses Document' },
+                { key: '0-0-1', label: 'Resume.doc', icon: 'pi pi-fw pi-file', data: 'Resume Document' }
+            ]
+        },
+        {
+            key: '2-1',
+            label: 'Bente',
             data: 'Home Folder',
             icon: 'pi pi-fw pi-home',
             children: [{ key: '0-1-0', label: 'Invoices.txt', icon: 'pi pi-fw pi-file', data: 'Invoices for this month' }]
