@@ -44,8 +44,8 @@ const start = async () => {
   spejdere.value.forEach(s => payload.members.push({ memberId: s.memberId, name: s.name, phone: s.phone, phoneParent: s.phoneParent, starter: s.starter}))
   try {
     const response = await http.put('/patrulje/' + props.teamId + '/start', payload);
-    if (response.ok) {
-      toast.add({ severity: 'info', summary: 'Patrulje '+ patrulje.value.name + ' startet', detail: 'Value: ' + event.data, life: 3000 });
+    if (response.status == 200) {
+      toast.add({ severity: 'info', summary: 'Patrulje '+ patrulje.value.name + ' startet', detail: 'Videre til foto', life: 3000 });
     } else {
       toast.add({
         closable: true,
@@ -54,6 +54,7 @@ const start = async () => {
         summary: 'Kunne ikke starte patrulje',
         detail: 'Kunne ikke starte patrulje',
       });
+      console.log('respinse', response)
     }
   } catch (error) {
     toast.add({ severity: 'error', closable: true, life: 5000, summary: 'Kunne ikke starte patruljen', detail: error.message });
