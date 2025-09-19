@@ -17,6 +17,7 @@ func (c *consumer) Consumes() (subjs []streaminterface.Subject) {
 	return []streaminterface.Subject{
 		streaminterface.SubjectFromStr("NATHEJK.*.spejder.*.updated"),
 		streaminterface.SubjectFromStr("NATHEJK.*.spejder.*.deleted"),
+		streaminterface.SubjectFromStr("NATHEJK:*.patrulje.*.started"),
 	}
 }
 
@@ -66,6 +67,19 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 		err := c.w.Consume(fmt.Sprintf("DELETE FROM spejder WHERE memberId=%q", body.MemberID))
 		if err != nil {
 			log.Fatalf("Error consuming sql %q", err)
+		}
+	case msg.Subject().Match("nathejk.*.patrulje.*.started"):
+		var body messages.NathejkTeamStarted
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		for _, member := range body.Members {
+			query := `UPDATE spejder SET phone=%q, phoneParent=%q WHERE memberId=%q`
+			args := []any{member.Phone, member.PhoneGuardian, member.MemberID}
+
+			if err := c.w.Consume(fmt.Sprintf(query, args...)); err != nil {
+				log.Fatalf("Error consuming sql %q", err)
+			}
 		}
 	}
 	return nil
