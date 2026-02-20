@@ -21,28 +21,26 @@ var (
 )
 
 type stream struct {
-	ctx context.Context
-	nc  *nats.Conn
-	js  jetstream.JetStream
+	ctx  context.Context
+	nc   *nats.Conn
+	js   jetstream.JetStream
+	meta interface{}
 }
 
 // https://github.com/nats-io/nats.go/blob/main/jetstream/README.md
-func New(url string) (*stream, error) {
-	s := stream{}
+func New(url string, meta interface{}) (*stream, error) {
+	var err error
+	s := stream{meta: meta}
 
-	//url := os.Getenv("NATS_URL")
 	if url == "" {
 		url = nats.DefaultURL
 	}
-	var err error
-	s.nc, err = nats.Connect(url)
-	if err != nil {
+
+	if s.nc, err = nats.Connect(url); err != nil {
 		return nil, err
 	}
-	//	defer jsc.nc.Drain()
 
-	s.js, err = jetstream.New(s.nc)
-	if err != nil {
+	if s.js, err = jetstream.New(s.nc); err != nil {
 		return nil, err
 	}
 	/*
@@ -72,6 +70,7 @@ func (s *stream) MessageFunc() streaminterface.MessageFunc {
 	return func(subject streaminterface.Subject) streaminterface.MutableMessage {
 		m := NewMessage()
 		m.SetSubject(subject)
+		m.SetDefaultMeta(s.meta)
 		return m
 	}
 }
@@ -139,7 +138,6 @@ func (s *stream) Subscribe(subjects []streaminterface.Subject, h streaminterface
 		domains[subject.Domain()] = append(domains[subject.Domain()], subject.Domain()+"."+subject.Type())
 	}
 	ccs := consumeContexts{}
-	//spew.Dump(domains)
 	for stream, fs := range domains {
 		consumer, err := s.js.OrderedConsumer(s.ctx, stream, jetstream.OrderedConsumerConfig{
 			// Filter results from "ORDERS" stream by specific subject

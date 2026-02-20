@@ -97,9 +97,18 @@ func TestEventMessage(t *testing.T) {
 	assert.Nil(err)
 	assert.Equal("{\"goodbye\":\"universe\"}", string(msg.RawMeta().(json.RawMessage)))
 
+	err = msg.SetDefaultMeta(map[string]any{"hello": "world", "goodbye": "universe"})
+	assert.Nil(err)
+	assert.Equal("{\"goodbye\":\"universe\",\"hello\":\"world\"}", string(msg.RawMeta().(json.RawMessage)))
+
 	err = msg.SetMeta("WORLD")
 	assert.Nil(err)
 	assert.Equal("\"WORLD\"", string(msg.RawMeta().(json.RawMessage)))
+
+	msg = jetstream.NewMessage()
+	err = msg.SetDefaultMeta(map[string]any{"hello": "world"})
+	assert.Nil(err)
+	assert.Equal("{\"hello\":\"world\"}", string(msg.RawMeta().(json.RawMessage)))
 }
 
 func TestMessageValidBodyAndMeta(t *testing.T) {

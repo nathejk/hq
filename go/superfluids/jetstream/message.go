@@ -2,6 +2,7 @@ package jetstream
 
 import (
 	"encoding/json"
+	"reflect"
 	"time"
 
 	"github.com/google/uuid"
@@ -19,6 +20,7 @@ type message struct {
 	subject       streaminterface.Subject
 	body          json.RawMessage
 	meta          json.RawMessage
+	defaultMeta   json.RawMessage
 }
 
 func NewMessage() *message {
@@ -90,8 +92,29 @@ func (m *message) SetMeta(v interface{}) error {
 	if err != nil {
 		return err
 	}
+	if isRangeable(v) {
+		meta, err = mergeRawMessages(meta, m.defaultMeta)
+		if err != nil {
+			return err
+		}
+	}
+
 	m.meta = meta
 	return nil
+}
+
+func (m *message) SetDefaultMeta(v interface{}) error {
+	meta, err := json.Marshal(v)
+	if err != nil {
+		return err
+	}
+	m.defaultMeta = meta
+
+	// apply new defaults on existing metadata if any.
+	var values map[string]interface{}
+	m.Meta(&values)
+
+	return m.SetMeta(values)
 }
 
 func (m *message) Subject() streaminterface.Subject {
@@ -107,4 +130,39 @@ func (m *message) Time() time.Time {
 func (m *message) SetTime(t time.Time) error {
 	m.time = t
 	return nil
+}
+
+func isRangeable(v interface{}) bool {
+	if v == nil {
+		return false
+	}
+	t := reflect.TypeOf(v)
+	switch t.Kind() {
+	case reflect.Slice, reflect.Array, reflect.Map:
+		return true
+	default:
+		return false
+	}
+}
+func mergeRawMessages(a, b json.RawMessage) (json.RawMessage, error) {
+	if a == nil {
+		return b, nil
+	}
+	if b == nil {
+		return a, nil
+	}
+	var am, bm map[string]interface{}
+	if err := json.Unmarshal(a, &am); err != nil {
+		return nil, err
+	}
+	if err := json.Unmarshal(b, &bm); err != nil {
+		return nil, err
+	}
+
+	// Merge: new values override defaults on key conflicts
+	for k, v := range am {
+		bm[k] = v
+	}
+
+	return json.Marshal(bm)
 }
