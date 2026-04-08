@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS personnel (
     userId VARCHAR(99) NOT NULL,
     userType VARCHAR(99) NOT NULL,
     year VARCHAR(99) NOT NULL DEFAULT "",
+    armNumber VARCHAR(99) NOT NULL DEFAULT "",
     name VARCHAR(99) NOT NULL DEFAULT "",
     email VARCHAR(99) NOT NULL,
     phone VARCHAR(99) NOT NULL,

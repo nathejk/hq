@@ -47,8 +47,12 @@ func (db *database) Migrate() error {
 	return nil
 }
 
+func (db *database) Dialect() string {
+	return "mysql"
+}
+
 func (db *database) Open() (err error) {
-	db.db, err = sql.Open("mysql", db.cfg.dsn)
+	db.db, err = sql.Open(db.Dialect(), db.cfg.dsn)
 	if err != nil {
 		return err
 	}

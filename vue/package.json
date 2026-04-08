@@ -21,14 +21,17 @@
     "@fortawesome/free-solid-svg-icons": "^6.6.0",
     "@fortawesome/vue-fontawesome": "^3.0.8",
     "@primevue/themes": "^4.0.7",
+    "@types/leaflet": "^1.9.21",
     "axios": "^1.10.0",
+    "leaflet": "^1.9.4",
     "mitt": "^3.0.1",
     "pinia": "^2.1.7",
     "primeicons": "^7.0.0",
-    "primevue": "^4.0.7",
+    "primevue": "^4.5.3",
     "quill": "^2.0.3",
     "tailwindcss-primeui": "^0.3.4",
-    "vue-router": "^4.3.3"
+    "vue-router": "^4.3.3",
+    "vuedraggable": "^4.1.0"
   },
   "devDependencies": {
     "@primevue/auto-import-resolver": "^4.0.7",

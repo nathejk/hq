@@ -24,6 +24,7 @@ func (*consumer) Consumes() []streaminterface.Subject {
 		streaminterface.SubjectFromStr("NATHEJK.*.friend.*.signedup"),
 		streaminterface.SubjectFromStr("NATHEJK.*.friend.*.updated"),
 		streaminterface.SubjectFromStr("NATHEJK.*.friend.*.status.changed"),
+		streaminterface.SubjectFromStr("NATHEJK.*.bandit.*.armNumber.assigned"),
 	}
 }
 
@@ -55,6 +56,21 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 		query := "UPDATE personnel SET name=%q, groupName=%q, korps=%q, klan=%q, phone=%q, email=%q, tshirtSize=%q, additionals=%q  WHERE userId=%q"
 		args := []any{body.Name, body.Group, string(body.Corps), body.Klan, body.Phone, body.Email, body.TshirtSize, additionals, body.UserID}
 
+		err := c.w.Consume(fmt.Sprintf(query, args...))
+		if err != nil {
+			log.Fatalf("Error consuming sql %q", err)
+		}
+
+	case msg.Subject().Match("NATHEJK.*.bandit.*.armNumber.assigned"):
+		var body messages.NathejkLokArmNumberAssigned
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		query := "UPDATE personnel SET armNumber=%q WHERE userId=%q"
+		args := []any{
+			body.ArmNumber,
+			msg.Subject().Parts()[3],
+		}
 		err := c.w.Consume(fmt.Sprintf(query, args...))
 		if err != nil {
 			log.Fatalf("Error consuming sql %q", err)

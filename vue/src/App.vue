@@ -1,34 +1,63 @@
 <script setup lang="ts">
-import { RouterLink, RouterView } from 'vue-router'
+import { computed } from 'vue'
+import { RouterLink, RouterView, useRoute } from 'vue-router'
 import HelloWorld from './components/HelloWorld.vue'
-  import Navigation from '@/components/Navigation.vue'
-  import Foooter from '@/components/Footer.vue'
-import { useToast } from 'primevue/usetoast';
+import Navigation from '@/components/Navigation.vue'
+import Foooter from '@/components/Footer.vue'
+import { useToast } from 'primevue/usetoast'
 
-const toast = useToast();
-
+const toast = useToast()
+const route = useRoute()
+const isFullbleed = computed(() => route.path === '/kort')
 </script>
 
 <template>
-    <navigation title="Nathejk 2019" class="dark" />
-  <header>
-  </header>
-  <main role="main" class="container mx-auto py5 maxw-screen-md">
+  <navigation title="Nathejk 2019" class="dark" />
+  <header></header>
+  <main v-if="isFullbleed" role="main" class="fullbleed">
     <RouterView />
   </main>
+  <template v-else>
+    <main role="main" class="container mx-auto py5 maxw-screen-md">
+      <RouterView />
+    </main>
     <foooter />
-    <Toast />
+  </template>
+  <Toast />
 </template>
 
 <style scoped>
-.lightgrey { color: #d5d5d5; }
-.grey { color: #888; }
-.darkblue { color:#00008B; }
-.midnightblue { color:#445e65; } 
-.hazyblue { color:#a2aeb2; }
+.lightgrey {
+  color: #d5d5d5;
+}
+.grey {
+  color: #888;
+}
+.darkblue {
+  color: #00008b;
+}
+.midnightblue {
+  color: #445e65;
+}
+.hazyblue {
+  color: #a2aeb2;
+}
 
-.bg-midnightblue { background-color:#445e65; }
-.bg-hazyblue { background-color:#a2aeb2; }
+.bg-midnightblue {
+  background-color: #445e65;
+}
+.bg-hazyblue {
+  background-color: #a2aeb2;
+}
+
+.fullbleed {
+  padding: 0;
+  margin: 0;
+  max-width: none;
+  width: 100%;
+  height: calc(100vh - 60px);
+  overflow: hidden;
+}
 /*
 header {
   line-height: 1.5;

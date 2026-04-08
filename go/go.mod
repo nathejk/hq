@@ -6,18 +6,18 @@ toolchain go1.23.10
 
 require (
 	github.com/davecgh/go-spew v1.1.1
-	github.com/go-mail/mail/v2 v2.3.0
-	github.com/go-sql-driver/mysql v1.5.0
+	github.com/doug-martin/goqu/v9 v9.19.0
+	github.com/go-sql-driver/mysql v1.6.0
 	github.com/golang-migrate/migrate/v4 v4.16.2
-	github.com/google/uuid v1.3.0
+	github.com/google/uuid v1.6.0
 	github.com/json-iterator/go v1.1.12
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/lib/pq v1.10.7
 	github.com/moul/http2curl v1.0.0
-	github.com/nathejk/shared-go v0.0.0-20250904085635-4e5edbc6ac16
+	github.com/nathejk/shared-go v0.0.0-20260404172526-43ee1e2f63da
 	github.com/nats-io/nats.go v1.34.1
 	github.com/pkg/errors v0.9.1
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	github.com/tdewolff/minify/v2 v2.23.3
 	github.com/wneessen/go-mail v0.6.2
 	github.com/xuri/excelize/v2 v2.9.1
@@ -35,6 +35,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/richardlehane/mscfb v1.0.4 // indirect
 	github.com/richardlehane/msoleps v1.0.4 // indirect
+	github.com/smartystreets/goconvey v1.8.1 // indirect
 	github.com/tdewolff/parse/v2 v2.7.23 // indirect
 	github.com/tiendc/go-deepcopy v1.6.0 // indirect
 	github.com/xuri/efp v0.0.1 // indirect
@@ -43,7 +44,5 @@ require (
 	golang.org/x/net v0.40.0 // indirect
 	golang.org/x/sys v0.33.0 // indirect
 	golang.org/x/text v0.25.0 // indirect
-	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
-	gopkg.in/mail.v2 v2.3.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

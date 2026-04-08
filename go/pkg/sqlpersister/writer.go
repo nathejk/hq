@@ -7,15 +7,21 @@ import (
 )
 
 type client struct {
-	db     *sql.DB
-	stderr io.Writer
+	db      *sql.DB
+	dialect string
+	stderr  io.Writer
 }
 
-func New(db *sql.DB) *client {
+func New(db *sql.DB, dialect string) *client {
 	return &client{
-		db:     db,
-		stderr: os.Stderr,
+		db:      db,
+		dialect: dialect,
+		stderr:  os.Stderr,
 	}
+}
+
+func (c *client) Dialect() string {
+	return c.dialect
 }
 
 func (c *client) Consume(query string) error {

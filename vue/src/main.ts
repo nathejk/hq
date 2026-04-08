@@ -25,6 +25,9 @@ localStorage.theme = 'light'
 
 const app = createApp(App)
 app.use(PrimeVue, {
+    locale: {
+        firstDayOfWeek: 1, // 0 = Sunday, 1 = Monday
+    },
     theme: {
         preset: Aura,
         options: {

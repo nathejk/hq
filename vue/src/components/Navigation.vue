@@ -1,87 +1,102 @@
 <script setup>
-    import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
+import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
+import { useGlobalState } from '@/composables/globalstate'
+import UserMenu from '@/components/NavUserMenu.vue'
+
+const { navTitle } = useGlobalState()
 
 //import { fas, far, fal, fass, fasds } from '@awesome.me/kit-KIT_CODE/icons'
 //import { faMoon, faLock, faWarning } from '@fortawesome/free-solid-svg-icons'
 
 const props = defineProps({
-    title: String,
-    class: String,
+  title: String,
+  class: String
 })
 /*<{
      title: string,
      class: string,
    }>();
 */
-    import { ref } from "vue";
+import { ref } from 'vue'
 const onoff = ref(false)
 const items = ref([
-    {
-        label: 'Home',
-        icon: 'fas fa-home',
-        name: 'home',
-    },
-    {
-        label: 'Banditter',
-        icon: 'fas fa-user-secret',
-        name: 'klaner',
-    },
-    {
-        label: 'Spejdere',
-        icon: 'fas fa-users',
-        name: 'patruljer',
-    },
-    {
-        label: 'Gøgl',
-        icon: 'fas fa-masks-theater',
-        name:'badutter',
-    },
-    {
-        label: 'Projects',
-        icon: 'pi pi-search',
+  {
+    label: 'Home',
+    icon: 'fas fa-home',
+    name: 'home'
+  },
+  {
+    label: 'Banditter',
+    icon: 'fas fa-user-secret',
+    name: 'klaner'
+  },
+  {
+    label: 'Spejdere',
+    icon: 'fas fa-users',
+    name: 'patruljer'
+  },
+  {
+    label: 'Gøgl',
+    icon: 'fas fa-masks-theater',
+    name: 'badutter'
+  },
+  {
+    label: 'Poster',
+    //icon: 'fa-solid fa-signs-post',
+    icon: 'fa-solid fa-stopwatch',
+    name: 'poster'
+  },
+  {
+    label: 'Kort',
+    icon: 'fas fa-map',
+    name: 'kort'
+  },
+  {
+    label: 'Projects',
+    icon: 'pi pi-search',
+    items: [
+      {
+        label: 'Core',
+        icon: 'pi pi-bolt',
+        shortcut: '⌘+S'
+      },
+      {
+        label: 'Blocks',
+        icon: 'pi pi-server',
+        shortcut: '⌘+B'
+      },
+      {
+        label: 'UI Kit',
+        icon: 'pi pi-pencil',
+        shortcut: '⌘+U'
+      },
+      {
+        separator: true
+      },
+      {
+        label: 'Templates',
+        icon: 'pi pi-palette',
         items: [
-            {
-                label: 'Core',
-                icon: 'pi pi-bolt',
-                shortcut: '⌘+S'
-            },
-            {
-                label: 'Blocks',
-                icon: 'pi pi-server',
-                shortcut: '⌘+B'
-            },
-            {
-                label: 'UI Kit',
-                icon: 'pi pi-pencil',
-                shortcut: '⌘+U'
-            },
-            {
-                separator: true
-            },
-            {
-                label: 'Templates',
-                icon: 'pi pi-palette',
-                items: [
-                    {
-                        label: 'Apollo',
-                        icon: 'pi pi-palette',
-                        badge: 2
-                    },
-                    {
-                        label: 'Ultima',
-                        icon: 'pi pi-palette',
-                        badge: 3
-                    }
-                ]
-            }
+          {
+            label: 'Apollo',
+            icon: 'pi pi-palette',
+            badge: 2
+          },
+          {
+            label: 'Ultima',
+            icon: 'pi pi-palette',
+            badge: 3
+          }
         ]
-    },
-    {
-        label: 'Contact',
-        icon: 'pi pi-envelope',
-        badge: 3
-    }
-]);
+      }
+    ]
+  },
+  {
+    label: 'Contact',
+    icon: 'pi pi-envelope',
+    badge: 3
+  }
+])
 /*
 export default {
     props: {
@@ -130,29 +145,28 @@ export default {
 import 'primeicons/primeicons.css'
 </script>
 <template>
+  <nav class="bg-gray-800 text-white shadow-md sticky top-0 w-full z-50">
+    <div class="container mx-auto">
+      <div class="flex justify-between items-center">
+        <!-- Logo and Brand Name -->
+        <a class="font-nathejk text-2xl leading-relaxed pr-5 uppercase" href="/"><FontAwesomeIcon :icon="['fas', 'moon']" flip="vertical" class="align-top text-yellow-400" />{{ navTitle }}</a>
 
-    <nav class="bg-gray-800 text-white shadow-md sticky top-0 w-full z-50">
-        <div class="container mx-auto">
-            <div class="flex justify-between items-center">
-                <!-- Logo and Brand Name -->
-      <a class="font-nathejk text-2xl leading-relaxed pr-5 uppercase" href="/"><FontAwesomeIcon :icon="['fas', 'moon']" flip="vertical" class="align-top text-yellow-400" />Nathejk</a>
-                
-                <!-- Navigation Icons -->
-                <div class="flex">
-                    <template v-for="item in items">
-                        <router-link v-if="item.name" v-slot="{ isActive, href, navigate }" :to="{name: item.name}" custom>
-                            <a v-ripple :href="href" v-bind="props.action" @click="navigate" :class="{'bg-gray-600 ':isActive}" class="group p-4 hover:bg-gray-700 border-r border-gray-700 relative grid place-items-center">
-                                <i :class="item.icon" class="text-2xl" />
-                                <span :class="{'opacity-0':!isActive}" class="group-hover:opacity-100 duration-300 text-xs block mt-1 absolute bottom-0 uppercase">{{ item.label }}</span>
-                            </a>
-                        </router-link>
-                        <a v-else :href="item.url" :class="{'bg-gray-600 ':item.active}" class="group p-4 hover:bg-gray-700 border-r border-gray-700 relative grid place-items-center">
-                            <i :class="item.icon" class="text-2xl" />
-                            <span :class="{'opacity-0':!item.active}" class="group-hover:opacity-100 duration-300 text-xs block mt-1 absolute bottom-0 uppercase">{{ item.label }}</span>
-                        </a>
-                    </template>
+        <!-- Navigation Icons -->
+        <div class="flex">
+          <template v-for="item in items">
+            <router-link v-if="item.name" v-slot="{ isActive, href, navigate }" :to="{ name: item.name }" custom>
+              <a v-ripple :href="href" v-bind="props.action" @click="navigate" :class="{ 'bg-gray-600 ': isActive }" class="group p-4 hover:bg-gray-700 border-r border-gray-700 relative grid place-items-center">
+                <i :class="item.icon" class="text-2xl" />
+                <span :class="{ 'opacity-0': !isActive }" class="group-hover:opacity-100 duration-300 text-xs block mt-1 absolute bottom-0 uppercase">{{ item.label }}</span>
+              </a>
+            </router-link>
+            <a v-else :href="item.url" :class="{ 'bg-gray-600 ': item.active }" class="group p-4 hover:bg-gray-700 border-r border-gray-700 relative grid place-items-center">
+              <i :class="item.icon" class="text-2xl" />
+              <span :class="{ 'opacity-0': !item.active }" class="group-hover:opacity-100 duration-300 text-xs block mt-1 absolute bottom-0 uppercase">{{ item.label }}</span>
+            </a>
+          </template>
 
-<!--
+          <!--
                     <a href="#" class="p-4 hover:bg-gray-700 border-r border-gray-700 grid place-items-center">
                         <i class="fas fa-home text-xl"></i>
                     </a>
@@ -181,57 +195,55 @@ import 'primeicons/primeicons.css'
                         <span class="text-gray-300">Søg</span>
                     </a>
 -->
-                </div>
-                
-                <!-- User Profile -->
-                <div class="flex items-center p-2">
-                    <span class="mr-2">nathejk</span>
-                    <i class="fas fa-chevron-down"></i>
-                </div>
-            </div>
         </div>
-    </nav>
 
-        <Menubar v-if="onoff" :model="items" class="border-0 bg-transparent fixed top-0 w-full">
-            <template #start>
+        <!-- User Profile -->
+        <UserMenu />
+
+        <div v-if="false" class="flex items-center p-2">
+          <span class="mr-2">nathejk</span>
+          <i class="fas fa-chevron-down"></i>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+  <Menubar v-if="onoff" :model="items" class="border-0 bg-transparent fixed top-0 w-full">
+    <template #start>
       <a class="font-nathejk text-2xl leading-relaxed pr-5 uppercase" href="./"><FontAwesomeIcon :icon="['fas', 'moon']" flip="vertical" class="align-top text-yellow-400" />Nathejk</a>
-
-            </template>
-            <template #item="{ item, props, hasSubmenu, root }">
-                <a v-ripple class="flex items-center" v-bind="props.action" style="color:#a2aeb3!important">
-                    <span :class="item.icon" />
-                    <span class="">{{ item.label }}</span>
-                    <Badge v-if="item.badge" :class="{ 'ml-auto': !root, 'ml-2': root }" :value="item.badge" />
-                    <span v-if="item.shortcut" class="ml-auto border border-surface rounded bg-emphasis text-muted-color text-xs p-1">{{ item.shortcut }}</span>
-                    <i v-if="hasSubmenu" :class="['pi pi-angle-down', { 'pi-angle-down ml-2': root, 'pi-angle-right ml-auto': !root }]"></i>
-                </a>
-            </template>
-            <template #end>
-                <div class="flex items-center gap-2">
-                    <!--InputText placeholder="Search" type="text" class="w-32 sm:w-auto" /-->
-                    <Avatar image="https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png" shape="circle" />
-                    Brugernavn
-                </div>
-            </template>
-        </Menubar>
-
-
+    </template>
+    <template #item="{ item, props, hasSubmenu, root }">
+      <a v-ripple class="flex items-center" v-bind="props.action" style="color: #a2aeb3 !important">
+        <span :class="item.icon" />
+        <span class="">{{ item.label }}</span>
+        <Badge v-if="item.badge" :class="{ 'ml-auto': !root, 'ml-2': root }" :value="item.badge" />
+        <span v-if="item.shortcut" class="ml-auto border border-surface rounded bg-emphasis text-muted-color text-xs p-1">{{ item.shortcut }}</span>
+        <i v-if="hasSubmenu" :class="['pi pi-angle-down', { 'pi-angle-down ml-2': root, 'pi-angle-right ml-auto': !root }]"></i>
+      </a>
+    </template>
+    <template #end>
+      <div class="flex items-center gap-2">
+        <!--InputText placeholder="Search" type="text" class="w-32 sm:w-auto" /-->
+        <Avatar image="https://primefaces.org/cdn/primevue/images/avatar/amyelsner.png" shape="circle" />
+        Brugernavn
+      </div>
+    </template>
+  </Menubar>
 </template>
 
 <style lang="css">
 header_ {
-    padding-top:60px;
+  padding-top: 60px;
 }
 nav {
-    border:0 ! important;
-    background-image: linear-gradient(to bottom,#445e65 0,#1f2a26 100%) ! important;
+  border: 0 !important;
+  background-image: linear-gradient(to bottom, #445e65 0, #1f2a26 100%) !important;
 }
 .p-menubar-item {
-    color: #a2aeb3!important;
+  color: #a2aeb3 !important;
 }
 .p-menubar-item-content:hover,
-.p-focus .p-menubar-item-content   {
-    background-color:#445e65!important;
+.p-focus .p-menubar-item-content {
+  background-color: #445e65 !important;
 }
 </style>
-

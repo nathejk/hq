@@ -11,8 +11,101 @@ import (
 	"nathejk.dk/internal/data"
 	"nathejk.dk/nathejk/commands"
 	"nathejk.dk/nathejk/table/klan"
+	"nathejk.dk/nathejk/table/lok"
+	"nathejk.dk/nathejk/table/personnel"
+	"nathejk.dk/nathejk/table/senior"
 )
 
+func (app *application) showLoksHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	yearSlug := types.YearSlug("2025")
+	teams, err := app.models.Klan.GetAll(ctx, klan.Filter{})
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+	users, err := app.models.Personnel.GetAll(ctx, personnel.Filter{Department: "Banditter"})
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+	loks, _, err := app.models.Lok.GetAll(ctx, lok.Filter{YearSlug: yearSlug})
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+
+	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"loks": loks, "teams": teams, "users": users}, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+func (app *application) updateLokHandler(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Users []struct {
+			UserID    types.UserID `json:"id"`
+			ArmNumber string       `json:"armNumber"`
+		} `json:"users"`
+		Members []struct {
+			MemberID  types.MemberID `json:"id"`
+			ArmNumber string         `json:"armNumber"`
+		} `json:"members"`
+	}
+	if err := app.ReadJSON(w, r, &input); err != nil {
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+
+	var count int
+	for _, user := range input.Users {
+		if err := app.commands.Lok.UpdateUser(user.UserID, user.ArmNumber); err == nil {
+			count++
+		}
+	}
+	for _, member := range input.Members {
+		if err := app.commands.Lok.UpdateMember(member.MemberID, member.ArmNumber); err == nil {
+			count++
+		}
+	}
+	err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"armNumberCount": count}, nil)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+func (app *application) updateLoksHandler(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Loks []struct {
+			LokID   types.LokID    `json:"lokId"`
+			Name    string         `json:"name"`
+			UserIDs []types.UserID `json:"userIds"`
+			TeamIDs []types.TeamID `json:"teamIds"`
+		} `json:"loks"`
+	}
+	if err := app.ReadJSON(w, r, &input); err != nil {
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+
+	for i, lok := range input.Loks {
+		err := app.commands.Lok.UpdateLok(lok.LokID, lok.Name, i, lok.UserIDs, lok.TeamIDs)
+		if err != nil {
+			app.BadRequestResponse(w, r, err)
+			return
+		}
+	}
+	err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"team": "team"}, nil)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+func (app *application) deleteLokHandler(w http.ResponseWriter, r *http.Request) {
+	lokID := types.LokID(app.ReadNamedParam(r, "id"))
+	if err := app.commands.Lok.DeleteLok(lokID); err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+
+	err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"deleted": "ok"}, nil)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
 func (app *application) showKlanListHandler(w http.ResponseWriter, r *http.Request) {
 	filter := klan.Filter{}
 	teams, err := app.models.Klan.GetAll(context.Background(), filter)
@@ -21,6 +114,28 @@ func (app *application) showKlanListHandler(w http.ResponseWriter, r *http.Reque
 	}
 
 	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"teams": teams}, nil)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+func (app *application) showLokHandler(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	lokID := types.LokID(app.ReadNamedParam(r, "id"))
+	lok, err := app.models.Lok.GetByID(ctx, lokID)
+	if err != nil {
+		switch {
+		case errors.Is(err, data.ErrRecordNotFound):
+			app.NotFoundResponse(w, r)
+		default:
+			app.ServerErrorResponse(w, r, err)
+		}
+		return
+	}
+	teams, _ := app.models.Klan.GetAll(ctx, klan.Filter{TeamIDs: lok.TeamIDs})
+	users, _ := app.models.Personnel.GetAll(ctx, personnel.Filter{UserIDs: lok.UserIDs})
+	members, _ := app.models.Senior.GetAll(ctx, senior.Filter{TeamIDs: lok.TeamIDs})
+
+	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"lok": lok, "users": users, "teams": teams, "members": members}, nil)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}

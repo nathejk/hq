@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"log"
 
+	"github.com/doug-martin/goqu/v9"
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/pkg/tablerow"
 
@@ -34,7 +35,8 @@ type table struct {
 }
 
 func New(w tablerow.Consumer, r *sql.DB) *table {
-	table := &table{consumer: consumer{w: w}, querier: querier{db: r}}
+	q := querier{db: r, r: goqu.New("mysql", r)}
+	table := &table{consumer: consumer{w: w}, querier: q}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
 		log.Fatalf("Error creating table %q", err)
 	}

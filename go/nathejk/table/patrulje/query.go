@@ -6,15 +6,24 @@ import (
 	"errors"
 	"time"
 
+	"github.com/doug-martin/goqu/v9"
 	"github.com/nathejk/shared-go/types"
 	tables "nathejk.dk/nathejk/table"
 )
 
-type querier struct {
-	db *sql.DB
+type Queries interface {
+	GetAll(context.Context, Filter) ([]Patrulje, error)
+	GetByID(context.Context, types.TeamID) (*Patrulje, error)
+	GetStartedTeamIDs(context.Context, Filter) ([]types.TeamID, error)
+	GetDiscontinuedTeamIDs(context.Context, Filter) ([]types.TeamID, error)
 }
 
-func (q *querier) GetAll(ctx context.Context, filters Filter) ([]*Patrulje, error) {
+type querier struct {
+	db *sql.DB
+	r  *goqu.Database
+}
+
+func (q *querier) GetAll(ctx context.Context, filters Filter) ([]Patrulje, error) {
 	// Create a context with a 3-second timeout.
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
@@ -33,7 +42,7 @@ func (q *querier) GetAll(ctx context.Context, filters Filter) ([]*Patrulje, erro
 	defer rows.Close()
 
 	//totalRecords := 0
-	patruljer := []*Patrulje{}
+	patruljer := []Patrulje{}
 	for rows.Next() {
 		var p Patrulje
 		if err := rows.Scan(&p.TeamID, &p.TeamNumber, &p.Name, &p.Group, &p.Korps, &p.Liga, &p.ContactName, &p.ContactPhone, &p.ContactEmail, &p.ContactRole, &p.SignupStatus, &p.MemberCount, &p.TshirtCount, &p.PaidAmount); err != nil {
@@ -48,7 +57,7 @@ func (q *querier) GetAll(ctx context.Context, filters Filter) ([]*Patrulje, erro
 		} else {
 			p.SignupStatus = types.SignupStatusSemipaid
 		}
-		patruljer = append(patruljer, &p)
+		patruljer = append(patruljer, p)
 	}
 	// When the rows.Next() loop has finished, call rows.Err() to retrieve any error
 	// that was encountered during the iteration.
@@ -88,6 +97,26 @@ func (q *querier) GetByID(ctx context.Context, teamID types.TeamID) (*Patrulje, 
 		}
 	}
 	return &p, nil
+}
+
+func (q *querier) GetStartedTeamIDs(ctx context.Context, f Filter) ([]types.TeamID, error) {
+	where := goqu.Ex{
+		"signupStatus": string(types.SignupStatusStarted),
+	}
+	if f.YearSlug != "" {
+		where["year"] = f.YearSlug
+	}
+
+	var teamIDs []types.TeamID
+	err := q.r.From("patrulje").Select("teamId").Where(where).ScanVals(&teamIDs)
+	if err != nil {
+		return nil, err
+	}
+	return teamIDs, nil
+}
+
+func (q *querier) GetDiscontinuedTeamIDs(ctx context.Context, f Filter) ([]types.TeamID, error) {
+	return []types.TeamID{}, nil
 }
 
 /*

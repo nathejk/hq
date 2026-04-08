@@ -10,6 +10,7 @@ import (
 	"nathejk.dk/internal/data"
 	"nathejk.dk/nathejk/commands"
 	"nathejk.dk/nathejk/table/patrulje"
+	"nathejk.dk/nathejk/table/scan"
 )
 
 type SlugLabel struct {
@@ -27,25 +28,25 @@ type TeamConfig struct {
 
 func Korps() []SlugLabel {
 	return []SlugLabel{
-		SlugLabel{Slug: "dds", Label: "Det Danske Spejderkorps"},
-		SlugLabel{Slug: "kfum", Label: "KFUM-Spejderne"},
-		SlugLabel{Slug: "kfuk", Label: "De grønne pigespejdere"},
-		SlugLabel{Slug: "dbs", Label: "Danske Baptisters Spejderkorps"},
-		SlugLabel{Slug: "dgs", Label: "De Gule Spejdere"},
-		SlugLabel{Slug: "dss", Label: "Dansk Spejderkorps Sydslesvig"},
-		SlugLabel{Slug: "fdf", Label: "FDF / FPF"},
-		SlugLabel{Slug: "andet", Label: "Andet"},
+		{Slug: "dds", Label: "Det Danske Spejderkorps"},
+		{Slug: "kfum", Label: "KFUM-Spejderne"},
+		{Slug: "kfuk", Label: "De grønne pigespejdere"},
+		{Slug: "dbs", Label: "Danske Baptisters Spejderkorps"},
+		{Slug: "dgs", Label: "De Gule Spejdere"},
+		{Slug: "dss", Label: "Dansk Spejderkorps Sydslesvig"},
+		{Slug: "fdf", Label: "FDF / FPF"},
+		{Slug: "andet", Label: "Andet"},
 	}
 }
 func TShirtSizes() []SlugLabel {
 	return []SlugLabel{
-		SlugLabel{Slug: "", Label: "Ingen"},
-		SlugLabel{Slug: "xs", Label: "X-Small"},
-		SlugLabel{Slug: "s", Label: "Small"},
-		SlugLabel{Slug: "m", Label: "Medium"},
-		SlugLabel{Slug: "l", Label: "Large"},
-		SlugLabel{Slug: "xl", Label: "X-Large"},
-		SlugLabel{Slug: "xxl", Label: "XX-Large"},
+		{Slug: "", Label: "Ingen"},
+		{Slug: "xs", Label: "X-Small"},
+		{Slug: "s", Label: "Small"},
+		{Slug: "m", Label: "Medium"},
+		{Slug: "l", Label: "Large"},
+		{Slug: "xl", Label: "X-Large"},
+		{Slug: "xxl", Label: "XX-Large"},
 	}
 }
 
@@ -173,6 +174,25 @@ func (app *application) startPatruljeHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"team": team}, nil)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+func (app *application) scansPatruljeHandler(w http.ResponseWriter, r *http.Request) {
+	teamID := types.TeamID(app.ReadNamedParam(r, "id"))
+
+	team, err := app.models.Teams.GetPatrulje(teamID)
+	if err != nil {
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+	scans, _, err := app.models.Scan.GetAll(r.Context(), scan.Filter{TeamID: teamID})
+	if err != nil {
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+
+	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"team": team, "scans": scans}, nil)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}

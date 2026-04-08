@@ -13,6 +13,7 @@ type SQLTableRow interface {
 }
 
 type Consumer interface {
+	Dialect() string
 	Consume(string) error
 }
 

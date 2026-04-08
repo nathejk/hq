@@ -3,6 +3,7 @@ package senior
 import (
 	"database/sql"
 	"log"
+	"time"
 
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/pkg/tablerow"
@@ -10,22 +11,22 @@ import (
 	_ "embed"
 )
 
-type Klan struct {
-	ID          types.TeamID       `json:"id"`
-	Status      types.SignupStatus `json:"status"`
-	Name        string             `json:"name"`
-	Group       string             `json:"group"`
-	Korps       string             `json:"korps"`
-	MemberCount int                `json:"memberCount"`
-	Lok         string             `json:"lok"`
-}
-type Klan2 struct {
-	TeamID       types.TeamID       `sql:"teamId"`
-	Year         string             `sql:"year"`
-	Name         string             `sql:"name"`
-	GroupName    string             `sql:"groupName"`
-	Korps        string             `sql:"korps"`
-	SignupStatus types.SignupStatus `sql:"signupStatus"`
+type Senior struct {
+	MemberID   types.MemberID     `json:"memberId"`
+	YearSlug   types.YearSlug     `json:"year"`
+	TeamID     types.TeamID       `json:"teamId"`
+	ArmNumber  string             `json:"armNumber"`
+	Name       string             `json:"name"`
+	Address    string             `json:"address"`
+	PostalCode string             `json:"postalCode"`
+	City       string             `json:"city"`
+	Email      types.EmailAddress `json:"email"`
+	Phone      types.PhoneNumber  `json:"phone"`
+	Birthday   string             `json:"birthday"`
+	TshirtSize string             `json:"tshirtSize"`
+	Diet       string             `json:"diet"`
+	CreatedAt  time.Time          `json:"createdAt"`
+	UpdatedAt  time.Time          `json:"updatedAt"`
 }
 
 type table struct {

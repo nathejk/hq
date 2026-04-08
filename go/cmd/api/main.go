@@ -19,12 +19,20 @@ import (
 	"nathejk.dk/internal/vcs"
 	"nathejk.dk/nathejk/commands"
 	"nathejk.dk/nathejk/table"
+	"nathejk.dk/nathejk/table/checkgroup"
+	"nathejk.dk/nathejk/table/checkpersonnel"
+	"nathejk.dk/nathejk/table/checkpoint"
 	"nathejk.dk/nathejk/table/klan"
+	"nathejk.dk/nathejk/table/lok"
 	"nathejk.dk/nathejk/table/patrulje"
+	"nathejk.dk/nathejk/table/patruljemerged"
 	"nathejk.dk/nathejk/table/payment"
 	"nathejk.dk/nathejk/table/personnel"
+	"nathejk.dk/nathejk/table/scan"
+	"nathejk.dk/nathejk/table/senior"
 	"nathejk.dk/nathejk/table/signup"
 	"nathejk.dk/nathejk/table/spejder"
+	"nathejk.dk/nathejk/table/year"
 	"nathejk.dk/pkg/sqlpersister"
 	"nathejk.dk/superfluids/jetstream"
 	"nathejk.dk/superfluids/streaminterface"
@@ -65,6 +73,7 @@ type config struct {
 type application struct {
 	app.JsonApi
 
+	db        *database
 	config    config
 	models    data.Models
 	jetstream streaminterface.Stream
@@ -106,9 +115,10 @@ func main() {
 	logger := jsonlog.New(os.Stdout, jsonlog.LevelInfo)
 	logger.PrintInfo("Starting API...", nil)
 
-	js, err := jetstream.New(cfg.jetstream.dsn)
+	js, err := jetstream.New(cfg.jetstream.dsn, map[string]any{"producer": "hq-api", "version": "1234"})
 	if err != nil {
 		log.Printf("Error connecting %q", err)
+		return
 	}
 	logger.PrintInfo("Jetstream connected", nil)
 	/*msg, err := js.LastMessage(streaminterface.SubjectFromStr("NATHEJK.2024.>"))
@@ -125,23 +135,38 @@ func main() {
 	defer db.Close()
 	logger.PrintInfo("Database connected", nil)
 
-	sqlw := sqlpersister.New(db.DB())
+	reader := db.DB()
+	writer := sqlpersister.New(db.DB(), db.Dialect())
 
-	signuptable := signup.New(sqlw, db.DB())
-	klantable := klan.New(sqlw, db.DB())
-	patruljetable := patrulje.New(sqlw, db.DB())
-	personneltable := personnel.New(sqlw, db.DB())
-	paymenttable := payment.New(sqlw, db.DB())
-	spejdertable := spejder.New(sqlw, db.DB())
+	year := year.New(js, writer, reader)
+	signuptable := signup.New(writer, db.DB())
+	klantable := klan.New(writer, db.DB())
+	seniortable := senior.New(writer, db.DB())
+	patruljetable := patrulje.New(writer, db.DB())
+	patruljemergedtable := patruljemerged.New(writer, db.DB())
+	personneltable := personnel.New(writer, db.DB())
+	paymenttable := payment.New(writer, db.DB())
+	spejdertable := spejder.New(writer, db.DB())
+	checkgroup := checkgroup.New(js, writer, reader)
+	checkpoint := checkpoint.New(js, writer, reader)
+	checkpersonnel := checkpersonnel.New(js, writer, reader)
+	scantable := scan.New(writer, db.DB())
+	loktable := lok.New(writer, db.DB())
 
 	mux := xstream.NewMux(js)
-	mux.AddConsumer(signuptable, table.NewConfirm(sqlw), klantable, table.NewSenior(sqlw), patruljetable, table.NewPatruljeStatus(sqlw) /*table.NewPatruljeMerged(sqlw),, table.NewSpejder(sqlw)*/, table.NewSpejderStatus(sqlw), personneltable, paymenttable, spejdertable)
-	//mux.AddConsumer(table.NewSpejder(sqlw), table.NewSpejderStatus(sqlw))
+	mux.AddConsumer(signuptable, table.NewConfirm(writer), klantable, seniortable, patruljetable, table.NewPatruljeStatus(writer) /*table.NewPatruljeMerged(writer),, table.NewSpejder(writer)*/, table.NewSpejderStatus(writer), personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, patruljemergedtable, loktable, year)
+
+	//mux.AddConsumer(table.NewSpejder(writer), table.NewSpejderStatus(writer))
 	if err := mux.Run(context.Background()); err != nil {
 		logger.PrintFatal(err, nil)
 	}
 
-	models := data.NewModels(db.DB(), klantable, patruljetable, personneltable, paymenttable, spejdertable)
+	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, loktable)
+	cmds := commands.New(js, models)
+	cmds.Year = year
+	cmds.Checkpoint = checkpoint
+	cmds.Checkgroup = checkgroup
+	cmds.Checkpersonnel = checkpersonnel
 
 	expvar.NewString("version").Set(version)
 	expvar.NewInt("timestamp").Set(time.Now().Unix())
@@ -160,11 +185,12 @@ func main() {
 		JsonApi: app.JsonApi{
 			Logger: logger,
 		},
+		db:        db,
 		config:    cfg,
 		payment:   payment,
 		models:    models,
 		jetstream: js,
-		commands:  commands.New(js, models),
+		commands:  cmds,
 		mailer:    mailer.NewFromConfig(cfg.smtp),
 		sms:       smsclient,
 		logger:    logger,

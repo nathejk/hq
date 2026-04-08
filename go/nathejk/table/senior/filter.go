@@ -14,7 +14,8 @@ type Filter struct {
 	PageSize     int
 	Sort         string
 	SortSafelist []string
-	TeamID       types.TeamID
+	TeamIDs      []types.TeamID
+	Lok          int
 }
 
 func (f *Filter) Validate(v validator.Validator) {

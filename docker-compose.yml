@@ -60,7 +60,7 @@ services:
     - jetstream
     environment:
       #GO_BUILD_FLAGS: -race
-      JETSTREAM_DSN: nats://dev.nathejk.dk:4222
+      JETSTREAM_DSN: nats://jetstream:4222
       DB_DSN: root:ib@tcp(mysql:3306)/hq?parseTime=true
       SMS_DSN: cpsms://TOKEN@api.cpsms.dk
       #REDIS_ADDR: redis:6379

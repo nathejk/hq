@@ -8,13 +8,15 @@ import (
 )
 
 type Filter struct {
-	YearSlug     string
+	YearSlug     types.YearSlug
 	Page         int
 	PageSize     int
 	Sort         string
 	SortSafelist []string
 	TeamID       types.TeamID
 	UserTypes    []string
+	UserIDs      []types.UserID
+	Department   string
 }
 
 func (f *Filter) Validate(v validator.Validator) {

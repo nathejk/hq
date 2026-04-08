@@ -1,0 +1,11 @@
+CREATE TABLE IF NOT EXISTS checkgroup (
+    id VARCHAR(99) NOT NULL,
+    year VARCHAR(99) NOT NULL,
+    name VARCHAR(99) NOT NULL DEFAULT "",
+    showOnMap BOOLEAN NOT NULL DEFAULT FALSE,
+    mandatory BOOLEAN NOT NULL DEFAULT FALSE,
+    scheme VARCHAR(9) NOT NULL DEFAULT "",
+    relativeCheckgroupId VARCHAR(99) NOT NULL DEFAULT "",
+    sortOrder INT NOT NULL DEFAULT 0,
+    PRIMARY KEY (id)
+);

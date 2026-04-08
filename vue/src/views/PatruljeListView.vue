@@ -7,6 +7,7 @@ import PatruljeEmbeddedView, {
    rewardLevel,
    rewardLevels,
 } from '@/views/PatruljeEmbeddedView.vue';
+import PatruljeActiveView from '@/views/PatruljeActiveView.vue';
 
 const toast = useToast();
 
@@ -89,7 +90,8 @@ const getSeverity = (status) => {
             </Column>
             <Column field="date" header="Date"></Column>
             <template #expansion="{data}">
-                <PatruljeEmbeddedView :teamId="data.teamId" />
+                <PatruljeEmbeddedView v-if="data.signupStatus != 'STARTED'" :teamId="data.teamId" />
+                <PatruljeActiveView v-else :teamId="data.teamId" />
             </template>
         </DataTable>
     </div>

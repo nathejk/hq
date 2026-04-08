@@ -4,6 +4,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"log"
+	"strings"
 
 	"github.com/nathejk/shared-go/types"
 	tables "nathejk.dk/nathejk/table"
@@ -44,17 +47,41 @@ type querier struct {
 		return teamIDs, metadata, nil
 	}
 */
-func (q *querier) GetAll(ctx context.Context, filter Filter) ([]Klan, error) {
+func (q *querier) GetAll(ctx context.Context, f Filter) ([]Klan, error) {
+	where := []string{}
+	args := []any{}
+	if f.YearSlug != "" {
+		where = append(where, "t.year = ?")
+		args = append(args, f.YearSlug)
+	}
+	if len(f.TeamIDs) == 1 {
+		where = append(where, "t.teamId = ?")
+		args = append(args, f.TeamIDs[0])
+	}
+	if len(f.TeamIDs) > 1 {
+		where = append(where, fmt.Sprintf("t.teamId IN (?%s)", strings.Repeat(",?", len(f.TeamIDs)-1)))
+		for _, id := range f.TeamIDs {
+			args = append(args, id)
+		}
+	}
+	if len(where) == 0 {
+		where = []string{"1 = 1"}
+	}
 	query := `SELECT t.teamId, t.name, t.groupName, t.korps, t.signupStatus, t.lok,
 			(SELECT COUNT(*) FROM senior s where t.teamId = s.teamId) memberCount,
 			(SELECT COALESCE(SUM(amount), 0) FROM payment where t.teamId = payment.orderForeignKey AND status IN ('reserved', 'received')) as paidAmount
 		FROM klan t
 		JOIN patruljestatus ts ON t.teamId = ts.teamId AND t.signupStatus != ''
-		` //WHERE (LOWER(p.year) = LOWER(?) OR ? = '')`
-	args := []any{} //filter.YearSlug, filter.YearSlug}
+		WHERE ` + strings.Join(where, " AND ")
 	rows, err := q.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		log.Print(query)
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return []Klan{}, nil
+		default:
+			return nil, err
+		}
 	}
 	defer rows.Close()
 

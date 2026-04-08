@@ -8,11 +8,18 @@ import bus from '@/plugins/bus';
 //import { useAuthStore } from '@/modules/auth/store/auth.store';
 import { storeToRefs } from 'pinia';
 import type { ToastMessageOptions } from 'primevue/toast';
+import { useGlobalState } from '@/composables/globalstate'
+
+const { yearSlug } = useGlobalState()
 
 const createInstance = (config: CreateAxiosDefaults) => {
   const instance: AxiosInstance = axios.create(config);
-/*
   instance.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
+    if (yearSlug.value.length > 0) {
+      config.headers.set('X-YearSlug', yearSlug.value);
+    }
+
+      /*
     const store = useAuthStore();
     const { token } = storeToRefs(store);
 
@@ -23,11 +30,12 @@ const createInstance = (config: CreateAxiosDefaults) => {
     ) {
       // relative url
       config.headers.set('Authorization', `Bearer ${token.value}`);
-    }
+    }*/
 
     return config;
   });
 
+/*
   instance.interceptors.response.use(
     undefined,
     async (error: AxiosError<{ message?: string, error?: string }>) => {

@@ -4,6 +4,8 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"strings"
 
 	"github.com/nathejk/shared-go/types"
 	tables "nathejk.dk/nathejk/table"
@@ -44,54 +46,72 @@ type querier struct {
 		return teamIDs, metadata, nil
 	}
 */
-func (q *querier) GetAll(ctx context.Context, filter Filter) ([]Klan, error) {
-	query := `SELECT t.teamId, t.name, t.groupName, t.korps, t.memberCount, t.signupStatus
-		FROM klan t
-		JOIN patruljestatus ts ON t.teamId = ts.teamId AND t.signupStatus != ''
-		` //WHERE (LOWER(p.year) = LOWER(?) OR ? = '')`
-	args := []any{} //filter.YearSlug, filter.YearSlug}
+func (q *querier) GetAll(ctx context.Context, f Filter) ([]*Senior, error) {
+	where := []string{}
+	args := []any{}
+	if f.YearSlug != "" {
+		where = append(where, "s.year = ?")
+		args = append(args, f.YearSlug)
+	}
+	if len(f.TeamIDs) == 1 {
+		where = append(where, "s.teamId = ?")
+		args = append(args, f.TeamIDs[0])
+	}
+	if len(f.TeamIDs) > 1 {
+		where = append(where, fmt.Sprintf("s.teamId IN (?%s)", strings.Repeat(",?", len(f.TeamIDs)-1)))
+		for _, id := range f.TeamIDs {
+			args = append(args, id)
+		}
+	}
+	if f.Lok > 0 {
+		where = append(where, "k.lok = ?")
+		args = append(args, f.Lok)
+	}
+	if len(where) == 0 {
+		where = []string{"1 = 1"}
+	}
+	query := `SELECT s.memberId, s.teamId, s.year, s.armNumber, s.name, s.address, s.postalCode, s.city, s.email, s.phone, s.birthday, s.tshirtSize, s.diet
+		FROM senior s JOIN klan k ON s.teamId = k.teamId
+		WHERE ` + strings.Join(where, " AND ") + ` ORDER BY teamId`
+
 	rows, err := q.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		switch {
+		case errors.Is(err, sql.ErrNoRows):
+			return []*Senior{}, nil
+		default:
+			return nil, err
+		}
 	}
 	defer rows.Close()
 
 	//totalRecords := 0
-	klans := []Klan{}
+	seniors := []*Senior{}
 	for rows.Next() {
-		var k Klan
-		if err := rows.Scan(&k.ID, &k.Name, &k.Group, &k.Korps, &k.MemberCount, &k.Status); err != nil {
-			//if err := rows.Scan(&klan.TeamID); err != nil {
+		var s Senior
+		if err := rows.Scan(&s.MemberID, &s.TeamID, &s.YearSlug, &s.ArmNumber, &s.Name, &s.Address, &s.PostalCode, &s.City, &s.Email, &s.Phone, &s.Birthday, &s.TshirtSize, &s.Diet); err != nil {
 			return nil, err
 		}
-		klans = append(klans, k)
+		seniors = append(seniors, &s)
 	}
 	// When the rows.Next() loop has finished, call rows.Err() to retrieve any error
 	// that was encountered during the iteration.
 	if err = rows.Err(); err != nil {
 		return nil, err
 	}
-	return klans, nil
+	return seniors, nil
 }
 
-func (q *querier) GetByID(ctx context.Context, teamID types.TeamID) (*Klan, error) {
-	if len(teamID) == 0 {
+func (q *querier) GetByID(ctx context.Context, memberID types.MemberID) (*Senior, error) {
+	if len(memberID) == 0 {
 		return nil, tables.ErrRecordNotFound
 	}
 
-	query := `SELECT t.teamId, t.name, t.groupName, t.korps, t.memberCount, t.signupStatus
-		FROM klan t
-		JOIN patruljestatus ts ON t.teamId = ts.teamID
-		WHERE t.teamId = ?`
-	var t Klan
-	err := q.db.QueryRow(query, teamID).Scan(
-		&t.ID,
-		&t.Name,
-		&t.Group,
-		&t.Korps,
-		&t.MemberCount,
-		&t.Status,
-	)
+	query := `SELECT s.memberId, s.teamId, s.year, s.armNumber, s.name, s.address, s.postalCode, s.city, s.email, s,phone, s.birthday, s.tshirtSize, d.diet
+		FROM senior s
+		WHERE s.memberId = ?`
+	var s Senior
+	err := q.db.QueryRow(query, memberID).Scan(&s.MemberID, &s.TeamID, &s.YearSlug, &s.ArmNumber, &s.Name, &s.Address, &s.PostalCode, &s.City, &s.Email, &s.Phone, &s.Birthday, &s.TshirtSize, &s.Diet)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -100,8 +120,7 @@ func (q *querier) GetByID(ctx context.Context, teamID types.TeamID) (*Klan, erro
 			return nil, err
 		}
 	}
-	return &t, nil
-	return nil, nil
+	return &s, nil
 }
 
 /*
