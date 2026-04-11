@@ -2,45 +2,47 @@ import './assets/main.css'
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import PrimeVue from 'primevue/config';
-import Aura from '@primevue/themes/aura';
-import ToastService from 'primevue/toastservice';
-
-
+import PrimeVue from 'primevue/config'
+import Aura from '@primevue/themes/aura'
+import ToastService from 'primevue/toastservice'
 
 import App from './App.vue'
 import router from './router'
 
-import { library, dom } from "@fortawesome/fontawesome-svg-core";
-import { FontAwesomeIcon } from "@fortawesome/vue-fontawesome";
+import { library, dom } from '@fortawesome/fontawesome-svg-core'
+import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { fas } from '@fortawesome/free-solid-svg-icons'
-import { fab } from '@fortawesome/free-brands-svg-icons';
-import { far } from '@fortawesome/free-regular-svg-icons';
-import { faPhone } from "@fortawesome/free-solid-svg-icons";
+import { fab } from '@fortawesome/free-brands-svg-icons'
+import { far } from '@fortawesome/free-regular-svg-icons'
+import { faPhone } from '@fortawesome/free-solid-svg-icons'
+import { useBuildInfo } from './composables/useBuildInfo'
 library.add(fas, far, fab, faPhone)
-dom.watch();
+dom.watch()
 
+// Build info is read from <meta> tags burned into index.html at Docker build time
+const buildInfo = useBuildInfo()
 
 localStorage.theme = 'light'
 
 const app = createApp(App)
 app.use(PrimeVue, {
-    locale: {
-        firstDayOfWeek: 1, // 0 = Sunday, 1 = Monday
-    },
-    theme: {
-        preset: Aura,
-        options: {
-            darkModeSelector: '.my-app-dark'
-            //prefix: 'p',
-            //darkModeSelector: 'system',
-            //cssLayer: false
-        }
+  locale: {
+    firstDayOfWeek: 1 // 0 = Sunday, 1 = Monday
+  },
+  theme: {
+    preset: Aura,
+    options: {
+      darkModeSelector: '.my-app-dark'
+      //prefix: 'p',
+      //darkModeSelector: 'system',
+      //cssLayer: false
     }
-});
-app.use(ToastService);
+  }
+})
+app.use(ToastService)
 app.use(createPinia())
 app.use(router)
-app.component("FontAwesomeIcon", FontAwesomeIcon)
+app.component('FontAwesomeIcon', FontAwesomeIcon)
+app.provide('buildInfo', buildInfo)
 
 app.mount('#app')

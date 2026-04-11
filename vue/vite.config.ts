@@ -2,8 +2,8 @@ import { fileURLToPath, URL } from 'node:url'
 
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
-import Components from 'unplugin-vue-components/vite';
-import {PrimeVueResolver} from '@primevue/auto-import-resolver';
+import Components from 'unplugin-vue-components/vite'
+import { PrimeVueResolver } from '@primevue/auto-import-resolver'
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -13,18 +13,16 @@ export default defineConfig({
     proxy: {
       '/api': {
         target: 'http://api',
-        changeOrigin: true,
-      },
+        changeOrigin: true
+      }
     },
-    allowedHosts: ['hq.local.nathejk.dk'],
+    allowedHosts: ['hq.local.nathejk.dk']
   },
   plugins: [
     vue(),
     Components({
-      resolvers: [
-        PrimeVueResolver()
-      ]
-    }),
+      resolvers: [PrimeVueResolver()]
+    })
   ],
   resolve: {
     alias: {

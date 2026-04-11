@@ -69,6 +69,10 @@ ENTRYPOINT ["/init"]
 #FROM node:10.11-alpine AS ui-builder
 FROM ui-dev AS ui-builder
 
+ARG GIT_COMMIT="none"
+ARG GIT_BRANCH="-"
+ARG BUILD_NUMBER="0"
+
 #npm ci # installs what is specified in package-lock.json
 RUN npm ci --no-save
 #COPY ui/yarn.lock /app/
@@ -76,7 +80,10 @@ RUN npm ci --no-save
 #RUN yarn install --frozen-lockfile
 
 #RUN npm test
-RUN npm run build
+RUN npm run build && \
+    sed -i "s/__BUILD_GIT_COMMIT__/$GIT_COMMIT/g" dist/index.html && \
+    sed -i "s/__BUILD_GIT_BRANCH__/$GIT_BRANCH/g" dist/index.html && \
+    sed -i "s/__BUILD_BUILD_NUMBER__/$BUILD_NUMBER/g" dist/index.html
 
 #FROM api-dev AS prod
 
