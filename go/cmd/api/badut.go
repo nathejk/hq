@@ -9,7 +9,7 @@ import (
 )
 
 func (app *application) showBadutListHandler(w http.ResponseWriter, r *http.Request) {
-	filter := personnel.Filter{YearSlug: "2025", UserTypes: []string{"gøgler"}}
+	filter := personnel.Filter{YearSlug: app.YearSlug(r), UserTypes: []string{"gøgler"}}
 	teams, err := app.models.Personnel.GetAll(context.Background(), filter)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)

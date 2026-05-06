@@ -18,7 +18,6 @@ import (
 
 func (app *application) showLoksHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	yearSlug := types.YearSlug("2025")
 	teams, err := app.models.Klan.GetAll(ctx, klan.Filter{})
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
@@ -27,7 +26,7 @@ func (app *application) showLoksHandler(w http.ResponseWriter, r *http.Request) 
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}
-	loks, _, err := app.models.Lok.GetAll(ctx, lok.Filter{YearSlug: yearSlug})
+	loks, _, err := app.models.Lok.GetAll(ctx, lok.Filter{YearSlug: app.YearSlug(r)})
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}

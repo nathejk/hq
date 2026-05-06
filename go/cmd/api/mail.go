@@ -17,7 +17,7 @@ type mailRecipient struct {
 }
 
 func (app *application) mailRecipientsHandler(w http.ResponseWriter, r *http.Request) {
-	filter := personnel.Filter{YearSlug: "2025", UserTypes: []string{"gøgler"}}
+	filter := personnel.Filter{YearSlug: app.YearSlug(r), UserTypes: []string{"gøgler"}}
 	badutter, err := app.models.Personnel.GetAll(context.Background(), filter)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
@@ -27,7 +27,7 @@ func (app *application) mailRecipientsHandler(w http.ResponseWriter, r *http.Req
 		badutRecipients = append(badutRecipients, mailRecipient{ID: types.ID(badut.ID), Name: badut.Name, Email: badut.Email})
 	}
 
-	klans, err := app.models.Klan.GetAll(context.Background(), klan.Filter{YearSlug: "2025"})
+	klans, err := app.models.Klan.GetAll(context.Background(), klan.Filter{YearSlug: app.YearSlug(r)})
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}

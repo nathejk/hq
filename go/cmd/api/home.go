@@ -9,7 +9,7 @@ import (
 )
 
 func (app *application) homeHandler(w http.ResponseWriter, r *http.Request) {
-	filter := patrulje.Filter{YearSlug: "2025"}
+	filter := patrulje.Filter{YearSlug: app.YearSlug(r)}
 	teams, _ := app.models.Patrulje.GetAll(r.Context(), filter)
 	teamCount := 0
 	memberCount := 0
@@ -21,7 +21,7 @@ func (app *application) homeHandler(w http.ResponseWriter, r *http.Request) {
 		memberCount = memberCount + t.MemberCount
 	}
 	badutCount := 0
-	badutter, _ := app.models.Personnel.GetAll(r.Context(), personnel.Filter{YearSlug: "2025", UserTypes: []string{"gøgler"}})
+	badutter, _ := app.models.Personnel.GetAll(r.Context(), personnel.Filter{YearSlug: app.YearSlug(r), UserTypes: []string{"gøgler"}})
 	for _, b := range badutter {
 		if b.PaidAmount == 0 {
 			continue

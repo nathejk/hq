@@ -29,7 +29,7 @@ func NewLok(p streaminterface.Publisher, q lokQuerier) *lokcmd {
 		q: q,
 
 		producerSlug: "hq-api",
-		yearSlug:     "2025",
+		yearSlug:     "2026",
 	}
 }
 

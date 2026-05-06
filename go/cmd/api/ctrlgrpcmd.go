@@ -66,7 +66,7 @@ func (cmd ctrlgrpCmd) Update(req interface{}) (interface{}, error) {
 		}
 		body.Controls = append(body.Controls, control)
 	}
-	msg := cmd.publisher.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.checkgroup.%s.updated", "2025", r.ID)))
+	msg := cmd.publisher.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.checkgroup.%s.updated", app.YearSlug(r), r.ID)))
 	//msg := eventstream.NewMessage()
 	//msg.Msg().Type = "controlgroup.updated"
 	msg.SetBody(body)
@@ -80,7 +80,7 @@ func (cmd ctrlgrpCmd) Delete(req interface{}) (interface{}, error) {
 	body := messages.NathejkControlGroupDeleted{
 		ControlGroupID: r.ID,
 	}
-	msg := cmd.publisher.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.checkgroup.%s.deleted", "2025", r.ID)))
+	msg := cmd.publisher.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.checkgroup.%s.deleted", app.YearSlug(r), r.ID)))
 	//msg := eventstream.NewMessage()
 	//msg.Msg().Type = "controlgroup.deleted"
 	msg.SetBody(body)
