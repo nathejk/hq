@@ -51,7 +51,7 @@ func TShirtSizes() []SlugLabel {
 }
 
 func (app *application) showPatruljeListHandler(w http.ResponseWriter, r *http.Request) {
-	filter := patrulje.Filter{YearSlug: "2025"}
+	filter := patrulje.Filter{YearSlug: app.YearSlug(r)}
 	teams, err := app.models.Patrulje.GetAll(r.Context(), filter)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)

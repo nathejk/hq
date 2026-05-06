@@ -8,7 +8,7 @@ import (
 )
 
 type Filter struct {
-	YearSlug     string
+	YearSlug     types.YearSlug
 	Page         int
 	PageSize     int
 	Sort         string

@@ -66,7 +66,7 @@ func (app *application) listCheckgroupsHandler(w http.ResponseWriter, r *http.Re
 	availablePersonnel, _ := app.models.Personnel.GetAll(r.Context(), personnel.Filter{YearSlug: input.Filter.Year, UserTypes: []string{"friend"}})
 
 	// Compute scan stats per checkgroup
-	startedTeamIDs, err := app.models.Patrulje.GetStartedTeamIDs(r.Context(), patrulje.Filter{YearSlug: string(input.Filter.Year)})
+	startedTeamIDs, err := app.models.Patrulje.GetStartedTeamIDs(r.Context(), patrulje.Filter{YearSlug: input.Filter.Year})
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 		return

@@ -21,8 +21,6 @@ func (c *consumer) Consumes() []streaminterface.Subject {
 }
 
 func (c *consumer) HandleMessage(msg streaminterface.Message) error {
-	c.c++
-	log.Printf("Scan count: %d", c.c)
 	switch true {
 	case msg.Subject().Match("NATHEJK.*.qr.*.scanned"):
 		var body messages.NathejkQrScanned
