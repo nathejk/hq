@@ -18,17 +18,20 @@ import (
 
 func (app *application) showLoksHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	teams, err := app.models.Klan.GetAll(ctx, klan.Filter{})
+	teams, err := app.models.Klan.GetAll(ctx, klan.Filter{YearSlug: app.YearSlug(r)})
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
+		return
 	}
 	users, err := app.models.Personnel.GetAll(ctx, personnel.Filter{Department: "Banditter"})
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
+		return
 	}
 	loks, _, err := app.models.Lok.GetAll(ctx, lok.Filter{YearSlug: app.YearSlug(r)})
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
+		return
 	}
 
 	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"loks": loks, "teams": teams, "users": users}, nil); err != nil {
@@ -110,6 +113,7 @@ func (app *application) showKlanListHandler(w http.ResponseWriter, r *http.Reque
 	teams, err := app.models.Klan.GetAll(context.Background(), filter)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
+		return
 	}
 
 	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"teams": teams}, nil)

@@ -119,7 +119,7 @@ func (app *application) excelPatruljeHandler(w http.ResponseWriter, r *http.Requ
 }
 
 func (app *application) excelKlanHandler(w http.ResponseWriter, r *http.Request) {
-	filter := klan.Filter{}
+	filter := klan.Filter{YearSlug: app.YearSlug(r)}
 	teams, err := app.models.Klan.GetAll(context.Background(), filter)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
