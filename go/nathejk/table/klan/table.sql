@@ -5,7 +5,9 @@ CREATE TABLE IF NOT EXISTS klan (
     groupName VARCHAR(99) NOT NULL DEFAULT "",
     korps VARCHAR(9) NOT NULL DEFAULT "",
     memberCount INT NOT NULL DEFAULT 0,
-    signupStatus VARCHAR(9) NOT NULL DEFAULT "",
+    requestedMemberCount INT NOT NULL DEFAULT 0,
+    reservedMemberCount INT NOT NULL DEFAULT 0,
+    signupStatus VARCHAR(19) NOT NULL DEFAULT "",
     lok VARCHAR(9) NOT NULL DEFAULT "",
     PRIMARY KEY (teamId)
 );

@@ -3,19 +3,16 @@ package klan
 import (
 	"context"
 	"fmt"
-	"math/rand/v2"
 
-	"github.com/google/uuid"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
-	tables "nathejk.dk/nathejk/table"
 	"nathejk.dk/superfluids/streaminterface"
 )
 
 type Commands interface {
-	Signup(context.Context, types.YearSlug, SignupCommand) (types.TeamID, error)
-	VerifyEmail(context.Context, types.TeamID, string) error
-	VerifyPhone(context.Context, types.TeamID, string) error
+	//Signup(context.Context, types.YearSlug, SignupCommand) (types.TeamID, error)
+	//VerifyEmail(context.Context, types.TeamID, string) error
+	//VerifyPhone(context.Context, types.TeamID, string) error
 	Update(context.Context, types.TeamID, UpdateCommand) error
 	AssignToLok(context.Context, types.TeamID, string) error
 	Delete(context.Context, types.TeamID) error
@@ -33,64 +30,65 @@ type SignupCommand struct {
 	Phone types.PhoneNumber
 }
 
-func (c *commander) Signup(ctx context.Context, year types.YearSlug, cmd SignupCommand) (types.TeamID, error) {
-	teamID := types.TeamID(uuid.New().String())
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.%s.%s.signedup", year, types.TeamTypeKlan, teamID)))
-	msg.SetBody(&messages.NathejkTeamSignedUp{
-		TeamID:  teamID,
-		Name:    cmd.Name,
-		Email:   cmd.Email,
-		Phone:   cmd.Phone,
-		Pincode: fmt.Sprintf("%d", rand.IntN(9000)+1000),
-	})
-	if err := c.p.Publish(msg); err != nil {
-		return "", err
-	}
-	return teamID, nil
-}
-
-func (c *commander) VerifyEmail(ctx context.Context, teamID types.TeamID, secret string) error {
-	signup, err := c.r.Signup.GetByID(ctx, teamID)
-	if err != nil {
-		return err
-	}
-	if len(secret) == 0 {
-		return tables.ErrVerificationFailed
+/*
+	func (c *commander) Signup(ctx context.Context, year types.YearSlug, cmd SignupCommand) (types.TeamID, error) {
+		teamID := types.TeamID(uuid.New().String())
+		msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.%s.%s.signedup", year, types.TeamTypeKlan, teamID)))
+		msg.SetBody(&messages.NathejkTeamSignedUp{
+			TeamID:  teamID,
+			Name:    cmd.Name,
+			Email:   cmd.Email,
+			Phone:   cmd.Phone,
+			Pincode: fmt.Sprintf("%d", rand.IntN(9000)+1000),
+		})
+		if err := c.p.Publish(msg); err != nil {
+			return "", err
+		}
+		return teamID, nil
 	}
 
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.%s.%s.email_verified", signup.TeamType, types.TeamTypeKlan, teamID)))
-	msg.SetBody(&messages.NathejkSignupEmailLinkClicked{
-		TeamID: teamID,
-		Email:  signup.EmailPending,
-		Secret: secret,
-	})
-	if err := c.p.Publish(msg); err != nil {
-		return err
-	}
-	return nil
-}
+	func (c *commander) VerifyEmail(ctx context.Context, teamID types.TeamID, secret string) error {
+		signup, err := c.r.Signup.GetByID(ctx, teamID)
+		if err != nil {
+			return err
+		}
+		if len(secret) == 0 {
+			return tables.ErrVerificationFailed
+		}
 
-func (c *commander) VerifyPhone(ctx context.Context, teamID types.TeamID, pincode string) error {
-	signup, err := c.r.Signup.GetByID(ctx, teamID)
-	if err != nil {
-		return err
-	}
-	if len(pincode) == 0 || pincode != signup.Pincode {
-		return tables.ErrVerificationFailed
+		msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.%s.%s.email_verified", signup.TeamType, types.TeamTypeKlan, teamID)))
+		msg.SetBody(&messages.NathejkSignupEmailLinkClicked{
+			TeamID: teamID,
+			Email:  signup.EmailPending,
+			Secret: secret,
+		})
+		if err := c.p.Publish(msg); err != nil {
+			return err
+		}
+		return nil
 	}
 
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.%s.%s.phone_verified", signup.TeamType, types.TeamTypeKlan, teamID)))
-	msg.SetBody(&messages.NathejkSignupPincodeUsed{
-		TeamID:  teamID,
-		Phone:   signup.PhonePending,
-		Pincode: pincode,
-	})
-	if err := c.p.Publish(msg); err != nil {
-		return err
-	}
-	return nil
-}
+	func (c *commander) VerifyPhone(ctx context.Context, teamID types.TeamID, pincode string) error {
+		signup, err := c.r.Signup.GetByID(ctx, teamID)
+		if err != nil {
+			return err
+		}
+		if len(pincode) == 0 || pincode != signup.Pincode {
+			return tables.ErrVerificationFailed
+		}
 
+		msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.%s.%s.phone_verified", signup.TeamType, types.TeamTypeKlan, teamID)))
+		msg.SetBody(&messages.NathejkSignupPincodeUsed{
+			TeamID:  teamID,
+			Phone:   signup.PhonePending,
+			Pincode: pincode,
+		})
+		if err := c.p.Publish(msg); err != nil {
+			return err
+		}
+		return nil
+	}
+*/
 type UpdateCommand struct {
 	Name      *string `json:"name"`
 	GroupName *string `json:"groupName"`

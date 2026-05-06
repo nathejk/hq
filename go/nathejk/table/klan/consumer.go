@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/nathejk/shared-go/messages"
+	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/pkg/tablerow"
 	"nathejk.dk/superfluids/streaminterface"
 
@@ -15,12 +16,14 @@ type consumer struct {
 	w tablerow.Consumer
 }
 
-func (_ *consumer) Consumes() []streaminterface.Subject {
+func (c *consumer) Consumes() []streaminterface.Subject {
 	return []streaminterface.Subject{
 		//streaminterface.SubjectFromStr("monolith:nathejk_team"),
 		//streaminterface.SubjectFromStr("nathejk"),
-		streaminterface.SubjectFromStr("NATHEJK:*.klan.*.updated"),
 		streaminterface.SubjectFromStr("NATHEJK:*.klan.*.signedup"),
+		streaminterface.SubjectFromStr("NATHEJK:*.klan.*.requested"),
+		streaminterface.SubjectFromStr("NATHEJK:*.klan.*.reserved"),
+		streaminterface.SubjectFromStr("NATHEJK:*.klan.*.updated"),
 		streaminterface.SubjectFromStr("NATHEJK.*.klan.*.status.changed"),
 		streaminterface.SubjectFromStr("NATHEJK.*.klan.*.assigned"),
 	}
@@ -41,16 +44,36 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 			log.Fatalf("Error consuming sql %q", err)
 		}
 
-	case msg.Subject().Match("nathejk:patrulje.updated"):
-		var body messages.NathejkTeamUpdated
+	case msg.Subject().Match("nathejk.*.klan.*.requested"):
+		var body messages.NathejkTeamMembersRequested
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
-		err := c.w.Consume(fmt.Sprintf("UPDATE patrulje SET name=%q, groupName=%q, korps=%q, contactName=%q, contactPhone=%q, contactEmail=%q, contactRole=%q WHERE teamId=%q", body.Name, body.GroupName, body.Korps, body.ContactName, body.ContactPhone, body.ContactEmail, body.ContactRole, body.TeamID))
+		err := c.w.Consume(fmt.Sprintf("UPDATE klan SET requestedMemberCount=%d, signupStatus=%q WHERE teamId=%q", body.MemberCount, types.SignupStatusOnHold, body.TeamID))
 		if err != nil {
 			log.Fatalf("Error consuming sql %q", err)
 		}
 
+	case msg.Subject().Match("nathejk.*.klan.*.reserved"):
+		var body messages.NathejkTeamMembersRequested
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		err := c.w.Consume(fmt.Sprintf("UPDATE klan SET reservedMemberCount=%d, signupStatus=%q WHERE teamId=%q", body.MemberCount, types.SignupStatusPay, body.TeamID))
+		if err != nil {
+			log.Fatalf("Error consuming sql %q", err)
+		}
+		/*
+			case msg.Subject().Match("nathejk:patrulje.updated"):
+				var body messages.NathejkTeamUpdated
+				if err := msg.Body(&body); err != nil {
+					return err
+				}
+				err := c.w.Consume(fmt.Sprintf("UPDATE patrulje SET name=%q, groupName=%q, korps=%q, contactName=%q, contactPhone=%q, contactEmail=%q, contactRole=%q WHERE teamId=%q", body.Name, body.GroupName, body.Korps, body.ContactName, body.ContactPhone, body.ContactEmail, body.ContactRole, body.TeamID))
+				if err != nil {
+					log.Fatalf("Error consuming sql %q", err)
+				}
+		*/
 	case msg.Subject().Match("NATHEJK.*.klan.*.status.changed"):
 		var body messages.NathejkKlanStatusChanged
 		if err := msg.Body(&body); err != nil {
