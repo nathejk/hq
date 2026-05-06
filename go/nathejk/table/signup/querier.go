@@ -9,6 +9,10 @@ import (
 	tables "nathejk.dk/nathejk/table"
 )
 
+type Queries interface {
+	GetByID(context.Context, types.TeamID) (*Signup, error)
+}
+
 type querier struct {
 	db *sql.DB
 }

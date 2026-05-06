@@ -36,16 +36,17 @@ func (c *registrant) Consumes() (subjs []streaminterface.Subject) {
 	}
 }
 
-func (c *registrant) HandleMessage(msg streaminterface.Message) {
+func (c *registrant) HandleMessage(msg streaminterface.Message) error {
 	switch msg.Subject().Subject() {
 	case "nathejk:patrulje.signedup", "nathejk:klan.signedup":
 		var body messages.NathejkTeamSignedUp
 		if err := msg.Body(&body); err != nil {
-			return
+			return err
 		}
 		err := c.w.Consume(fmt.Sprintf("REPLACE INTO registrant SET registrantId=%q, email=%q, phone=%q, pincode=%q", body.TeamID, body.Email, body.Phone, body.Pincode))
 		if err != nil {
 			log.Fatalf("Error consuming sql %q", err)
 		}
 	}
+	return nil
 }

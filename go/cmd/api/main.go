@@ -140,7 +140,7 @@ func main() {
 
 	year := year.New(js, writer, reader)
 	signuptable := signup.New(writer, db.DB())
-	klantable := klan.New(writer, db.DB())
+	klantable := klan.New(js, writer, reader)
 	seniortable := senior.New(writer, db.DB())
 	patruljetable := patrulje.New(writer, db.DB())
 	patruljemergedtable := patruljemerged.New(writer, db.DB())

@@ -12,6 +12,11 @@ import (
 	tables "nathejk.dk/nathejk/table"
 )
 
+type Queries interface {
+	GetAll(context.Context, Filter) ([]Klan, error)
+	GetByID(context.Context, types.TeamID) (*Klan, error)
+}
+
 type querier struct {
 	db *sql.DB
 }
@@ -108,13 +113,14 @@ func (q *querier) GetByID(ctx context.Context, teamID types.TeamID) (*Klan, erro
 		return nil, tables.ErrRecordNotFound
 	}
 
-	query := `SELECT t.teamId, t.name, t.groupName, t.korps, t.memberCount, t.signupStatus, t.lok
+	query := `SELECT t.teamId, t.year, t.name, t.groupName, t.korps, t.memberCount, t.signupStatus, t.lok
 		FROM klan t
 		JOIN patruljestatus ts ON t.teamId = ts.teamID
 		WHERE t.teamId = ?`
 	var t Klan
 	err := q.db.QueryRow(query, teamID).Scan(
 		&t.ID,
+		&t.Year,
 		&t.Name,
 		&t.Group,
 		&t.Korps,
@@ -131,7 +137,6 @@ func (q *querier) GetByID(ctx context.Context, teamID types.TeamID) (*Klan, erro
 		}
 	}
 	return &t, nil
-	return nil, nil
 }
 
 /*

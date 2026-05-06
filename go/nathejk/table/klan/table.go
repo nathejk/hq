@@ -6,12 +6,14 @@ import (
 
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/pkg/tablerow"
+	"nathejk.dk/superfluids/streaminterface"
 
 	_ "embed"
 )
 
 type Klan struct {
 	ID          types.TeamID       `json:"id"`
+	Year        types.YearSlug     `json:"year"`
 	Status      types.SignupStatus `json:"status"`
 	Name        string             `json:"name"`
 	Group       string             `json:"group"`
@@ -19,6 +21,8 @@ type Klan struct {
 	MemberCount int                `json:"memberCount"`
 	Lok         string             `json:"lok"`
 	PaidAmount  int                `json:"paidAmount"`
+	Secret      string             `json:"-"`
+	Pincode     string             `json:"-"`
 }
 type Klan2 struct {
 	TeamID       types.TeamID       `sql:"teamId"`
@@ -30,12 +34,15 @@ type Klan2 struct {
 }
 
 type table struct {
+	commander
 	consumer
 	querier
 }
 
-func New(w tablerow.Consumer, r *sql.DB) *table {
-	table := &table{consumer: consumer{w: w}, querier: querier{db: r}}
+func New(p streaminterface.Publisher, w tablerow.Consumer, r *sql.DB, es ...external) *table {
+	q := querier{db: r}
+	c := commander{p: p, q: &q, r: NewRepository(es...)}
+	table := &table{commander: c, consumer: consumer{w: w}, querier: q}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
 		log.Fatalf("Error creating table %q", err)
 	}

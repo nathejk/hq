@@ -1,0 +1,265 @@
+# Nathejk HQ — Project Rules & Context
+
+## Overview
+
+Nathejk HQ is the headquarters management platform for **Nathejk**, a Danish scouting adventure event.
+It provides an admin panel for managing patrols (patruljer), clans (klaner), performers (gøglere/badutter),
+checkpoints (poster), volunteer personnel, payments, maps, and communications (mail/SMS).
+
+The system follows a **CQRS + Event Sourcing** architecture with NATS JetStream as the event bus,
+MySQL (MariaDB) as the read-model store, a single Go HTTP API, and a Vue 3 SPA frontend.
+
+---
+
+## Architecture
+
+```
+┌──────────┐   HTTP    ┌──────────────────┐   Publish   ┌────────────────┐
+│  Browser  │ ───────→ │   cmd/api (Go)   │ ──────────→ │ NATS JetStream │
+│   (SPA)   │ ←─────── │   JSON REST API   │             │   "NATHEJK"    │
+└──────────┘          │                    │             └───────┬────────┘
+                      │ commands/ (write)  │                     │
+                      │ data/    (read)    │←── MySQL ←──┐      │ Subscribe
+                      └────────────────────┘             │      ▼
+                                                   ┌─────┴──────────────┐
+                                                   │  nathejk/table/*   │
+                                                   │  (read projections │
+                                                   │   / consumers)     │
+                                                   └────────────────────┘
+```
+
+### Write Side (Commands)
+1. HTTP handler receives a request.
+2. Calls a command method (e.g. `commands.Team.Signup(...)`, `commands.Year.Update(...)`).
+3. The command optionally checks current read-model state (dirty-check), then publishes a domain event to NATS JetStream.
+
+### Read Side (Projections)
+Each `nathejk/table/*` package implements `streaminterface.Consumer`:
+- `Consumes()` declares which NATS subjects it subscribes to.
+- `HandleMessage(msg)` materializes the event into a MySQL table via SQL INSERT/UPDATE/DELETE.
+- On startup, JetStream ordered consumers replay all events to rebuild the read model.
+
+The `xstream.Mux` wires consumers to the stream and routes messages to the appropriate handler.
+
+### Event Subjects
+Pattern: `NATHEJK.{year}.{entityType}.{entityId}.{event}`
+Examples: `NATHEJK.2025.klan.{teamId}.signedup`, `NATHEJK.2025.patrulje.{teamId}.started`
+
+---
+
+## Project Structure
+
+```
+hq/
+├── docker-compose.yml          # Dev environment orchestration
+├── docker/
+│   ├── Dockerfile              # Multi-stage: api-dev, api-builder, ui-dev, ui-builder, prod
+│   └── bin/                    # Init scripts (init-dev with hot-reload, init, init-debug, init-test)
+├── go/                         # Go backend (module: nathejk.dk, Go 1.23)
+│   ├── cmd/api/                # Single HTTP API service (main, routes, handlers)
+│   │   └── app/                # Shared JSON API helpers (errors, middleware, server)
+│   ├── internal/
+│   │   ├── data/               # Read models: team, member, signup, users, tokens, permissions
+│   │   ├── payment/mobilepay/  # MobilePay/Vipps ePayment REST client
+│   │   ├── sms/                # CPSMS SMS gateway client
+│   │   └── mailer/             # SMTP mailer
+│   ├── nathejk/
+│   │   ├── commands/           # Write-side command handlers (team, lok, checkgroup)
+│   │   └── table/              # Event-sourced read projections (one per aggregate)
+│   │       ├── year/, klan/, patrulje/, senior/, spejder/
+│   │       ├── signup/, checkgroup/, checkpoint/, checkpersonnel/
+│   │       ├── scan/, lok/, payment/, personnel/, patruljemerged/
+│   │       └── (each: table.go, consumer.go, query.go, commands.go, table.sql, filter.go)
+│   ├── pkg/
+│   │   ├── sqlpersister/       # Generic SQL executor (write-side adapter)
+│   │   └── tablerow/           # Interfaces: SQLTableRow, Consumer, EntityChangedPublisher
+│   └── superfluids/
+│       ├── streaminterface/    # Core pub/sub abstractions (Stream, Publisher, Subscriber, Consumer, Message)
+│       ├── jetstream/          # NATS JetStream implementation of streaminterface
+│       └── xstream/            # Stream multiplexer (Mux) — routes messages to consumers
+├── vue/                        # Vue 3 frontend (TypeScript, Vite 6, PrimeVue 4, Tailwind CSS 3)
+│   ├── src/
+│   │   ├── views/              # Page-level components (Home, Year, Klan, Patrulje, Post, Mail, Kort, etc.)
+│   │   ├── components/         # Reusable UI components (Navigation, Footer, DayTimePicker, etc.)
+│   │   ├── composables/        # Shared reactive state (globalstate.ts, datefilters.ts, useBuildInfo.ts)
+│   │   ├── plugins/            # Axios (HTTP client), mitt (event bus), Sentry
+│   │   ├── router/             # Vue Router (HTML5 history mode, lazy-loaded routes)
+│   │   └── stores/             # Pinia (installed, minimally used — state mostly in composables/local refs)
+│   ├── vite.config.ts          # Dev proxy: /api → http://api (Docker service)
+│   └── tailwind.config.js
+└── .github/workflows/          # CI/CD: build-and-publish to DockerHub (nathejk/hq)
+```
+
+---
+
+## Technology Stack
+
+### Backend (Go)
+- **Language**: Go 1.23
+- **Module**: `nathejk.dk`
+- **HTTP Router**: `julienschmidt/httprouter`
+- **Database**: MariaDB 10.8 via `go-sql-driver/mysql`
+- **Query Builder**: `doug-martin/goqu/v9`
+- **Event Streaming**: NATS JetStream (`nats-io/nats.go`)
+- **Shared Domain Types**: `github.com/nathejk/shared-go/types` (TeamID, MemberID, UserID, etc.)
+- **Excel Export**: `xuri/excelize/v2`
+- **Email**: `wneessen/go-mail` (SMTP)
+- **SMS**: CPSMS REST API (`api.cpsms.dk`)
+- **Payments**: MobilePay/Vipps ePayment REST API
+
+### Frontend (Vue)
+- **Framework**: Vue 3 with `<script setup>` (Composition API)
+- **Language**: TypeScript ~5.4 (mixed — some views use plain JS setup)
+- **Build Tool**: Vite 6.3
+- **UI Library**: PrimeVue 4 (Aura theme) with auto-import via `unplugin-vue-components`
+- **CSS**: Tailwind CSS 3.4
+- **HTTP Client**: Axios (baseURL: `/api/`, adds `X-YearSlug` header)
+- **Map**: Leaflet 1.9
+- **Drag & Drop**: vuedraggable 4.1
+- **Rich Text**: Quill 2.0
+- **Icons**: FontAwesome (solid, brands, regular) + PrimeIcons
+- **State**: Composables with module-level `ref()` (singleton pattern), Pinia available but barely used
+- **Routing**: vue-router 4 (HTML5 history, lazy-loaded routes)
+
+### Infrastructure
+- **Containerization**: Docker with multi-stage Dockerfile
+- **Orchestration**: Docker Compose (dev), Traefik (routing)
+- **Database**: MariaDB 10.8 (timezone: Europe/Copenhagen)
+- **Event Bus**: NATS JetStream (external Docker network)
+- **Reverse Proxy**: Traefik (external) + `jrgensen/gateway` (internal subdomain routing)
+- **CI/CD**: GitHub Actions → DockerHub (`nathejk/hq`)
+- **Auth**: External service at `lukmigind.nathejk.dk` (JWT cookie-based)
+
+---
+
+## Domain Model
+
+### Core Entities
+- **Year** — An event edition (slug, headline, description, cities, dates)
+- **Patrulje** (Patrol) — A team of scouts (spejdere). Has name, group, korps, liga, contact info, members, team number, signup status
+- **Klan** (Clan) — A team of seniors. Has name, group, korps, members, signup status, lok assignment, payment tracking
+- **Spejder** (Scout) — Individual patrol member (name, address, contact, birthday, T-shirt size)
+- **Senior** — Individual clan member (name, address, contact, birthday, diet, T-shirt size)
+- **Checkgroup** — A group of checkpoints with timing schemes (fixed, relative, none), mandatory flag
+- **Checkpoint** — Individual checkpoint within a checkgroup (location, time windows, sort order)
+- **Checkpersonnel** — Volunteers staffing checkpoints with time shifts
+- **Scan** — QR code scan events (team scanned at checkpoint)
+- **Lok** — Physical camp locations that klans are assigned to
+- **Signup** — Registration record tracking email/phone verification and pincode
+- **Payment** — Payment lifecycle: requested → reserved → received (MobilePay)
+- **Personnel** — Event volunteers/staff (gøglere/badutter)
+
+### Shared Types (from `nathejk/shared-go`)
+`TeamID`, `MemberID`, `UserID`, `LokID`, `CheckgroupID`, `CheckpointID`, `YearSlug`, `TeamType` (patrulje/klan), `SignupStatus`, `PhoneNumber`, `EmailAddress`, `Date`
+
+---
+
+## API Endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/api/home` | Dashboard stats |
+| GET/POST/PATCH/DELETE | `/api/year/:slug` | Year CRUD |
+| GET/POST/PUT/DELETE | `/api/checkgroup(s)` | Checkgroup management |
+| POST/PUT/DELETE | `/api/checkpersonnel` | Checkpoint personnel |
+| GET | `/api/personnel` | List all personnel |
+| POST | `/api/signup` | Team signup (creates team + sends verification email) |
+| POST | `/api/signup/pincode` | PIN code verification |
+| GET/PUT | `/api/patrulje/:id` | Patrol CRUD |
+| PUT | `/api/patrulje/:id/start` | Start a patrol |
+| GET/PUT/PATCH | `/api/klan/:id` | Clan CRUD |
+| GET/PUT/DELETE | `/api/lok/:id` | Lok (camp location) management |
+| GET | `/api/badut` | Performer list |
+| GET | `/api/excel/klan`, `/api/excel/patrulje`, `/api/excel/personnel` | Excel exports |
+| GET | `/api/mail/recipients` | Mail recipient list |
+| POST | `/api/mail/send` | Send mail |
+| GET | `/api/v1/healthcheck` | Health check |
+
+---
+
+## Development Setup
+
+### Prerequisites
+- Docker and Docker Compose
+- External Docker networks: `traefik`, `jetstream` (must exist before starting)
+- A running NATS JetStream instance on the `jetstream` network
+- A running Traefik instance on the `traefik` network (or access via `hq.local.nathejk.dk`)
+
+### Starting Dev Environment
+```
+docker compose up
+```
+
+### Services & URLs
+| Service | Internal URL | External URL |
+|---------|-------------|--------------|
+| Frontend (Vite dev) | `http://ui:80` | `http://hq.local.nathejk.dk` |
+| API | `http://api:80` | `http://hq.local.nathejk.dk/api/` |
+| DB Admin (Adminer) | `http://adminer:8080` | `http://mysql.hq.local.nathejk.dk` |
+| MariaDB | `mysql:3306` | — |
+
+### Dev Workflow
+- **Go API**: Hot-reload via `inotifywait` — automatically rebuilds and restarts on file changes in `./go`
+- **Vue Frontend**: Vite HMR — changes in `./vue/src` are reflected instantly
+- **Database**: MariaDB tables auto-created on startup via `CREATE TABLE IF NOT EXISTS` in each table consumer
+- **Events**: Read models rebuilt from JetStream on each API restart (event replay)
+
+### Environment Variables (dev defaults)
+| Variable | Value |
+|----------|-------|
+| `JETSTREAM_DSN` | `nats://jetstream:4222` |
+| `DB_DSN` | `root:ib@tcp(mysql:3306)/hq?parseTime=true` |
+| `SMS_DSN` | `cpsms://TOKEN@api.cpsms.dk` |
+| `AUTH_BASEURL` | `https://lukmigind.nathejk.dk` |
+
+### Frontend Dev Proxy
+Vite proxies `/api/*` to `http://api` (the Go service inside Docker).
+
+---
+
+## Coding Conventions
+
+### Go
+- Single service binary at `cmd/api/`
+- Each table projection follows a consistent structure: `table.go`, `consumer.go`, `query.go`, `commands.go`, `table.sql`, `filter.go`
+- SQL schemas embedded via `//go:embed table.sql`
+- Domain events carry `eventId`, `correlationId`, `causationId` for tracing
+- Commands perform dirty-checking against read model before publishing events
+- Use `goqu` query builder for newer modules; raw SQL for older ones
+- MySQL-specific SQL: `INSERT ... ON DUPLICATE KEY UPDATE`, `IF()`, `?` placeholders
+
+### Vue / TypeScript
+- Use `<script setup>` (Composition API) for all components
+- PrimeVue components are auto-imported (no manual imports needed)
+- State management: prefer composables with module-level `ref()` for shared state; use local `ref()` per view for component data
+- API calls via `http.get/post/put/patch/delete` from `src/plugins/axios`
+- Lazy-load all routes except HomeView
+- Danish locale for date formatting (`da-DK`)
+- Tailwind CSS for styling; PrimeVue Aura theme for components
+
+### Language
+- The domain uses Danish terminology: patrulje (patrol), klan (clan), spejder (scout), senior, gøgler/badut (performer), lok (camp location), post (checkpoint), postlinje (checkpoint line), postmandskab (checkpoint personnel), kort (map), år/year (year edition)
+- UI text and labels are in Danish
+- Code (variables, functions, comments) is in English, but domain entity names retain Danish forms
+
+---
+
+## CI/CD
+
+- **Trigger**: Push to `main` or pull request
+- **Pipeline**: GitHub Actions → Docker multi-stage build → Push to DockerHub (`nathejk/hq`)
+- **Tagging**: `latest` (main only) + `{branch}.{run_number}`
+- **Build args injected**: `GIT_COMMIT`, `GIT_BRANCH`, `BUILD_NUMBER`, `BUILD_VERSION`
+- **Production image**: Minimal Alpine with compiled Go binary + built Vue static files, single port 80
+
+---
+
+## External Integrations
+
+| Service | Purpose | Config |
+|---------|---------|--------|
+| NATS JetStream | Event streaming (CQRS event bus) | `JETSTREAM_DSN` |
+| MobilePay/Vipps | Payment processing | `PAYMENT_DSN` |
+| CPSMS | SMS gateway (Danish provider) | `SMS_DSN` |
+| SMTP | Email (verification, notifications) | `SMTP_HOST`, `SMTP_PORT`, etc. |
+| `lukmigind.nathejk.dk` | Authentication service (JWT) | `AUTH_BASEURL` |

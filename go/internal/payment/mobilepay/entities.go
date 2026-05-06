@@ -42,7 +42,7 @@ type OrderLine struct {
 }
 type Receipt struct {
 	OrderLines []OrderLine `json:"orderLines"`
-	BottomLine BottomLine  `bottomLine"`
+	BottomLine BottomLine  `json:"bottomLine"`
 }
 type BottomLine struct {
 	Currency Currency `json:"currency"`

@@ -42,16 +42,17 @@ func (c *pincode) Consumes() (subjs []streaminterface.Subject) {
 	}
 }
 
-func (c *pincode) HandleMessage(msg streaminterface.Message) {
+func (c *pincode) HandleMessage(msg streaminterface.Message) error {
 	switch msg.Subject().Subject() {
 	case "nathejk:patrulje.signedup", "nathejk:klan.signedup":
 		var body messages.NathejkTeamSignedUp
 		if err := msg.Body(&body); err != nil {
-			return
+			return err
 		}
 		err := c.w.Consume(fmt.Sprintf("INSERT INTO pincode SET teamId=%q, pincode=%q ON DUPLICATE KEY UPDATE pincode=VALUES(pincode)", body.TeamID, body.Pincode))
 		if err != nil {
 			log.Fatalf("Error consuming sql %q", err)
 		}
 	}
+	return nil
 }
