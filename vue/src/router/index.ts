@@ -55,6 +55,11 @@ const router = createRouter({
       component: () => import('@/views/KortView.vue')
     },
     {
+      path: '/betalinger',
+      name: 'payments',
+      component: () => import('@/views/PaymentListView.vue')
+    },
+    {
       path: '/about',
       name: 'about',
       // route level code-splitting

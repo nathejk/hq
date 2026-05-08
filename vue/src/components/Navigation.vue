@@ -52,6 +52,11 @@ const items = ref([
     name: 'kort'
   },
   {
+    label: 'Betalinger',
+    icon: 'fas fa-dollar',
+    name: 'payments'
+  },
+  {
     label: 'Projects',
     icon: 'pi pi-search',
     items: [

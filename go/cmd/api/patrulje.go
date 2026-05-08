@@ -10,6 +10,7 @@ import (
 	"nathejk.dk/internal/data"
 	"nathejk.dk/nathejk/commands"
 	"nathejk.dk/nathejk/table/patrulje"
+	"nathejk.dk/nathejk/table/payment"
 	"nathejk.dk/nathejk/table/scan"
 )
 
@@ -85,7 +86,7 @@ func (app *application) showPatruljeHandler(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		log.Printf("GetSpejdere %q", err)
 	}
-	payments, err := app.models.Payment.GetAll(r.Context(), teamId)
+	payments, err := app.models.Payment.GetAll(r.Context(), payment.Filter{TeamIDs: []types.TeamID{teamId}})
 	if err != nil {
 		log.Printf("GetSpejdere %q", err)
 	}

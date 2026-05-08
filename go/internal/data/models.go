@@ -106,7 +106,7 @@ type Models struct {
 	Senior         SeniorInterface
 	Patrulje       patrulje.Queries
 	Personnel      PersonnelInterface
-	Payment        PaymentInterface
+	Payment        payment.Queries
 	Spejder        SpejderInterface
 	Checkgroup     checkgroup.Queries
 	Checkpoint     checkpoint.Queries
@@ -115,7 +115,7 @@ type Models struct {
 	Lok            LokInterface
 }
 
-func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment PaymentInterface, spejder SpejderInterface, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface) Models {
+func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, spejder SpejderInterface, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface) Models {
 	return Models{
 		Year:           y,
 		Teams:          TeamModel{DB: db},

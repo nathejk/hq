@@ -38,6 +38,7 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodDelete, "/api/checkpersonnel/:id", app.deleteCheckpersonnelHandler)
 
 	router.HandlerFunc(http.MethodGet, "/api/personnel", app.listPersonnelHandler)
+	router.HandlerFunc(http.MethodGet, "/api/payments", app.listPaymentsHandler)
 
 	router.HandlerFunc(http.MethodPost, "/api/signup", app.signupHandler)
 	router.HandlerFunc(http.MethodPost, "/api/signup/pincode", app.signupPincodeHandler)

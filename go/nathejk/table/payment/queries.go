@@ -6,15 +6,42 @@ import (
 	"errors"
 	"time"
 
+	"github.com/doug-martin/goqu/v9"
 	"github.com/nathejk/shared-go/types"
 	tables "nathejk.dk/nathejk/table"
 )
 
-type querier struct {
-	db *sql.DB
+type Queries interface {
+	GetAll(context.Context, Filter) ([]Payment, error)
+	GetByReference(context.Context, string) (*Payment, error)
 }
 
-func (q *querier) GetAll(ctx context.Context, teamID types.TeamID) ([]*Payment, error) {
+type querier struct {
+	db *sql.DB
+	r  *goqu.Database
+}
+
+func (q *querier) GetAll(ctx context.Context, f Filter) ([]Payment, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	where := goqu.Ex{}
+	if f.Year != "" {
+		where["year"] = f.Year
+	}
+	if len(f.TeamIDs) > 0 {
+		where["orderForeignKey"] = f.TeamIDs
+	}
+
+	var payments []Payment
+	err := q.r.From("payment").Where(where).Order(goqu.I("createdAt").Asc()).ScanStructs(&payments)
+	if err != nil {
+		return nil, err
+	}
+	return payments, nil
+}
+
+func (q *querier) GetAll_old(ctx context.Context, teamID types.TeamID) ([]*Payment, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 

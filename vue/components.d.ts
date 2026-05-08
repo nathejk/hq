@@ -60,6 +60,7 @@ declare module 'vue' {
     Tag: typeof import('primevue/tag')['default']
     Textarea: typeof import('primevue/textarea')['default']
     TheWelcome: typeof import('./src/components/TheWelcome.vue')['default']
+    Timeline: typeof import('primevue/timeline')['default']
     TimePicker: typeof import('./src/components/TimePicker.vue')['default']
     Toast: typeof import('primevue/toast')['default']
     ToggleSwitch: typeof import('primevue/toggleswitch')['default']
