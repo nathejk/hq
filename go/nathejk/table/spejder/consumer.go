@@ -2,7 +2,6 @@ package spejder
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/nathejk/shared-go/messages"
 	"nathejk.dk/pkg/tablerow"
@@ -54,20 +53,15 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 			msg.Time(),
 			msg.Time(),
 		}
-		err := c.w.Consume(fmt.Sprintf(query, args...))
+		return c.w.Consume(fmt.Sprintf(query, args...))
 		//"INSERT INTO spejder (memberId, year, teamId, name, address, postalCode, city, email, phone, phoneParent, birthday, `returning`, createdAt, updatedAt) VALUES (%q,\"%d\",%q,%q,%q,%q,%q,%q,%q,%q,%q,%q,%q,%q) ON DUPLICATE KEY UPDATE teamId=VALUES(teamId), name=VALUES(name), address=VALUES(address), postalCode=VALUES(postalCode),city=VALUES(city),email=VALUES(email),phone=VALUES(phone), phoneParent=VALUES(phoneParent), birthday=VALUES(birthday), `returning`=VALUES(`returning`),  updatedAt=VALUES(updatedAt)", body.MemberID, msg.Time().Year(), body.TeamID, body.Name, body.Address, body.PostalCode, body.City, body.Email, body.Phone, body.PhoneParent, body.Birthday, returning, msg.Time(), msg.Time()))
-		if err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		} //*/
+		//*/
 	case msg.Subject().Match("nathejk.*.spejder.*.deleted"):
 		var body messages.NathejkScoutDeleted
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
-		err := c.w.Consume(fmt.Sprintf("DELETE FROM spejder WHERE memberId=%q", body.MemberID))
-		if err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf("DELETE FROM spejder WHERE memberId=%q", body.MemberID))
 	case msg.Subject().Match("nathejk.*.patrulje.*.started"):
 		var body messages.NathejkTeamStarted
 		if err := msg.Body(&body); err != nil {
@@ -78,7 +72,7 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 			args := []any{member.Phone, member.PhoneGuardian, member.MemberID}
 
 			if err := c.w.Consume(fmt.Sprintf(query, args...)); err != nil {
-				log.Fatalf("Error consuming sql %q", err)
+				return err
 			}
 		}
 	}

@@ -77,9 +77,7 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 
 		//	year := msg.Time().Year()
 		//	sql := fmt.Sprintf("INSERT INTO controlgroup SET id=%q, name=%q, year=\"%d\" ON DUPLICATE KEY UPDATE name=VALUES(name)", body.CheckgroupID, body.Name, year)
-		if err := c.w.Consume(sqlStr); err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(sqlStr)
 		//c.p.Changed(&ControlGroupTableEvent{})
 
 	case msg.Subject().Match("NATHEJK.*.checkgroup.*.deleted"):
@@ -87,10 +85,7 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
-		err := c.w.Consume(fmt.Sprintf("DELETE FROM checkgroup WHERE id=%q", body.CheckgroupID))
-		if err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf("DELETE FROM checkgroup WHERE id=%q", body.CheckgroupID))
 		//c.p.Deleted(&ControlGroupTableEvent{})
 
 	case msg.Subject().Match("NATHEJK.*.checkgroups.sorted"):

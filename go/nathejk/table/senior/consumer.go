@@ -51,9 +51,7 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 			msg.Time(),
 			msg.Time(),
 		}
-		if err := c.w.Consume(fmt.Sprintf(query, args...)); err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf(query, args...))
 
 	case msg.Subject().Match("nathejk.*.senior.*.deleted"):
 		var body messages.NathejkMemberDeleted
@@ -62,10 +60,7 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 		}
 		query := "DELETE FROM senior WHERE memberId=%q"
 		args := []any{body.MemberID}
-		err := c.w.Consume(fmt.Sprintf(query, args...))
-		if err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf(query, args...))
 
 	case msg.Subject().Match("NATHEJK.*.bandit.*.armNumber.assigned"):
 		var body messages.NathejkLokArmNumberAssigned
@@ -77,10 +72,7 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 			body.ArmNumber,
 			msg.Subject().Parts()[3],
 		}
-		err := c.w.Consume(fmt.Sprintf(query, args...))
-		if err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf(query, args...))
 
 	default:
 		log.Printf("Unhandled message %q", msg.Subject().Subject())

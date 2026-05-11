@@ -2,7 +2,6 @@ package checkpoint
 
 import (
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
@@ -82,20 +81,14 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
-		err := c.w.Consume(fmt.Sprintf("DELETE FROM checkpoint WHERE id=%q", body.CheckpointID))
-		if err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf("DELETE FROM checkpoint WHERE id=%q", body.CheckpointID))
 
 	case msg.Subject().Match("NATHEJK.*.checkgroup.*.deleted"):
 		var body messages.NathejkCheckgroupDeleted
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
-		err := c.w.Consume(fmt.Sprintf("DELETE FROM checkpoint WHERE checkgroupId=%q", body.CheckgroupID))
-		if err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf("DELETE FROM checkpoint WHERE checkgroupId=%q", body.CheckgroupID))
 
 	case msg.Subject().Match("NATHEJK.*.checkgroup.*.checkpoints_sorted"):
 		var body messages.NathejkCheckpointsSorted
@@ -103,10 +96,7 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 			return err
 		}
 		checkgroupID := msg.Subject().Parts()[1]
-		err := c.w.Consume(fmt.Sprintf("DELETE FROM checkpoint WHERE checkgroupId=%q", checkgroupID))
-		if err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf("DELETE FROM checkpoint WHERE checkgroupId=%q", checkgroupID))
 
 	}
 	return nil

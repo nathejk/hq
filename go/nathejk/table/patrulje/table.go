@@ -38,7 +38,7 @@ func New(w tablerow.Consumer, r *sql.DB) *table {
 	q := querier{db: r, r: goqu.New("mysql", r)}
 	table := &table{consumer: consumer{w: w}, querier: q}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
-		log.Fatalf("Error creating table %q", err)
+		log.Printf("Error creating table %q", err)
 	}
 	return table
 }

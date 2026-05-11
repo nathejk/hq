@@ -24,7 +24,7 @@ type pincode struct {
 func NewPincode(w tablerow.Consumer) *pincode {
 	table := &pincode{w: w}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
-		log.Fatalf("Error creating table %q", err)
+		log.Printf("Error creating table %q", err)
 	}
 	return table
 }
@@ -49,10 +49,7 @@ func (c *pincode) HandleMessage(msg streaminterface.Message) error {
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
-		err := c.w.Consume(fmt.Sprintf("INSERT INTO pincode SET teamId=%q, pincode=%q ON DUPLICATE KEY UPDATE pincode=VALUES(pincode)", body.TeamID, body.Pincode))
-		if err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf("INSERT INTO pincode SET teamId=%q, pincode=%q ON DUPLICATE KEY UPDATE pincode=VALUES(pincode)", body.TeamID, body.Pincode))
 	}
 	return nil
 }

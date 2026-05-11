@@ -18,7 +18,7 @@ type registrant struct {
 func NewRegistrant(w tablerow.Consumer) *registrant {
 	table := &registrant{w: w}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
-		log.Fatalf("Error creating table %q", err)
+		log.Printf("Error creating table %q", err)
 	}
 	return table
 }
@@ -43,10 +43,7 @@ func (c *registrant) HandleMessage(msg streaminterface.Message) error {
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
-		err := c.w.Consume(fmt.Sprintf("REPLACE INTO registrant SET registrantId=%q, email=%q, phone=%q, pincode=%q", body.TeamID, body.Email, body.Phone, body.Pincode))
-		if err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf("REPLACE INTO registrant SET registrantId=%q, email=%q, phone=%q, pincode=%q", body.TeamID, body.Email, body.Phone, body.Pincode))
 	}
 	return nil
 }

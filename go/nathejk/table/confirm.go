@@ -17,7 +17,7 @@ type confirm struct {
 func NewConfirm(w tablerow.Consumer) *confirm {
 	table := &confirm{w: w}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
-		log.Fatalf("Error creating table %q", err)
+		log.Printf("Error creating table %q", err)
 	}
 	return table
 }

@@ -23,7 +23,7 @@ type table struct {
 func New(w tablerow.Consumer, r *sql.DB) *table {
 	table := &table{consumer: consumer{w: w}} //, querier: querier{db: r}}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
-		log.Fatalf("Error creating table %q", err)
+		log.Printf("Error creating table %q", err)
 	}
 	return table
 }

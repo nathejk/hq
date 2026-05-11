@@ -40,29 +40,21 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 			return nil
 		}
 		sql := fmt.Sprintf("INSERT IGNORE INTO klan SET teamId=%q, year=%q", body.TeamID, msg.Subject().Parts()[1])
-		if err := c.w.Consume(sql); err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(sql)
 
 	case msg.Subject().Match("nathejk.*.klan.*.requested"):
 		var body messages.NathejkTeamMembersRequested
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
-		err := c.w.Consume(fmt.Sprintf("UPDATE klan SET requestedMemberCount=%d, signupStatus=%q WHERE teamId=%q", body.MemberCount, types.SignupStatusOnHold, body.TeamID))
-		if err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf("UPDATE klan SET requestedMemberCount=%d, signupStatus=%q WHERE teamId=%q", body.MemberCount, types.SignupStatusOnHold, body.TeamID))
 
 	case msg.Subject().Match("nathejk.*.klan.*.reserved"):
 		var body messages.NathejkTeamMembersRequested
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
-		err := c.w.Consume(fmt.Sprintf("UPDATE klan SET reservedMemberCount=%d, signupStatus=%q WHERE teamId=%q", body.MemberCount, types.SignupStatusPay, body.TeamID))
-		if err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf("UPDATE klan SET reservedMemberCount=%d, signupStatus=%q WHERE teamId=%q", body.MemberCount, types.SignupStatusPay, body.TeamID))
 		/*
 			case msg.Subject().Match("nathejk:patrulje.updated"):
 				var body messages.NathejkTeamUpdated
@@ -79,10 +71,7 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
-		err := c.w.Consume(fmt.Sprintf("UPDATE klan SET signupStatus=%q WHERE teamId=%q", body.Status, body.TeamID))
-		if err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf("UPDATE klan SET signupStatus=%q WHERE teamId=%q", body.Status, body.TeamID))
 
 	case msg.Subject().Match("NATHEJK.*.klan.*.updated"):
 		var body messages.NathejkKlanUpdated
@@ -96,20 +85,14 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 		//args := []any{body.TeamID, msg.Time().Year(), body.Name, body.Phone, body.Email}
 		//, body.Name, body.GroupName, body.Korps, body.ContactName, body.ContactPhone, body.ContactEmail, body.ContactRole, body.TeamID))
 
-		err := c.w.Consume(fmt.Sprintf(query, args...))
-		if err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf(query, args...))
 
 	case msg.Subject().Match("NATHEJK.*.klan.*.assigned"):
 		var body messages.NathejkKlanAssigned
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
-		err := c.w.Consume(fmt.Sprintf("UPDATE klan SET lok=%q WHERE teamId=%q", body.Lok, body.TeamID))
-		if err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf("UPDATE klan SET lok=%q WHERE teamId=%q", body.Lok, body.TeamID))
 
 	default:
 		log.Printf("Unhandled message %q", msg.Subject().Subject())

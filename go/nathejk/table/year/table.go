@@ -35,7 +35,7 @@ func New(p streaminterface.Publisher, w tablerow.Consumer, r *sql.DB) *table {
 	q := querier{db: r}
 	table := &table{commander: commander{p: p, q: &q}, consumer: consumer{w: w}, querier: q}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
-		log.Fatalf("Error creating table %q", err)
+		log.Printf("Error creating table %q", err)
 	}
 	return table
 }

@@ -73,17 +73,19 @@ func NewControlgroupStatusHandler(con *sql.DB) http.HandlerFunc {
 		OnTime         bool
 	}
 	allScans := func() (ss []scan) {
-		rows, err := con.Query(`select teamId, teamNumber, uts, userId, cp.controlGroupId, cp.controlIndex, (openFromUts - 60*minusMinutes <= uts AND uts <= openUntilUts + 60*plusMinutes) AS ontime from scan 
-  JOIN controlgroup_user cgu ON scan.scannerId = cgu.userId AND startUts <= uts AND uts <= endUts 
+		rows, err := con.Query(`select teamId, teamNumber, uts, userId, cp.controlGroupId, cp.controlIndex, (openFromUts - 60*minusMinutes <= uts AND uts <= openUntilUts + 60*plusMinutes) AS ontime from scan
+  JOIN controlgroup_user cgu ON scan.scannerId = cgu.userId AND startUts <= uts AND uts <= endUts
   JOIN controlpoint cp ON cgu.controlGroupId = cp.controlGroupId AND cgu.controlIndex = cp.controlIndex`)
 		if err != nil {
-			log.Fatalf("Query: %v", err)
+			log.Printf("Query: %v", err)
+			return ss
 		}
 		for rows.Next() {
 			var s scan
 			err = rows.Scan(&s.TeamID, &s.TeamNumber, &s.Uts, &s.UserID, &s.ControlGroupID, &s.ControlIndex, &s.OnTime)
 			if err != nil {
-				log.Fatalf("Scan: %v", err)
+				log.Printf("Scan: %v", err)
+				continue
 			}
 			ss = append(ss, s)
 		}

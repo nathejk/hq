@@ -32,7 +32,7 @@ type patruljeStatus struct {
 func NewPatruljeStatus(w tablerow.Consumer) *patruljeStatus {
 	table := &patruljeStatus{w: w}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
-		log.Fatalf("Error creating table %q %q", err, table.CreateTableSql())
+		log.Printf("Error creating table %q %q", err, table.CreateTableSql())
 	}
 	return table
 }
@@ -85,9 +85,7 @@ func (c *patruljeStatus) HandleMessage(msg streaminterface.Message) error {
 		//startedUts, _ := strconv.Atoi(body.Entity.StartUts)
 		query := "INSERT INTO patruljestatus SET teamId=%q, year=%q, startedUts=%d ON DUPLICATE KEY UPDATE startedUts=VALUES(startedUts)"
 		args := []any{body.TeamID, msg.Subject().Parts()[1], 1}
-		if err := c.w.Consume(fmt.Sprintf(query, args...)); err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf(query, args...))
 
 	}
 	return nil

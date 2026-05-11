@@ -37,9 +37,7 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 		}
 		sql := "INSERT INTO lok SET lokId=%q, year=%q, name=%q, sortOrder=%d, userIds=%q, teamIds=%q ON DUPLICATE KEY UPDATE name=VALUES(name), sortOrder=VALUES(sortOrder), userIds=VALUES(userIds), teamIds=VALUES(teamIds)"
 		args := []any{body.LokID, msg.Subject().Parts()[1], body.Name, body.SortOrder, strings.Join(userIDs, ","), strings.Join(teamIDs, ",")}
-		if err := c.w.Consume(fmt.Sprintf(sql, args...)); err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf(sql, args...))
 	case msg.Subject().Match("NATHEJK.*.lok.*.deleted"):
 		var body messages.NathejkLokDeleted
 		if err := msg.Body(&body); err != nil {
@@ -47,9 +45,7 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 		}
 		sql := "DELETE FROM lok WHERE lokId=%q"
 		args := []any{body.LokID}
-		if err := c.w.Consume(fmt.Sprintf(sql, args...)); err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf(sql, args...))
 
 	default:
 		log.Printf("Unhandled message %q", msg.Subject().Subject())

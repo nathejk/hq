@@ -74,7 +74,7 @@ type payment struct {
 func New(w tablerow.Consumer, r *sql.DB) *payment {
 	table := &payment{querier: querier{db: r, r: goqu.New("mysql", r)}, consumer: consumer{w: w}}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
-		log.Fatalf("Error creating table %q", err)
+		log.Printf("Error creating table %q", err)
 	}
 	return table
 }

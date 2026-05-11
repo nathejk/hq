@@ -35,9 +35,8 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 			return nil
 		}
 		sql := fmt.Sprintf("INSERT INTO patrulje SET teamId=%q, year=\"%d\", contactName=%q, contactPhone=%q, contactEmail=%q ON DUPLICATE KEY UPDATE contactName=VALUES(contactName), contactPhone=VALUES(contactPhone), contactEmail=VALUES(contactEmail)", body.TeamID, msg.Time().Year(), body.Name, body.Phone, body.Email)
-		if err := c.w.Consume(sql); err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(sql)
+
 	case msg.Subject().Match("NATHEJK.*.patrulje.*.updated"):
 		var body messages.NathejkTeamUpdated
 		if err := msg.Body(&body); err != nil {
@@ -46,11 +45,7 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 		msg.Subject().Parts()
 		query := "UPDATE patrulje SET name=%q, groupName=%q, korps=%q, liga=%q, contactName=%q, contactPhone=%q, contactEmail=%q, contactRole=%q WHERE teamId=%q"
 		args := []any{body.Name, body.GroupName, body.Korps, body.AdvspejdNumber, body.ContactName, body.ContactPhone, body.ContactEmail, substr(body.ContactRole, 0, 90), body.TeamID}
-
-		err := c.w.Consume(fmt.Sprintf(query, args...))
-		if err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf(query, args...))
 
 	case msg.Subject().Match("NATHEJK.*.patrulje.*.numberassigned"):
 		var body messages.NathejkPatrolNumberAssigned
@@ -59,10 +54,7 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 		}
 		query := "UPDATE patrulje SET teamNumber=%q WHERE teamId=%q"
 		args := []any{body.TeamNumber, body.TeamID}
-
-		if err := c.w.Consume(fmt.Sprintf(query, args...)); err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
+		return c.w.Consume(fmt.Sprintf(query, args...))
 
 	case msg.Subject().Match("NATHEJK.*.patrulje.*.started"):
 		var body messages.NathejkTeamStarted
@@ -71,10 +63,8 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 		}
 		query := "UPDATE patrulje SET signupStatus=%q, memberCount=%d WHERE teamId=%q"
 		args := []any{types.SignupStatusStarted, len(body.Members), body.TeamID}
+		return c.w.Consume(fmt.Sprintf(query, args...))
 
-		if err := c.w.Consume(fmt.Sprintf(query, args...)); err != nil {
-			log.Fatalf("Error consuming sql %q", err)
-		}
 	default:
 		log.Printf("Unhandled message %q", msg.Subject().Subject())
 
