@@ -16,7 +16,7 @@ import (
 )
 
 func (app *application) excelPatruljeHandler(w http.ResponseWriter, r *http.Request) {
-	filter := patrulje.Filter{}
+	filter := patrulje.Filter{YearSlug: app.YearSlug(r)}
 	teams, err := app.models.Patrulje.GetAll(r.Context(), filter)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
@@ -216,7 +216,7 @@ func (app *application) excelKlanHandler(w http.ResponseWriter, r *http.Request)
 }
 
 func (app *application) excelPersonnelHandler(w http.ResponseWriter, r *http.Request) {
-	filter := personnel.Filter{}
+	filter := personnel.Filter{YearSlug: app.YearSlug(r)}
 	personnel, err := app.models.Personnel.GetAll(r.Context(), filter)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
