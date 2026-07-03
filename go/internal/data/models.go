@@ -10,12 +10,14 @@ import (
 	"nathejk.dk/nathejk/table/checkgroup"
 	"nathejk.dk/nathejk/table/checkpersonnel"
 	"nathejk.dk/nathejk/table/checkpoint"
+	"nathejk.dk/nathejk/table/crewmember"
 	"nathejk.dk/nathejk/table/klan"
 	"nathejk.dk/nathejk/table/lok"
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/payment"
 	"nathejk.dk/nathejk/table/personnel"
 	"nathejk.dk/nathejk/table/scan"
+	"nathejk.dk/nathejk/table/section"
 	"nathejk.dk/nathejk/table/senior"
 	"nathejk.dk/nathejk/table/spejder"
 	"nathejk.dk/nathejk/table/year"
@@ -113,9 +115,11 @@ type Models struct {
 	Checkpersonnel checkpersonnel.Queries
 	Scan           ScanInterface
 	Lok            LokInterface
+	Section        section.Queries
+	CrewMember     crewmember.Queries
 }
 
-func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, spejder SpejderInterface, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface) Models {
+func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, spejder SpejderInterface, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface, sec section.Queries, crew crewmember.Queries) Models {
 	return Models{
 		Year:           y,
 		Teams:          TeamModel{DB: db},
@@ -135,6 +139,8 @@ func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInte
 		Checkpersonnel: checkpersonnel,
 		Scan:           scan,
 		Lok:            lok,
+		Section:        sec,
+		CrewMember:     crew,
 	}
 }
 

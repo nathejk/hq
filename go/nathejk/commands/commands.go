@@ -7,6 +7,8 @@ import (
 	"nathejk.dk/nathejk/table/checkgroup"
 	"nathejk.dk/nathejk/table/checkpersonnel"
 	"nathejk.dk/nathejk/table/checkpoint"
+	"nathejk.dk/nathejk/table/crewmember"
+	"nathejk.dk/nathejk/table/section"
 	"nathejk.dk/nathejk/table/year"
 	"nathejk.dk/superfluids/streaminterface"
 )
@@ -16,6 +18,8 @@ type Commands struct {
 	Checkgroup     checkgroup.Commands
 	Checkpoint     checkpoint.Commands
 	Checkpersonnel checkpersonnel.Commands
+	Section        section.Commands
+	CrewMember     crewmember.Commands
 
 	Team interface {
 		Signup(types.TeamType, *messages.NathejkTeamSignedUp) error

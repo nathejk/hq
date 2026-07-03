@@ -52,6 +52,11 @@ const items = ref([
     name: 'kort'
   },
   {
+    label: 'Organisation',
+    icon: 'fas fa-sitemap',
+    name: 'organisation'
+  },
+  {
     label: 'Betalinger',
     icon: 'fas fa-dollar',
     name: 'payments'

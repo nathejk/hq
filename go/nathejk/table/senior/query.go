@@ -140,7 +140,7 @@ func (q *querier) GetByID(ctx context.Context, memberID types.MemberID) (*Senior
 	func (m TeamModel) RequestedSeniorCount() int {
 		query := `SELECT COUNT(memberId) FROM senior WHERE year=%d`
 		var count int
-		_ = m.DB.QueryRow(query, 2024).Scan(&count)
+		_ = m.DB.QueryRow(query, 2026).Scan(&count)
 		return count
 	}
 

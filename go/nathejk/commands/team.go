@@ -95,7 +95,6 @@ func (c *team) UpdatePatrulje(teamID types.TeamID, team Patrulje, contact Contac
 		msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.spejder.%s.updated", "2024", m.MemberID)))
 		msg.SetBody(&messages.NathejkScoutUpdated{
 			MemberID:     m.MemberID,
-			TeamID:       teamID,
 			Name:         m.Name,
 			Address:      m.Address,
 			PostalCode:   m.PostalCode,
@@ -173,7 +172,6 @@ func (c *team) StartPatrulje(teamID types.TeamID, members []StartPatruljeMember)
 			msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.spejder.%s.updated", "2024", m.MemberID)))
 			msg.SetBody(&messages.NathejkScoutUpdated{
 				MemberID:     m.MemberID,
-				TeamID:       teamID,
 				Name:         m.Name,
 				Address:      m.Address,
 				PostalCode:   m.PostalCode,
@@ -254,7 +252,6 @@ func (c *team) UpdateKlan(teamID types.TeamID, team Klan, members []Senior) erro
 		msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.senior.%s.updated", "2026", m.MemberID)))
 		msg.SetBody(&messages.NathejkSeniorUpdated{
 			MemberID:   m.MemberID,
-			TeamID:     teamID,
 			Name:       m.Name,
 			Address:    m.Address,
 			PostalCode: m.PostalCode,

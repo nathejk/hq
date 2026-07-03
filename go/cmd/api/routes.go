@@ -59,6 +59,17 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPatch, "/api/klan/:id", app.patchKlanHandler)
 	router.HandlerFunc(http.MethodGet, "/api/badut", app.showBadutListHandler)
 	router.HandlerFunc(http.MethodGet, "/api/mail/recipients", app.mailRecipientsHandler)
+
+	// Organisation (sections + crew members)
+	router.HandlerFunc(http.MethodGet, "/api/organisation", app.showOrganisationHandler)
+	router.HandlerFunc(http.MethodPost, "/api/organisation/copy-from/:sourceYear", app.copySectionsFromYearHandler)
+	router.HandlerFunc(http.MethodPost, "/api/section", app.createSectionHandler)
+	router.HandlerFunc(http.MethodPut, "/api/sections/sorted", app.sortSectionsHandler)
+	router.HandlerFunc(http.MethodPatch, "/api/section/:slug", app.updateSectionHandler)
+	router.HandlerFunc(http.MethodPut, "/api/section/:slug/parent", app.moveSectionHandler)
+	router.HandlerFunc(http.MethodDelete, "/api/section/:slug", app.deleteSectionHandler)
+	router.HandlerFunc(http.MethodPost, "/api/crewmember", app.registerCrewMemberHandler)
+	router.HandlerFunc(http.MethodPut, "/api/crewmember/:userId/section", app.assignCrewMemberSectionHandler)
 	/*
 		ctrlgrp := NewCrudRoute(NewControlGroupCmd(app.jetstream), &CreateRequest{}, &ReadRequest{}, &UpdateRequest{}, &DeleteRequest{})
 		router.HandlerFunc(http.MethodGet, "/api/cgstatus", checkgroup.NewControlgroupStatusHandler(app.db.DB()))

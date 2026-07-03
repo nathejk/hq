@@ -1,7 +1,6 @@
 package senior
 
 import (
-	"math"
 	"strings"
 
 	"github.com/nathejk/shared-go/types"
@@ -56,6 +55,7 @@ func (f Filter) Limit() int {
 	return f.PageSize
 }
 
+/*
 type Metadata struct {
 	Year         string       `json:"year"`
 	TeamID       types.TeamID `json:"teamId,omitempty"`
@@ -85,3 +85,4 @@ func calculateMetadata(year string, totalRecords, page, pageSize int) Metadata {
 		TotalRecords: totalRecords,
 	}
 }
+*/

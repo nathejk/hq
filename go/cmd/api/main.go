@@ -22,6 +22,7 @@ import (
 	"nathejk.dk/nathejk/table/checkgroup"
 	"nathejk.dk/nathejk/table/checkpersonnel"
 	"nathejk.dk/nathejk/table/checkpoint"
+	"nathejk.dk/nathejk/table/crewmember"
 	"nathejk.dk/nathejk/table/klan"
 	"nathejk.dk/nathejk/table/lok"
 	"nathejk.dk/nathejk/table/patrulje"
@@ -29,6 +30,7 @@ import (
 	"nathejk.dk/nathejk/table/payment"
 	"nathejk.dk/nathejk/table/personnel"
 	"nathejk.dk/nathejk/table/scan"
+	"nathejk.dk/nathejk/table/section"
 	"nathejk.dk/nathejk/table/senior"
 	"nathejk.dk/nathejk/table/signup"
 	"nathejk.dk/nathejk/table/spejder"
@@ -152,21 +154,25 @@ func main() {
 	checkpersonnel := checkpersonnel.New(js, writer, reader)
 	scantable := scan.New(writer, db.DB())
 	loktable := lok.New(writer, db.DB())
+	sectiontable := section.New(js, writer, db.DB())
+	crewmembertable := crewmember.New(js, writer, db.DB())
 
 	mux := xstream.NewMux(js)
-	mux.AddConsumer(signuptable, table.NewConfirm(writer), klantable, seniortable, patruljetable, table.NewPatruljeStatus(writer) /*table.NewPatruljeMerged(writer),, table.NewSpejder(writer)*/, table.NewSpejderStatus(writer), personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, patruljemergedtable, loktable, year)
+	mux.AddConsumer(signuptable, table.NewConfirm(writer), klantable, seniortable, patruljetable, table.NewPatruljeStatus(writer) /*table.NewPatruljeMerged(writer),, table.NewSpejder(writer)*/, table.NewSpejderStatus(writer), personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, patruljemergedtable, loktable, year, sectiontable, crewmembertable)
 
 	//mux.AddConsumer(table.NewSpejder(writer), table.NewSpejderStatus(writer))
 	if err := mux.Run(context.Background()); err != nil {
 		logger.PrintFatal(err, nil)
 	}
 
-	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, loktable)
+	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable)
 	cmds := commands.New(js, models)
 	cmds.Year = year
 	cmds.Checkpoint = checkpoint
 	cmds.Checkgroup = checkgroup
 	cmds.Checkpersonnel = checkpersonnel
+	cmds.Section = sectiontable
+	cmds.CrewMember = crewmembertable
 
 	expvar.NewString("version").Set(version)
 	expvar.NewInt("timestamp").Set(time.Now().Unix())

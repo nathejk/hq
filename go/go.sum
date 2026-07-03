@@ -68,6 +68,10 @@ github.com/nathejk/shared-go v0.0.0-20260404172526-43ee1e2f63da h1:FhYCVANhk26U1
 github.com/nathejk/shared-go v0.0.0-20260404172526-43ee1e2f63da/go.mod h1:NXwlny4fygtvjToLV4sovUdbvZyROZJf3+8MOBGmIAw=
 github.com/nathejk/shared-go v0.0.0-20260505202516-687b32e2e61f h1:T5sH2vL5gEhKsfqDqE7id+Za6Jpslo3lFAUBsmf+IkA=
 github.com/nathejk/shared-go v0.0.0-20260505202516-687b32e2e61f/go.mod h1:NXwlny4fygtvjToLV4sovUdbvZyROZJf3+8MOBGmIAw=
+github.com/nathejk/shared-go v0.0.0-20260702135118-7e850f8e55bf h1:MddYUEqmlpYP0LNUXyyuw69cBbJFGlzH1uedxHFl77I=
+github.com/nathejk/shared-go v0.0.0-20260702135118-7e850f8e55bf/go.mod h1:NXwlny4fygtvjToLV4sovUdbvZyROZJf3+8MOBGmIAw=
+github.com/nathejk/shared-go v0.0.0-20260702212401-45a8aa6c7daf h1:g8ZSZ0g9oNGsCrPxIICmvOI8ReJGM2KjTr03pI5dS9c=
+github.com/nathejk/shared-go v0.0.0-20260702212401-45a8aa6c7daf/go.mod h1:NXwlny4fygtvjToLV4sovUdbvZyROZJf3+8MOBGmIAw=
 github.com/nats-io/nats.go v1.34.1 h1:syWey5xaNHZgicYBemv0nohUPPmaLteiBEUT6Q5+F/4=
 github.com/nats-io/nats.go v1.34.1/go.mod h1:Ubdu4Nh9exXdSz0RVWRFBbRfrbSxOYd26oF0wkWclB8=
 github.com/nats-io/nkeys v0.4.7 h1:RwNJbbIdYCoClSDNY7QVKZlyb/wfT6ugvFCiKy6vDvI=

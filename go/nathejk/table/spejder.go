@@ -74,7 +74,7 @@ func (c *spejder) HandleMessage(msg streaminterface.Message) error {
 		args := []any{
 			body.MemberID,
 			msg.Subject().Parts()[1],
-			body.TeamID,
+			types.TeamID(""), // TeamID removed from NathejkScoutUpdated in shared-go; retained here as empty placeholder to keep the SQL shape.
 			body.Name,
 			body.Address,
 			body.PostalCode,

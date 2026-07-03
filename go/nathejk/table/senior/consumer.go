@@ -15,7 +15,7 @@ type consumer struct {
 	w tablerow.Consumer
 }
 
-func (_ *consumer) Consumes() []streaminterface.Subject {
+func (c *consumer) Consumes() []streaminterface.Subject {
 	return []streaminterface.Subject{
 		streaminterface.SubjectFromStr("NATHEJK.*.senior.*.updated"),
 		streaminterface.SubjectFromStr("NATHEJK.*.senior.*.deleted"),
@@ -26,19 +26,44 @@ func (_ *consumer) Consumes() []streaminterface.Subject {
 func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 	switch true {
 	case msg.Subject().Match("nathejk.*.senior.*.updated"):
+		// Two-phase decode mirroring spejder/consumer.go: the legacy
+		// NathejkMemberAdded shape (with TeamID) is decoded first to
+		// opportunistically INSERT the row when the team association is
+		// known on the event. The new NathejkSeniorUpdated shape carries
+		// only the editable senior fields and is then used to UPDATE.
+		var legacy messages.NathejkMemberAdded
+		if err := msg.Body(&legacy); err != nil {
+			return err
+		}
+		if legacy.TeamID != "" {
+			query := `INSERT IGNORE INTO senior (memberId, year, teamId, createdAt) VALUES (%q,%q,%q,%q)`
+			args := []any{
+				legacy.MemberID,
+				msg.Subject().Parts()[1],
+				legacy.TeamID,
+				msg.Time(),
+			}
+			if err := c.w.Consume(fmt.Sprintf(query, args...)); err != nil {
+				return err
+			}
+		}
 		var body messages.NathejkSeniorUpdated
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
-		query := `INSERT INTO senior
-			(memberId, year, teamId, name, address, postalCode, city, email, phone, birthday, tshirtSize, diet,  createdAt, updatedAt)
-			VALUES (%q,%q,%q,%q,%q,%q,%q,%q,%q,%q,%q,%q,%q,%q)
-			ON DUPLICATE KEY UPDATE
-			teamId=VALUES(teamId), name=VALUES(name), address=VALUES(address), postalCode=VALUES(postalCode),city=VALUES(city), email=VALUES(email), phone=VALUES(phone), birthday=VALUES(birthday), tshirtSize=VALUES(tshirtSize), diet=VALUES(diet), updatedAt=VALUES(updatedAt)`
+		query := `UPDATE senior SET
+			name=%q,
+			address=%q,
+			postalCode=%q,
+			city=%q,
+			email=%q,
+			phone=%q,
+			birthday=%q,
+			tshirtSize=%q,
+			diet=%q,
+			updatedAt=%q
+			WHERE memberId = %q`
 		args := []any{
-			body.MemberID,
-			msg.Subject().Parts()[1],
-			body.TeamID,
 			body.Name,
 			body.Address,
 			body.PostalCode,
@@ -49,9 +74,11 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 			body.TShirtSize,
 			body.Diet,
 			msg.Time(),
-			msg.Time(),
+			body.MemberID,
 		}
-		return c.w.Consume(fmt.Sprintf(query, args...))
+		if err := c.w.Consume(fmt.Sprintf(query, args...)); err != nil {
+			log.Fatalf("Error consuming sql %q", err)
+		}
 
 	case msg.Subject().Match("nathejk.*.senior.*.deleted"):
 		var body messages.NathejkMemberDeleted
@@ -60,7 +87,10 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 		}
 		query := "DELETE FROM senior WHERE memberId=%q"
 		args := []any{body.MemberID}
-		return c.w.Consume(fmt.Sprintf(query, args...))
+		err := c.w.Consume(fmt.Sprintf(query, args...))
+		if err != nil {
+			log.Fatalf("Error consuming sql %q", err)
+		}
 
 	case msg.Subject().Match("NATHEJK.*.bandit.*.armNumber.assigned"):
 		var body messages.NathejkLokArmNumberAssigned
@@ -72,7 +102,10 @@ func (c *consumer) HandleMessage(msg streaminterface.Message) error {
 			body.ArmNumber,
 			msg.Subject().Parts()[3],
 		}
-		return c.w.Consume(fmt.Sprintf(query, args...))
+		err := c.w.Consume(fmt.Sprintf(query, args...))
+		if err != nil {
+			log.Fatalf("Error consuming sql %q", err)
+		}
 
 	default:
 		log.Printf("Unhandled message %q", msg.Subject().Subject())
