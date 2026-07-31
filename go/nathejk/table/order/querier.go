@@ -25,6 +25,12 @@ type Queries interface {
 	// ListByOwner returns every order for the given owner, newest first.
 	ListByOwner(ctx context.Context, year types.YearSlug, ownerType types.TeamType, ownerID string) ([]Order, error)
 
+	// ListByYear returns every order for the given year, newest first, WITHOUT
+	// hydrating line items. It is the light query behind the year-wide
+	// Betalinger list; paid/due amounts are still computed. Use GetByID when
+	// an order's lines are needed (e.g. a row expansion).
+	ListByYear(ctx context.Context, year types.YearSlug) ([]Order, error)
+
 	// ReservedQuantity returns the total quantity of the given product
 	// currently sitting on non-cancelled order lines for the given year.
 	// Used by the commander to compute "remaining stock" before adding /
@@ -121,6 +127,34 @@ func (q *querier) ListByOwner(ctx context.Context, year types.YearSlug, ownerTyp
 		}
 		orders[i].Lines = lines
 	}
+	return orders, nil
+}
+
+func (q *querier) ListByYear(ctx context.Context, year types.YearSlug) ([]Order, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT `+orderColumns+`
+			FROM orders o
+			WHERE o.year = ?
+			ORDER BY o.createdAt DESC`,
+		year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var orders []Order
+	for rows.Next() {
+		o, err := scanOrder(rows)
+		if err != nil {
+			return nil, err
+		}
+		orders = append(orders, *o)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	// Lines are intentionally not hydrated here — keep the year-wide list
+	// light. Callers needing lines fetch a single order via GetByID.
 	return orders, nil
 }
 
