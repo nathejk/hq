@@ -31,7 +31,10 @@ func (q *querier) GetAll(ctx context.Context, filters Filter) ([]Patrulje, error
 	query := `SELECT p.teamId, teamNumber, name, groupName, korps, liga, contactName, contactPhone, contactEmail, contactRole, signupStatus,
 			(SELECT COUNT(*) FROM spejder s where p.teamId = s.teamId) memberCount,
 			(SELECT COUNT(*) FROM spejder s where p.teamId = s.teamId AND s.tshirtSize != '') tshirtCount,
-			(SELECT COALESCE(SUM(amount), 0) FROM payment where p.teamId = payment.orderForeignKey AND status IN ('reserved', 'received')) as paidAmount
+			(SELECT COALESCE(SUM(pay.amount), 0) FROM payment pay
+				WHERE pay.status IN ('reserved', 'received')
+				  AND (pay.orderForeignKey = p.teamId
+				       OR pay.orderForeignKey IN (SELECT o.orderId FROM orders o WHERE o.ownerType = 'patrulje' AND o.ownerId = p.teamId))) as paidAmount
 		FROM patrulje p
 		WHERE (LOWER(p.year) = LOWER(?) OR ? = '')`
 	args := []any{filters.YearSlug, filters.YearSlug}
