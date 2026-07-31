@@ -14,14 +14,14 @@ onMounted(() => load())
 
 const patrulje = ref({})
 const spejdere = ref([])
-const payments = ref([])
+const orders = ref([])
 const load = async () => {
   try {
     const response = await http.get('/patrulje/' + props.teamId);
     console.log("patrulje", response.data)
     patrulje.value = response.data.team;
     spejdere.value = response.data.members;
-    payments.value = response.data.payments;
+    orders.value = response.data.orders || [];
   } catch (error) {
     console.log('badut list load failed', error);
   }
@@ -60,6 +60,21 @@ const getSeverity = (status) => {
 const linkToSignUp = () => {
     window.open("http://tilmelding.nathejk.dk/patrulje/" + patrulje.value.id, '_blank')
 }
+
+const formatAmount = (value, currency) => {
+    if (value == null) return ''
+    return (value / 100).toLocaleString('da-DK', { style: 'currency', currency: currency || 'DKK' })
+}
+const formatDateTime = (value) => {
+    if (!value) return ''
+    const date = new Date(value)
+    const day = date.getDate()
+    const month = date.toLocaleString('da-DK', { month: 'short' })
+    const time = date.toLocaleString('da-DK', { hour: '2-digit', minute: '2-digit', hour12: false })
+    return `${day}. ${month} ${time}`
+}
+const statusLabel = (status) => (status === 'PAID' ? 'Betalt' : 'Åben')
+const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
 </script>
 
 <template>
@@ -88,12 +103,23 @@ const linkToSignUp = () => {
         </DataTable>
 
         <h1 class="font-nathejk text-2xl mt-5">Betalinger</h1>
-        <DataTable :value="payments" sortMode="single" sortField="lok" :sortOrder="1" :stripedRows="true" >
-            <Column field="createdAt" header="Tidspunkt" sortable></Column>
-            <Column field="amount" header="Beløb" sortable></Column>
+        <DataTable :value="orders" sortMode="single" sortField="createdAt" :sortOrder="-1" :stripedRows="true" >
+            <template #empty>Ingen bestillinger</template>
+            <Column field="createdAt" header="Tidspunkt" sortable>
+                <template #body="{data}">{{ formatDateTime(data.createdAt) }}</template>
+            </Column>
+            <Column field="totalAmount" header="Beløb" sortable>
+                <template #body="{data}">{{ formatAmount(data.totalAmount, data.currency) }}</template>
+            </Column>
+            <Column field="paidAmount" header="Betalt">
+                <template #body="{data}">{{ formatAmount(data.paidAmount, data.currency) }}</template>
+            </Column>
+            <Column field="dueAmount" header="Mangler">
+                <template #body="{data}">{{ formatAmount(data.dueAmount, data.currency) }}</template>
+            </Column>
             <Column field="status" header="Status">
                 <template #body="{data}">
-                    <Tag :value="data.status" :severity="getSeverity(data.status)" />
+                    <Tag :value="statusLabel(data.status)" :severity="statusSeverity(data.status)" />
                 </template>
             </Column>
         </DataTable>
