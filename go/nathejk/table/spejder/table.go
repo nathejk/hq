@@ -29,7 +29,7 @@ type Spejder struct {
 	ID            types.MemberID     `json:"id"`
 	MemberID      types.MemberID     `json:"memberId"`
 	InitialTeamID types.TeamID       `json:"teamId"`
-	CurrentTeamID types.TeamID       `json:"teamId"`
+	CurrentTeamID types.TeamID       `json:"currentTeamId"`
 	Status        types.MemberStatus `json:"status"`
 	Name          string             `json:"name"`
 	Address       string             `json:"address"`
