@@ -34,7 +34,7 @@ func (q *querier) GetAll(ctx context.Context, f Filter) ([]Payment, error) {
 	}
 
 	var payments []Payment
-	err := q.r.From("payment").Where(where).Order(goqu.I("createdAt").Asc()).ScanStructs(&payments)
+	err := q.r.From("payment").Where(where).Order(goqu.I("createdAt").Asc()).ScanStructsContext(ctx, &payments)
 	if err != nil {
 		return nil, err
 	}

@@ -10,9 +10,6 @@ import (
 )
 
 func NewControlgroupStatusHandler(con *sql.DB) http.HandlerFunc {
-	type response struct {
-		ControlGroups []json.RawMessage
-	}
 	cgIDs := func() (IDs []types.ControlGroupID) {
 		rows, err := con.Query("SELECT controlGroupId FROM controlpoint GROUP BY controlGroupId")
 		if err != nil {
@@ -98,12 +95,6 @@ func NewControlgroupStatusHandler(con *sql.DB) http.HandlerFunc {
 		Inactive   types.TeamIDs
 	}
 
-	type scans map[types.TeamID]types.UserID
-
-	type cgCount struct {
-		ontime  scans
-		delayed scans
-	}
 	/*
 
 	   controlCount := func (cgID types.ControlGroupID) (cc  cgCount) {

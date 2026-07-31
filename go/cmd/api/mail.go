@@ -6,7 +6,6 @@ import (
 
 	"github.com/nathejk/shared-go/types"
 	jsonapi "nathejk.dk/cmd/api/app"
-	"nathejk.dk/nathejk/table/klan"
 	"nathejk.dk/nathejk/table/personnel"
 )
 
@@ -25,15 +24,6 @@ func (app *application) mailRecipientsHandler(w http.ResponseWriter, r *http.Req
 	badutRecipients := []mailRecipient{}
 	for _, badut := range badutter {
 		badutRecipients = append(badutRecipients, mailRecipient{ID: types.ID(badut.ID), Name: badut.Name, Email: badut.Email})
-	}
-
-	klans, err := app.models.Klan.GetAll(context.Background(), klan.Filter{YearSlug: app.YearSlug(r)})
-	if err != nil {
-		app.ServerErrorResponse(w, r, err)
-	}
-	klanRecipients := []mailRecipient{}
-	for _, t := range klans {
-		klanRecipients = append(klanRecipients, mailRecipient{Name: t.Name}) //ID: types.ID(t.TeamID), Name: t.Name, Email: t.Email})
 	}
 
 	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"personnel": badutRecipients}, nil)

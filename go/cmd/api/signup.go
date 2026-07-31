@@ -75,6 +75,7 @@ func (app *application) signupPincodeHandler(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+//lint:ignore U1000 intentional: MobilePay payment-link SMS handler, kept pending route wiring
 func (app *application) sendMobilepaySmsHandler(w http.ResponseWriter, r *http.Request) {
 	teamID := types.TeamID(app.ReadNamedParam(r, "id"))
 	if teamID == "" {
@@ -110,6 +111,8 @@ func (app *application) sendMobilepaySmsHandler(w http.ResponseWriter, r *http.R
 		app.ServerErrorResponse(w, r, err)
 	}
 }
+
+//lint:ignore U1000 intentional: signup-confirmation handler, kept pending route wiring
 func (app *application) confirmSignupHandler(w http.ResponseWriter, r *http.Request) {
 	id := app.ReadNamedParam(r, "id")
 	if id == "" {

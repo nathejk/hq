@@ -81,9 +81,9 @@ type CheckpointScanner struct {
 
 func (cmd checkgroupcommand) Update(ctx context.Context, ID types.CheckgroupID, cg Checkgroup) error {
 	if ID == "" {
-		return errors.New("Can't update controlgroup, no ID specified")
+		return errors.New("can't update controlgroup, no ID specified")
 	}
-	ctx = requestctx.WithValue(context.Background(), &requestctx.Value{Year: cmd.yearSlug})
+	ctx = requestctx.WithValue(ctx, &requestctx.Value{Year: cmd.yearSlug})
 	if err := cmd.UpdateCheckgroup(ctx, ID, cg); err != nil {
 		return err
 	}
@@ -99,7 +99,7 @@ func (cmd checkgroupcommand) Update(ctx context.Context, ID types.CheckgroupID, 
 
 func (cmd checkgroupcommand) UpdateCheckgroup(ctx context.Context, ID types.CheckgroupID, cg Checkgroup) error {
 	if ID == "" {
-		return errors.New("Can't update controlgroup, no ID specified")
+		return errors.New("can't update controlgroup, no ID specified")
 	}
 	v, ok := requestctx.ValueFrom(ctx)
 	if !ok {

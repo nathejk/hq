@@ -48,7 +48,7 @@ func (c commander) Create(ctx context.Context, year types.YearSlug, checkpointID
 
 func (c commander) SetTimeRange(ctx context.Context, ID types.CheckpersonnelID, tr types.TimeRange) error {
 	if ID == "" {
-		return errors.New("Can't update controlgroup, no ID specified")
+		return errors.New("can't update controlgroup, no ID specified")
 	}
 	u, ok := requestctx.UserFrom(ctx)
 	if !ok {

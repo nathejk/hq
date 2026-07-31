@@ -127,7 +127,7 @@ type UpdateCommand struct {
 
 func (c commander) Update(ctx context.Context, ID types.CheckgroupID, cg UpdateCommand) error {
 	if ID == "" {
-		return errors.New("Can't update controlgroup, no ID specified")
+		return errors.New("can't update controlgroup, no ID specified")
 	}
 	u, ok := requestctx.UserFrom(ctx)
 	if !ok {

@@ -11,7 +11,6 @@ import (
 
 type consumer struct {
 	w tablerow.Consumer
-	c int
 }
 
 func (c *consumer) Consumes() []streaminterface.Subject {

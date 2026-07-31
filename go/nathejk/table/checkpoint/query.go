@@ -30,7 +30,7 @@ func (q *querier) GetByID(ctx context.Context, ID types.CheckpointID) (*Checkpoi
 
 	var cp Checkpoint
 	var openFrom, openUntil int64
-	err := q.db.QueryRow(query, ID).Scan(&cp.ID, &cp.CheckgroupID, &cp.Year, &cp.Name, &openFrom, &openUntil, &cp.OpenDuration, &cp.Latitude, &cp.Longitude, &cp.Address, &cp.Description)
+	err := q.db.QueryRowContext(ctx, query, ID).Scan(&cp.ID, &cp.CheckgroupID, &cp.Year, &cp.Name, &openFrom, &openUntil, &cp.OpenDuration, &cp.Latitude, &cp.Longitude, &cp.Address, &cp.Description)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):

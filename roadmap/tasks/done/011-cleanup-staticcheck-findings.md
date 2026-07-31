@@ -1,11 +1,11 @@
 # 011 — Clean up pre-existing staticcheck findings
 
-**Status:** open
+**Status:** done
 **Priority:** medium
 **Created:** 2026-07-31
-**Picked up by:**
-**Started:**
-**Completed:**
+**Picked up by:** agent (opus-4.8 session)
+**Started:** 2026-07-31
+**Completed:** 2026-07-31
 
 ## Description
 
@@ -36,13 +36,21 @@ cosmetic/dead-code and safe to fix or remove.
 
 ## Acceptance Criteria
 
-- [ ] `go tool staticcheck ./...` is clean (or documented, intentional
-      `//lint:ignore` directives where a finding is a deliberate false positive).
-- [ ] No behavioural regressions from the ctx-related fixes.
-- [ ] `go build`/`go vet`/`go test ./...` stay green.
+- [x] `go tool staticcheck ./...` is clean (0 findings).
+- [x] No behavioural regressions from the ctx-related fixes (ctx now correctly
+      threaded into the queries; equivalent behaviour, better cancellation).
+- [x] `go build`/`go vet`/`go test ./...` stay green.
 
 ## Progress Log
 
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-07-31 15:20 — Task created as a follow-up to task 010 (enabling the staticcheck gate surfaced 27 pre-existing findings).
+- 2026-07-31 15:30 — Picked up. Plan: ST1005 → lowercase error strings; U1000 → remove dead funcs/types/fields; SA4006/SA4009 → actually thread `ctx` into the queries (real, if benign, bugs); SA4010 → fix discarded append. Re-run `go tool staticcheck ./...` to confirm clean.
+- 2026-07-31 15:50 — Fixes applied:
+  - ST1005: lowercased error strings in ctrlgrpcmd.go, commands/checkgroup.go (x2), table/checkgroup/commands.go, table/checkpersonnel/commands.go.
+  - SA4006: threaded ctx via QueryRowContext/ScanStructsContext in checkgroup, checkpoint, year queries and payment GetAll.
+  - SA4009: commands/checkgroup.go Update now derives from the incoming ctx (`requestctx.WithValue(ctx, ...)`) instead of `context.Background()`.
+  - SA4010: removed dead `klanRecipients` construction + unused klans fetch and `klan` import in cmd/api/mail.go (response behaviour unchanged).
+  - U1000: removed unused field `scan/consumer.go` `c`; removed unused types `response`/`scans`/`cgCount` in checkgroup/handler.go and year/handler.go; removed the duplicated unused `calculateMetadata` (+ now-unused `math` import) from checkpersonnel/checkpoint/klan/lok/year filter.go; and added `//lint:ignore U1000` (with reason) to the two intentional-but-unwired signup handlers rather than deleting real logic.
+- 2026-07-31 15:55 — `go tool staticcheck ./...` = 0 findings; `go vet ./...`, `go test ./...`, gofmt all clean. Completed.

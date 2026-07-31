@@ -35,7 +35,7 @@ func (cmd ctrlgrpCmd) Read(req interface{}) (interface{}, error) {
 func (cmd ctrlgrpCmd) Update(req interface{}) (interface{}, error) {
 	r := req.(*UpdateRequest)
 	if r.ID == "" {
-		return nil, errors.New("Can't update controlgroup, no ID specified")
+		return nil, errors.New("can't update controlgroup, no ID specified")
 	}
 	body := messages.NathejkControlGroupUpdated{
 		ControlGroupID: r.ID,

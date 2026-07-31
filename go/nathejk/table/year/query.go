@@ -26,7 +26,7 @@ func (q *querier) GetByID(ctx context.Context, slug types.YearSlug) (*Year, erro
 	query := `SELECT headline, description, cityDeparture, cityDestination, dateStart, dateEnd FROM years WHERE slug = ?`
 
 	y := Year{Slug: slug}
-	err := q.db.QueryRow(query, slug).Scan(&y.Headline, &y.Description, &y.CityDeparture, &y.CityDestination, &y.DateStart, &y.DateEnd)
+	err := q.db.QueryRowContext(ctx, query, slug).Scan(&y.Headline, &y.Description, &y.CityDeparture, &y.CityDestination, &y.DateStart, &y.DateEnd)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):

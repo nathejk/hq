@@ -79,7 +79,7 @@ func (q *querier) GetByID(ctx context.Context, cgID types.CheckgroupID) (*Checkg
 	query := `SELECT id, year, name, showOnMap, mandatory, scheme, relativeCheckgroupId, sortOrder FROM checkgroup WHERE id = ?`
 
 	var cg Checkgroup
-	err := q.db.QueryRow(query, cgID).Scan(&cg.ID, &cg.YearSlug, &cg.Name, &cg.ShowOnMap, &cg.Mandatory, &cg.Scheme, &cg.RelativeCheckgroupID, &cg.SortOrder)
+	err := q.db.QueryRowContext(ctx, query, cgID).Scan(&cg.ID, &cg.YearSlug, &cg.Name, &cg.ShowOnMap, &cg.Mandatory, &cg.Scheme, &cg.RelativeCheckgroupID, &cg.SortOrder)
 	if err != nil {
 		switch {
 		case errors.Is(err, sql.ErrNoRows):
@@ -102,7 +102,7 @@ func (q *querier) GetAll(ctx context.Context, f Filter) ([]Checkgroup /* Metadat
 	}
 
 	var checkgroups []Checkgroup
-	err := q.r.From("checkgroup").Select(columns...).Where(where).Order(goqu.I("sortOrder").Asc()).ScanStructs(&checkgroups)
+	err := q.r.From("checkgroup").Select(columns...).Where(where).Order(goqu.I("sortOrder").Asc()).ScanStructsContext(ctx, &checkgroups)
 	if err != nil {
 		return nil, err
 	}
