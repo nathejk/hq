@@ -75,68 +75,6 @@ func (app *application) signupPincodeHandler(w http.ResponseWriter, r *http.Requ
 	}
 }
 
-//lint:ignore U1000 intentional: MobilePay payment-link SMS handler, kept pending route wiring
-func (app *application) sendMobilepaySmsHandler(w http.ResponseWriter, r *http.Request) {
-	teamID := types.TeamID(app.ReadNamedParam(r, "id"))
-	if teamID == "" {
-		log.Println("1")
-		app.NotFoundResponse(w, r)
-		return
-	}
-	var input struct {
-		Amount int               `json:"amount"`
-		Phone  types.PhoneNumber `json:"phone"`
-	}
-	if err := app.ReadJSON(w, r, &input); err != nil {
-		app.BadRequestResponse(w, r, err)
-		return
-	}
-	team, err := app.models.Signup.GetByID(teamID)
-	if err != nil {
-		app.BadRequestResponse(w, r, err)
-		return
-	}
-	mobilepay := 330811
-	if team.TeamType == types.TeamTypePatrulje {
-		mobilepay = 204414
-	}
-	text := fmt.Sprintf("https://www.mobilepay.dk/erhverv/betalingslink/betalingslink-svar?phone=%d&amount=%d&comment=%s&lock=1", mobilepay, input.Amount, teamID)
-	err = app.sms.Send(input.Phone.Normalize(), text)
-	if err != nil {
-		app.BadRequestResponse(w, r, err)
-		return
-	}
-	err = app.WriteJSON(w, http.StatusCreated, jsonapi.Envelope{"ok": true}, nil)
-	if err != nil {
-		app.ServerErrorResponse(w, r, err)
-	}
-}
-
-//lint:ignore U1000 intentional: signup-confirmation handler, kept pending route wiring
-func (app *application) confirmSignupHandler(w http.ResponseWriter, r *http.Request) {
-	id := app.ReadNamedParam(r, "id")
-	if id == "" {
-		app.NotFoundResponse(w, r)
-		return
-	}
-	teamID, err := app.models.Signup.ConfirmBySecret(id)
-	if err != nil {
-		app.ServerErrorResponse(w, r, err)
-		return
-	}
-	team, err := app.models.Signup.GetByID(teamID)
-	if err != nil {
-		app.BadRequestResponse(w, r, err)
-		return
-	}
-	err = app.sms.Send(team.PhonePending.Normalize(), "Din aktiveringskode til Nathejktilmeldingen er: "+team.Pincode)
-	if err != nil {
-		app.BadRequestResponse(w, r, err)
-		return
-	}
-	http.Redirect(w, r, fmt.Sprintf("/indskrivning/%s", teamID), http.StatusSeeOther)
-}
-
 func (app *application) signupHandler(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		TeamID       types.TeamID       `json:"teamId"`
