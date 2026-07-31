@@ -1,11 +1,11 @@
 # 008 — Confirm shared-go version pin includes order/payment messages
 
-**Status:** open
+**Status:** done
 **Priority:** low
 **Created:** 2026-07-31
-**Picked up by:**
-**Started:**
-**Completed:**
+**Picked up by:** agent (opus-4.8 session)
+**Started:** 2026-07-31
+**Completed:** 2026-07-31
 
 ## Description
 
@@ -22,13 +22,14 @@ bump the `go.mod` require so the Docker/CI build compiles without the workspace.
 
 ## Acceptance Criteria
 
-- [ ] Pinned shared-go version in `go/go.mod` includes the order + payment
+- [x] Pinned shared-go version in `go/go.mod` includes the order + payment
       messages used by the order projection.
-- [ ] A `GOWORK=off` build (as in CI/Docker) compiles the order code.
-- [ ] If a bump was needed, `go.mod`/`go.sum` updated and noted here.
+- [x] A `GOWORK=off` build (as in CI/Docker) compiles the order code.
+- [x] No bump needed — pin already sufficient (documented below).
 
 ## Progress Log
 
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-07-31 00:00 — Task created from PRD 002.
+- 2026-07-31 14:10 — Verified. Pinned version is `github.com/nathejk/shared-go v0.0.0-20260702212401-45a8aa6c7daf`. Its module cache dir contains `messages/order.go` (NathejkOrderCreated/LinesChanged/Cancelled/Paid) and `messages/payment.go` with `OrderForeignKey`/`OrderType`. `GOWORK=off go build ./nathejk/table/order/...` succeeds against the pin (repo has no go.work anyway). No bump required. Completed.
