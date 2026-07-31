@@ -13,6 +13,7 @@ import (
 	"nathejk.dk/nathejk/table/crewmember"
 	"nathejk.dk/nathejk/table/klan"
 	"nathejk.dk/nathejk/table/lok"
+	"nathejk.dk/nathejk/table/order"
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/payment"
 	"nathejk.dk/nathejk/table/personnel"
@@ -117,9 +118,10 @@ type Models struct {
 	Lok            LokInterface
 	Section        section.Queries
 	CrewMember     crewmember.Queries
+	Order          order.Queries
 }
 
-func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, spejder SpejderInterface, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface, sec section.Queries, crew crewmember.Queries) Models {
+func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, spejder SpejderInterface, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface, sec section.Queries, crew crewmember.Queries, ord order.Queries) Models {
 	return Models{
 		Year:           y,
 		Teams:          TeamModel{DB: db},
@@ -141,6 +143,7 @@ func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInte
 		Lok:            lok,
 		Section:        sec,
 		CrewMember:     crew,
+		Order:          ord,
 	}
 }
 

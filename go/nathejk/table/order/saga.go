@@ -7,11 +7,10 @@ import (
 	"log"
 	"time"
 
-	"github.com/jrgensen/stream"
-	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	tables "nathejk.dk/nathejk/table"
 	"nathejk.dk/nathejk/table/payment"
+	"nathejk.dk/superfluids/streaminterface"
 )
 
 // PaymentReader is the small slice of the payment read API that the order
@@ -48,7 +47,7 @@ const DefaultSagaSettle = 2 * time.Second
 // order back below its total after status=paid. That isn't on the
 // roadmap — flag for revisit if it ever is.
 type saga struct {
-	p        stream.Publisher
+	p        streaminterface.Publisher
 	q        Queries
 	payments PaymentReader
 	settle   time.Duration
@@ -59,26 +58,26 @@ type saga struct {
 // the *table returned by table.NewPayment), and the JetStream publisher.
 // settle lets you tune or zero out the projection-catchup delay; pass 0
 // to fall back to DefaultSagaSettle.
-func NewSaga(p stream.Publisher, q Queries, payments PaymentReader, settle time.Duration) stream.Consumer {
+func NewSaga(p streaminterface.Publisher, q Queries, payments PaymentReader, settle time.Duration) streaminterface.Consumer {
 	if settle <= 0 {
 		settle = DefaultSagaSettle
 	}
 	return &saga{p: p, q: q, payments: payments, settle: settle}
 }
 
-func (s *saga) Consumes() []stream.Subject {
+func (s *saga) Consumes() []streaminterface.Subject {
 	// Subscribing to .received only is sufficient: by that point the
 	// payment.received event has already been published, the prior
 	// .reserved row carries the same amount, and the order's joined
 	// paidAmount sums both reserved and received states. .reserved would
 	// trigger the same transition slightly earlier, but at the cost of
 	// firing twice per payment for no benefit.
-	return []stream.Subject{
-		subject.FromStr("NATHEJK:*.payment.*.received"),
+	return []streaminterface.Subject{
+		streaminterface.SubjectFromStr("NATHEJK:*.payment.*.received"),
 	}
 }
 
-func (s *saga) HandleMessage(msg stream.Message) error {
+func (s *saga) HandleMessage(msg streaminterface.Message) error {
 	var body messages.NathejkPaymentReceived
 	if err := msg.Body(&body); err != nil {
 		return err
@@ -129,7 +128,7 @@ func (s *saga) HandleMessage(msg stream.Message) error {
 		PaidAmount: o.PaidAmount,
 		Timestamp:  time.Now(),
 	}
-	subj := subject.FromStr(fmt.Sprintf("NATHEJK:%s.order.%s.paid", o.Year, o.OrderID))
+	subj := streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.order.%s.paid", o.Year, o.OrderID))
 	out := s.p.MessageFunc()(subj)
 	out.SetBody(&paid)
 	if err := s.p.Publish(out); err != nil {

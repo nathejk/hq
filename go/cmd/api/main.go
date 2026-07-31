@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/cmd/api/app"
 	"nathejk.dk/internal/data"
 	"nathejk.dk/internal/jsonlog"
@@ -25,10 +26,12 @@ import (
 	"nathejk.dk/nathejk/table/crewmember"
 	"nathejk.dk/nathejk/table/klan"
 	"nathejk.dk/nathejk/table/lok"
+	"nathejk.dk/nathejk/table/order"
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/patruljemerged"
 	"nathejk.dk/nathejk/table/payment"
 	"nathejk.dk/nathejk/table/personnel"
+	"nathejk.dk/nathejk/table/product"
 	"nathejk.dk/nathejk/table/scan"
 	"nathejk.dk/nathejk/table/section"
 	"nathejk.dk/nathejk/table/senior"
@@ -156,16 +159,22 @@ func main() {
 	loktable := lok.New(writer, db.DB())
 	sectiontable := section.New(js, writer, db.DB())
 	crewmembertable := crewmember.New(js, writer, db.DB())
+	producttable := product.New(writer, db.DB())
+	if err := producttable.Seed(product.Seeds2026()); err != nil {
+		logger.PrintFatal(err, nil)
+	}
+	currentYear := types.YearSlug(fmt.Sprintf("%d", time.Now().Year()))
+	ordertable := order.New(js, writer, db.DB(), currentYear, producttable)
 
 	mux := xstream.NewMux(js)
-	mux.AddConsumer(signuptable, table.NewConfirm(writer), klantable, seniortable, patruljetable, table.NewPatruljeStatus(writer) /*table.NewPatruljeMerged(writer),, table.NewSpejder(writer)*/, table.NewSpejderStatus(writer), personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, patruljemergedtable, loktable, year, sectiontable, crewmembertable)
+	mux.AddConsumer(signuptable, table.NewConfirm(writer), klantable, seniortable, patruljetable, table.NewPatruljeStatus(writer) /*table.NewPatruljeMerged(writer),, table.NewSpejder(writer)*/, table.NewSpejderStatus(writer), personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, patruljemergedtable, loktable, year, sectiontable, crewmembertable, ordertable)
 
 	//mux.AddConsumer(table.NewSpejder(writer), table.NewSpejderStatus(writer))
 	if err := mux.Run(context.Background()); err != nil {
 		logger.PrintFatal(err, nil)
 	}
 
-	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable)
+	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, ordertable)
 	cmds := commands.New(js, models)
 	cmds.Year = year
 	cmds.Checkpoint = checkpoint

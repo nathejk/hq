@@ -7,12 +7,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jrgensen/stream"
-	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
 	tables "nathejk.dk/nathejk/table"
 	"nathejk.dk/nathejk/table/product"
+	"nathejk.dk/superfluids/streaminterface"
 )
 
 // Errors returned by the commander. Mapped to HTTP 4xx by the API layer.
@@ -117,7 +116,7 @@ type DesiredLine struct {
 }
 
 type commander struct {
-	p        stream.Publisher
+	p        streaminterface.Publisher
 	q        Queries
 	products product.Queries
 	year     types.YearSlug
@@ -127,7 +126,7 @@ type commander struct {
 // the underlying dependencies (e.g. wiring code outside this package). The
 // idiomatic way to build a commander is via order.New, which returns a
 // value that already implements Commands.
-func NewCommands(p stream.Publisher, q Queries, products product.Queries, year types.YearSlug) Commands {
+func NewCommands(p streaminterface.Publisher, q Queries, products product.Queries, year types.YearSlug) Commands {
 	return &commander{p: p, q: q, products: products, year: year}
 }
 
@@ -149,7 +148,7 @@ func (c *commander) EnsureOpenOrder(ctx context.Context, ownerType types.TeamTyp
 		Currency:  "DKK",
 		Timestamp: now,
 	}
-	subj := subject.FromStr(fmt.Sprintf("NATHEJK:%s.order.%s.created", c.year, orderID))
+	subj := streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.order.%s.created", c.year, orderID))
 	msg := c.p.MessageFunc()(subj)
 	msg.SetBody(&body)
 	if err := c.p.Publish(msg); err != nil {
@@ -296,7 +295,7 @@ func (c *commander) Cancel(ctx context.Context, orderID, reason string) (*Order,
 		Reason:    reason,
 		Timestamp: time.Now(),
 	}
-	subj := subject.FromStr(fmt.Sprintf("NATHEJK:%s.order.%s.cancelled", o.Year, orderID))
+	subj := streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.order.%s.cancelled", o.Year, orderID))
 	msg := c.p.MessageFunc()(subj)
 	msg.SetBody(&body)
 	if err := c.p.Publish(msg); err != nil {
@@ -453,7 +452,7 @@ func (c *commander) publishLinesChanged(orderID string, lines []messages.Nathejk
 		TotalAmount: total,
 		Timestamp:   time.Now(),
 	}
-	subj := subject.FromStr(fmt.Sprintf("NATHEJK:%s.order.%s.lines.changed", c.year, orderID))
+	subj := streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.order.%s.lines.changed", c.year, orderID))
 	msg := c.p.MessageFunc()(subj)
 	msg.SetBody(&body)
 	return c.p.Publish(msg)
