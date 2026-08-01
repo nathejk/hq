@@ -61,7 +61,7 @@ services:
     environment:
       #GO_BUILD_FLAGS: -race
       JETSTREAM_DSN: nats://jetstream:4222
-      DB_DSN: root:ib@tcp(mysql:3306)/hq?parseTime=true
+      DB_DSN: root:ib@tcp(mysql:3306)/hq?parseTime=true&multiStatements=true
       SMS_DSN: cpsms://TOKEN@api.cpsms.dk
       #REDIS_ADDR: redis:6379
       #MONOLITH_BASEURL: https://natpas.nathejk.dk
