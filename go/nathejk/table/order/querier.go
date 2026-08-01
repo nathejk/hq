@@ -100,6 +100,7 @@ func (q *querier) ListByOwner(ctx context.Context, year types.YearSlug, ownerTyp
 		`SELECT `+orderColumns+`
 			FROM orders o
 			WHERE o.year = ? AND o.ownerType = ? AND o.ownerId = ?
+			  AND NOT (o.status = 'open' AND o.totalAmount = 0)
 			ORDER BY o.createdAt DESC`,
 		year, string(ownerType), ownerID)
 	if err != nil {
@@ -135,6 +136,7 @@ func (q *querier) ListByYear(ctx context.Context, year types.YearSlug) ([]Order,
 		`SELECT `+orderColumns+`
 			FROM orders o
 			WHERE o.year = ?
+			  AND NOT (o.status = 'open' AND o.totalAmount = 0)
 			ORDER BY o.createdAt DESC`,
 		year)
 	if err != nil {
