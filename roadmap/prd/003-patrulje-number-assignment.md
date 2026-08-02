@@ -10,10 +10,12 @@
 
 ## 1. Summary
 
-When a patrulje has paid for at least **3 members**, it is considered
-**accepted** and is automatically assigned a sequential **team number**
-(1, 2, 3, … 200+). The first patrulje to qualify gets number 1, the next gets 2,
-and so on. Assignment is a **side effect** of another domain event and is
+When a patrulje has paid for at least **3 distinct members**, it is considered
+**accepted** and is automatically assigned a **team number**. The number is
+always **`max assigned number for the year + 1`** — so the first accepted
+patrulje in a fresh year gets 1, and if a number was assigned manually (say
+300), the next auto-assignment is 301. The sequence **resets every year**.
+Assignment is a **side effect** of another domain event and is
 realised by publishing `NATHEJK.{year}.patrulje.{teamId}.numberassigned` on the
 stream. A patrulje that already has a number keeps it (assignments are
 idempotent), and numbers must **not** be re-issued or reshuffled when the
@@ -41,13 +43,16 @@ service restarts and replays history.
 
 ## 3. Goals
 
-- Automatically assign a team number to a patrulje once it has **paid for ≥3
-  members**.
-- Numbers are **sequential and gap-free per year**, starting at 1 for the first
-  accepted patrulje.
+- Automatically assign a team number to a patrulje once it has **paid for 3
+  distinct members**.
+- The assigned number is **`max assigned number in the year + 1`** (so it jumps
+  past any manually/legacy-assigned numbers, e.g. a manual 300 → next 301). The
+  sequence **resets each year** (first accepted patrulje in a fresh year = 1).
 - Assignment is published as `NATHEJK.{year}.patrulje.{teamId}.numberassigned`
   so the existing projector materialises `patrulje.teamNumber`.
 - **Idempotent:** a patrulje that already has a number is never reassigned.
+- **Numbers are never reused.** If an accepted patrulje later cancels, its
+  number is obsoleted (burned), not recycled.
 - **Replay-safe:** restarting the service (which replays the whole event log)
   must not publish new/duplicate assignments or renumber existing teams.
 - Assignment events are only **published in live mode**, never during catch-up.
@@ -55,8 +60,11 @@ service restarts and replays history.
 ## 4. Non-Goals
 
 - Manual override / admin reassignment of team numbers (could be a follow-up).
-- Un-assigning or recycling numbers when a patrulje later drops below 3 paid
-  members or cancels. Once accepted, the number stays (see Open Questions).
+  Note: manually-assigned numbers *are* respected as the `max` when computing
+  the next auto number.
+- Un-assigning or recycling numbers. Once assigned, a number is never reused,
+  even if the patrulje later cancels/drops below 3 paid members (the number is
+  simply obsoleted).
 - Numbering klaner, seniors, or personnel — patruljer only.
 - Changing how `teamNumber` is displayed (it already shows in the patrulje list
   as `#`).
@@ -72,10 +80,11 @@ service restarts and replays history.
 
 ### Primary happy path
 
-1. A patrulje pays; its order becomes paid and covers ≥3 members.
-2. The acceptance saga (running live) sees the triggering event, confirms the
-   patrulje has no number yet and is now eligible, computes the next number
-   (highest assigned so far + 1), and publishes
+1. A patrulje pays; the triggering event fires once it has paid for 3 distinct
+   members.
+2. The acceptance saga (running live) confirms the patrulje has no number yet
+   and is now eligible, computes the next number (max assigned number in the
+   year + 1), and publishes
    `NATHEJK.{year}.patrulje.{teamId}.numberassigned` with that number.
 3. The existing `patrulje` projector writes `teamNumber`; the patrulje list now
    shows the number.
@@ -88,23 +97,27 @@ service restarts and replays history.
   `numberassigned` events to rebuild "who is numbered" and "highest number
   used", and replays triggering events, but publishes **nothing** until it is
   live. No renumbering, no duplicates.
-- **Not yet eligible:** triggering event for a patrulje with < 3 paid members →
-  no assignment (may qualify later on a subsequent event).
+- **Not yet eligible:** triggering event for a patrulje with < 3 distinct paid
+  members → no assignment (may qualify later on a subsequent event).
 - **Concurrent qualifiers:** two patruljer qualify close together → because the
   saga processes messages sequentially, they get consecutive distinct numbers.
-- **Pre-existing/legacy numbers:** patruljer that already carry a number from
-  another path (e.g. imported via the klan consumer) must not collide with newly
-  issued numbers (see Open Questions).
+- **Manual / legacy numbers:** a manually- or legacy-assigned number (e.g. 300)
+  is counted as the current `max`, so the next auto-assignment is 301. Existing
+  numbers are never overwritten.
+- **Cancellation after acceptance:** the patrulje keeps its (now obsolete)
+  number; the number is not recycled and `max` does not decrease.
 
 ## 6. Requirements
 
 ### Functional
 
-- [ ] Detect when a patrulje becomes "paid for ≥3 members" from a domain event.
+- [ ] Detect when a patrulje has **paid for 3 distinct members** from a domain event.
 - [ ] Publish `NATHEJK.{year}.patrulje.{teamId}.numberassigned`
-      (`messages.NathejkPatrolNumberAssigned`) with the next sequential number.
-- [ ] Assign the first accepted patrulje number 1, then increment.
+      (`messages.NathejkPatrolNumberAssigned`) with the next number.
+- [ ] Next number = **max assigned number in that year + 1** (including manual /
+      legacy numbers); sequence resets per year.
 - [ ] Never assign a second number to an already-numbered patrulje.
+- [ ] Never reuse a number (cancellation obsoletes it; no recycling).
 - [ ] Only publish in **live mode** (post-catch-up).
 - [ ] Survive restarts without renumbering or duplicate assignment.
 
@@ -136,32 +149,36 @@ already shown. N/A beyond that.
   - `HandleMessage(msg)` → routes by subject.
   - `CaughtUp()` (`streaminterface.CatchupListener`) → flip an internal
     `live` flag; only publish when `live` is true.
-- **State the saga maintains (in memory, rebuilt on replay):**
+- **State the saga maintains (in memory, rebuilt on replay), per year:**
   - `assigned map[TeamID]bool` — populated from replayed `numberassigned`
     events (and never re-published).
-  - `next int` — the next number to hand out, seeded from the highest number
-    seen in replayed `numberassigned` events + 1 (and see legacy note below).
+  - `maxNumber int` — the highest number issued/known **for the year**. The
+    next number handed out is `maxNumber + 1`. Seed it at `CaughtUp` from the
+    max of (a) replayed `numberassigned` events **and** (b) any existing
+    `patrulje.teamNumber` values for the year (so manual/legacy numbers like
+    300 are respected → next 301). Numbers are never reused, so `maxNumber`
+    only ever increases.
 - **On a `numberassigned` message (live or replay):** mark the team assigned and
-  bump `next` past its number. Publish nothing.
+  raise `maxNumber` to at least its number. Publish nothing.
 - **On a triggering message (only act/publish when `live`):**
   1. Resolve the affected patrulje `teamId`.
   2. If `assigned[teamId]` → return (idempotent).
-  3. If the patrulje is eligible (≥3 paid members — see rule below) → publish
-     `NathejkPatrolNumberAssigned{TeamID, TeamNumber: strconv.Itoa(next)}` on
-     `NATHEJK.{year}.patrulje.{teamId}.numberassigned`, then optimistically
-     mark `assigned[teamId]=true` and increment `next` (the saga's own
+  3. If the patrulje has paid for ≥3 distinct members → publish
+     `NathejkPatrolNumberAssigned{TeamID, TeamNumber: strconv.Itoa(maxNumber+1)}`
+     on `NATHEJK.{year}.patrulje.{teamId}.numberassigned`, then optimistically
+     mark `assigned[teamId]=true` and bump `maxNumber` (the saga's own
      subscription will also confirm it on the way back).
 - **Triggering event — recommended `NATHEJK.*.order.*.paid`:** when an order is
-  paid, if its owner is a patrulje, count the paid **participation** members and
-  compare to 3. Note: `order.paid` is emitted by the order Pay saga, which is
-  **not yet wired** (flagged during PRD 002 / task 002) — this PRD depends on
-  that saga being active, or on choosing a different trigger (see Open
-  Questions).
-- **Eligibility rule — "paid for ≥3 members":** recommended definition is the
-  count of paid **participation** order lines (product kind `participation`,
-  distinct `memberId`) for the patrulje owner ≥ 3. Alternative: paid amount ≥
-  3 × member price (250 DKK = 75000 øre), reusing the `paidAmount` logic already
-  in `patrulje/query.go`. Pick one (Open Question).
+  paid, if its owner is a patrulje, count the **distinct paid participation
+  members** and compare to 3. Note: `order.paid` is emitted by the order Pay
+  saga, which is **not yet wired** (flagged during PRD 002 / task 002) — this
+  PRD depends on that saga being active, or on choosing a different trigger (see
+  Open Questions).
+- **Eligibility rule — "paid for 3 distinct members":** count the distinct
+  `memberId`s on **paid** participation order lines (product kind
+  `participation`) for the patrulje owner; eligible when that count ≥ 3. (A
+  paid-amount threshold is explicitly *not* used — the requirement is distinct
+  members, not a sum.)
 - **Wiring:** construct the saga in `cmd/api/main.go`, add it to
   `mux.AddConsumer(...)`. The read/projection side already exists in
   `patrulje/consumer.go` — no change needed there.
@@ -180,20 +197,21 @@ already shown. N/A beyond that.
   this work.
 - **Legacy/pre-existing `teamNumber`s.** Some patruljer already have numbers set
   via other paths (e.g. `klan/consumer.go` inserts patrulje rows with
-  `teamNumber`). If those weren't issued via `numberassigned` events, the saga's
-  `next` counter won't know about them and could collide. Mitigation: also seed
-  `next`/`assigned` from the current `patrulje.teamNumber` values at `CaughtUp`,
-  or ensure all historical numbers came through `numberassigned` (Open
-  Question).
+  `teamNumber`). These are handled by seeding `maxNumber` from the existing
+  `patrulje.teamNumber` values (per year) at `CaughtUp`, so auto-assignment
+  continues at max+1 and never collides. They are treated as already-assigned
+  where a `teamId`→number is known.
 - **Live-only publish is essential.** Publishing during catch-up would spam
   duplicate `numberassigned` events on every restart. The `CaughtUp()` gate is
   the crux and must be verified.
 
 ## 9. Success Metrics
 
-- Every patrulje that has paid for ≥3 members has a non-empty `teamNumber`.
-- Numbers are unique and contiguous (1..N) per year with no duplicates or gaps
-  attributable to the saga.
+- Every patrulje that has paid for 3 distinct members has a non-empty
+  `teamNumber`.
+- Numbers are **unique** per year and never reused; each new auto-assignment is
+  strictly greater than every previously assigned number for that year (gaps are
+  acceptable, e.g. around manual numbers).
 - Restarting the API does not emit new `numberassigned` events for
   already-numbered teams (verify: event count for a team stays at 1) and does
   not change any existing `teamNumber`.
@@ -210,28 +228,29 @@ already shown. N/A beyond that.
 
 Proposed tasks to create in `roadmap/tasks/open/` (not created yet):
 
-- [ ] Task: Decide the triggering event + eligibility rule (order.paid vs payment; participation-lines vs amount)
-- [ ] Task: BFF — implement patrulje number-assignment saga (live-only, replay-safe; consumes trigger + own numberassigned)
-- [ ] Task: BFF — seed `next`/`assigned` from history (+ legacy teamNumber) to avoid collisions
+- [ ] Task: Decide/confirm the triggering event (order.paid vs payment.received)
+- [ ] Task: BFF — implement patrulje number-assignment saga (live-only, replay-safe; consumes trigger + own numberassigned; eligibility = 3 distinct paid members)
+- [ ] Task: BFF — seed `maxNumber`/`assigned` per year from history + existing `patrulje.teamNumber` (respect manual/legacy numbers, e.g. 300 → 301)
 - [ ] Task: BFF — wire the saga into `cmd/api/main.go` mux
-- [ ] Task: Verify restart/replay behaviour (no renumber, no duplicate emits)
+- [ ] Task: Verify restart/replay behaviour (no renumber, no duplicate emits) and no-reuse after cancellation
 - [ ] Task: (dependency) wire the order Pay saga so `order.paid` is emitted, if chosen as the trigger
 
 ## 11. Open Questions
 
 - **Trigger:** use `order.paid` (requires the order Pay saga to be wired) or
-  react directly to payment events (`payment.*.received`) and recompute paid
-  members? `order.paid` is cleaner but currently unemitted.
-- **Eligibility definition:** count paid **participation lines** (≥3 distinct
-  members) or paid **amount** ≥ 3 × member price? These can differ if a patrulje
-  pays a partial/lump amount.
-- **Sequence seeding vs legacy numbers:** should `next` start at 1 on a clean
-  system only, and otherwise continue from the max of historical
-  `numberassigned` events **and** any pre-existing `patrulje.teamNumber`? Are all
-  existing numbers guaranteed to have come through `numberassigned`?
-- **Number scope:** is the sequence per **year** (reset each year) or global?
-  ("1..200+" and "first team gets 1" implies per-year starting at 1.)
-- **Loss of eligibility:** if an accepted patrulje later cancels/refunds below 3
-  members, do they keep the number? (Assumed yes — Non-Goal.)
+  react directly to payment events (`payment.*.received`) and recompute distinct
+  paid members? `order.paid` is cleaner but currently unemitted.
+- **"Distinct paid members" source:** confirm distinct members are best derived
+  from paid **participation** order lines (`memberId`, product kind
+  `participation`). Is there a case where a member is paid for without a
+  participation line?
 - **Format:** `TeamNumber` is a string in the message/column. Plain decimal
-  ("1", "2", …) assumed; confirm no prefix/padding is expected.
+  ("1", "301", …) assumed; confirm no prefix/padding is expected.
+
+### Resolved (per product decision)
+
+- Eligibility = paid for **3 distinct members** (not a paid-amount threshold).
+- Next number = **max assigned in the year + 1** (respects manual/legacy
+  numbers; e.g. 300 → 301).
+- Sequence **resets per year** (first accepted in a fresh year = 1).
+- Numbers are **never reused**; a later cancellation obsoletes the number.
