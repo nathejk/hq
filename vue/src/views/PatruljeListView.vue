@@ -64,7 +64,7 @@ const getSeverity = (status) => {
         >
             <template #header>
         <div class="flex flex-wrap gap-2 items-center justify-between">
-            <h1 class="font-nathejk text-2xl">Patruljer</h1>
+            <h1 class="font-nathejk text-2xl">Patruljer ({{ patruljer.length }})</h1>
             <IconField>
                 <InputIcon>
                     <i class="pi pi-search" />

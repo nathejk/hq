@@ -48,7 +48,7 @@ const getSeverity = (status) => {
 </script>
 
 <template>
-    <h1 class="font-nathejk text-2xl">Gøglere</h1>
+    <h1 class="font-nathejk text-2xl">Gøglere ({{ badutter.length }})</h1>
     <a href="/api/excel/personnel">Eksport til Excel</a>
     <div class="card" id="badut">
         <DataTable :value="badutter" sortMode="single" sortField="lok" :sortOrder="1" :stripedRows="true"
