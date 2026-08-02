@@ -10,7 +10,7 @@
 
 ## 1. Summary
 
-When a patrulje has paid for at least **3 distinct members**, it is considered
+When a patrulje has paid for at least **3 seats** (members), it is considered
 **accepted** and is automatically assigned a **team number**. The number is
 always **`max assigned number for the year + 1`** — so the first accepted
 patrulje in a fresh year gets 1, and if a number was assigned manually (say
@@ -29,9 +29,9 @@ service restarts and replays history.
   `messages.NathejkPatrolNumberAssigned`). But **nothing publishes that event**
   today, so numbers are never assigned automatically. Organizers need accepted
   patruljer to get a stable, gap-free running number as soon as they've paid for
-  a viable team (≥3 members).
+  a viable team (≥3 seats).
 - **Why now?** With the order/payment layer in place (orders, `order.paid`,
-  computed paid amounts), we can finally detect "paid for ≥3 members"
+  computed paid amounts), we can finally detect "paid for ≥3 seats"
   deterministically and drive acceptance from it.
 - **Evidence.**
   - `messages.NathejkPatrolNumberAssigned { TeamID, TeamNumber string }` already
@@ -43,8 +43,8 @@ service restarts and replays history.
 
 ## 3. Goals
 
-- Automatically assign a team number to a patrulje once it has **paid for 3
-  distinct members**.
+- Automatically assign a team number to a patrulje once it has **paid for at
+  least 3 seats** (members). A patrulje is 3–7 seats.
 - The assigned number is **`max assigned number in the year + 1`** (so it jumps
   past any manually/legacy-assigned numbers, e.g. a manual 300 → next 301). The
   sequence **resets each year** (first accepted patrulje in a fresh year = 1).
@@ -63,7 +63,7 @@ service restarts and replays history.
   Note: manually-assigned numbers *are* respected as the `max` when computing
   the next auto number.
 - Un-assigning or recycling numbers. Once assigned, a number is never reused,
-  even if the patrulje later cancels/drops below 3 paid members (the number is
+  even if the patrulje later cancels/drops below 3 paid seats (the number is
   simply obsoleted).
 - Numbering klaner, seniors, or personnel — patruljer only.
 - Changing how `teamNumber` is displayed (it already shows in the patrulje list
@@ -73,15 +73,14 @@ service restarts and replays history.
 ## 5. User Stories & Scenarios
 
 - As an **organizer**, I want each patrulje that has paid for a full-enough team
-  (≥3 members) to automatically receive the next running number, so I don't have
+  (≥3 seats) to automatically receive the next running number, so I don't have
   to assign numbers by hand and the numbering reflects payment order.
 - As an **organizer**, I want numbers to stay put across deploys/restarts, so a
   patrulje keeps the same number for the whole event.
 
 ### Primary happy path
 
-1. A patrulje pays; the triggering event fires once it has paid for 3 distinct
-   members.
+1. A patrulje pays; its order is paid (`order.paid`) and covers ≥3 seats.
 2. The acceptance saga (running live) confirms the patrulje has no number yet
    and is now eligible, computes the next number (max assigned number in the
    year + 1), and publishes
@@ -97,8 +96,8 @@ service restarts and replays history.
   `numberassigned` events to rebuild "who is numbered" and "highest number
   used", and replays triggering events, but publishes **nothing** until it is
   live. No renumbering, no duplicates.
-- **Not yet eligible:** triggering event for a patrulje with < 3 distinct paid
-  members → no assignment (may qualify later on a subsequent event).
+- **Not yet eligible:** `order.paid` for a patrulje whose total paid seats < 3
+  → no assignment (may qualify later on a subsequent event).
 - **Concurrent qualifiers:** two patruljer qualify close together → because the
   saga processes messages sequentially, they get consecutive distinct numbers.
 - **Manual / legacy numbers:** a manually- or legacy-assigned number (e.g. 300)
@@ -111,7 +110,7 @@ service restarts and replays history.
 
 ### Functional
 
-- [ ] Detect when a patrulje has **paid for 3 distinct members** from a domain event.
+- [ ] Detect when a patrulje has **paid for ≥3 seats** (from `order.paid`).
 - [ ] Publish `NATHEJK.{year}.patrulje.{teamId}.numberassigned`
       (`messages.NathejkPatrolNumberAssigned`) with the next number.
 - [ ] Next number = **max assigned number in that year + 1** (including manual /
@@ -163,22 +162,21 @@ already shown. N/A beyond that.
 - **On a triggering message (only act/publish when `live`):**
   1. Resolve the affected patrulje `teamId`.
   2. If `assigned[teamId]` → return (idempotent).
-  3. If the patrulje has paid for ≥3 distinct members → publish
+  3. If the patrulje has paid for ≥3 seats → publish
      `NathejkPatrolNumberAssigned{TeamID, TeamNumber: strconv.Itoa(maxNumber+1)}`
      on `NATHEJK.{year}.patrulje.{teamId}.numberassigned`, then optimistically
      mark `assigned[teamId]=true` and bump `maxNumber` (the saga's own
      subscription will also confirm it on the way back).
-- **Triggering event — recommended `NATHEJK.*.order.*.paid`:** when an order is
-  paid, if its owner is a patrulje, count the **distinct paid participation
-  members** and compare to 3. Note: `order.paid` is emitted by the order Pay
-  saga, which is **not yet wired** (flagged during PRD 002 / task 002) — this
-  PRD depends on that saga being active, or on choosing a different trigger (see
-  Open Questions).
-- **Eligibility rule — "paid for 3 distinct members":** count the distinct
-  `memberId`s on **paid** participation order lines (product kind
-  `participation`) for the patrulje owner; eligible when that count ≥ 3. (A
-  paid-amount threshold is explicitly *not* used — the requirement is distinct
-  members, not a sum.)
+- **Triggering event — `NATHEJK.*.order.*.paid`:** when an order is paid, if its
+  owner is a patrulje, compute the patrulje's total paid **seatCount** and
+  compare to 3. Note: `order.paid` is emitted by the order Pay saga, which is
+  **not yet wired** (flagged during PRD 002 / task 002) — this PRD depends on
+  that saga being active (see Dependencies).
+- **Eligibility rule — "paid for ≥3 seats":** seats are the participation
+  product the patrulje buys (a patrulje is 3–7 seats). Compute `seatCount` =
+  sum of `quantity` across **paid** seat/participation order lines for the
+  patrulje owner; eligible when `seatCount ≥ 3`. (This is a seat *count*, not a
+  paid-amount threshold and not a distinct-`memberId` count.)
 - **Wiring:** construct the saga in `cmd/api/main.go`, add it to
   `mux.AddConsumer(...)`. The read/projection side already exists in
   `patrulje/consumer.go` — no change needed there.
@@ -207,7 +205,7 @@ already shown. N/A beyond that.
 
 ## 9. Success Metrics
 
-- Every patrulje that has paid for 3 distinct members has a non-empty
+- Every patrulje that has paid for ≥3 seats has a non-empty
   `teamNumber`.
 - Numbers are **unique** per year and never reused; each new auto-assignment is
   strictly greater than every previously assigned number for that year (gaps are
@@ -229,7 +227,7 @@ already shown. N/A beyond that.
 Proposed tasks to create in `roadmap/tasks/open/` (not created yet):
 
 - [ ] Task: Decide/confirm the triggering event (order.paid vs payment.received)
-- [ ] Task: BFF — implement patrulje number-assignment saga (live-only, replay-safe; consumes trigger + own numberassigned; eligibility = 3 distinct paid members)
+- [ ] Task: BFF — implement patrulje number-assignment saga (live-only, replay-safe; consumes order.paid + own numberassigned; eligibility = paid seatCount ≥ 3)
 - [ ] Task: BFF — seed `maxNumber`/`assigned` per year from history + existing `patrulje.teamNumber` (respect manual/legacy numbers, e.g. 300 → 301)
 - [ ] Task: BFF — wire the saga into `cmd/api/main.go` mux
 - [ ] Task: Verify restart/replay behaviour (no renumber, no duplicate emits) and no-reuse after cancellation
@@ -237,20 +235,21 @@ Proposed tasks to create in `roadmap/tasks/open/` (not created yet):
 
 ## 11. Open Questions
 
-- **Trigger:** use `order.paid` (requires the order Pay saga to be wired) or
-  react directly to payment events (`payment.*.received`) and recompute distinct
-  paid members? `order.paid` is cleaner but currently unemitted.
-- **"Distinct paid members" source:** confirm distinct members are best derived
-  from paid **participation** order lines (`memberId`, product kind
-  `participation`). Is there a case where a member is paid for without a
-  participation line?
-- **Format:** `TeamNumber` is a string in the message/column. Plain decimal
-  ("1", "301", …) assumed; confirm no prefix/padding is expected.
+- **seatCount source:** confirm `seatCount` is the sum of `quantity` on paid
+  seat/participation order lines. Is there a dedicated "seat" product SKU/kind
+  to filter on, or is every non-merchandise line a seat?
+- **Order Pay saga:** `order.paid` is the chosen trigger but the Pay saga that
+  emits it is not yet wired (see Dependencies) — it must be enabled for this to
+  fire.
 
 ### Resolved (per product decision)
 
-- Eligibility = paid for **3 distinct members** (not a paid-amount threshold).
+- Trigger = `order.paid`.
+- Eligibility = paid **seatCount ≥ 3** (seats = what a patrulje buys; a patrulje
+  is 3–7 seats). Not a paid-amount threshold, not distinct `memberId`s.
 - Next number = **max assigned in the year + 1** (respects manual/legacy
   numbers; e.g. 300 → 301).
 - Sequence **resets per year** (first accepted in a fresh year = 1).
 - Numbers are **never reused**; a later cancellation obsoletes the number.
+- `TeamNumber` stored as a plain decimal string (no prefix/padding — any prefix
+  is a display concern, not storage).
