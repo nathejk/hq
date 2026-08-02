@@ -51,7 +51,10 @@ func (q *querier) GetAll(ctx context.Context, f Filter) ([]*Person, error) {
 		where = []string{"true"}
 	}
 	query := `SELECT userId, userType, armNumber, name, phone, email, groupName, korps, klan, signupStatus, tshirtSize, additionals,
-		(SELECT COALESCE(SUM(amount),0) FROM payment WHERE userId = orderForeignKey AND status IN ('reserved', 'received')) as paidAmount
+		(SELECT COALESCE(SUM(pay.amount),0) FROM payment pay
+			WHERE pay.status IN ('reserved', 'received')
+			  AND (pay.orderForeignKey = personnel.userId
+			       OR pay.orderForeignKey IN (SELECT o.orderId FROM orders o WHERE o.ownerId = personnel.userId))) as paidAmount
 		FROM personnel
 		WHERE ` + strings.Join(where, " AND ")
 	rows, err := q.db.QueryContext(ctx, query, args...)
