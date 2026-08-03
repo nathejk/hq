@@ -1,5 +1,6 @@
 <script setup>
 import { ref, onMounted } from 'vue'
+import { FilterMatchMode } from '@primevue/core/api'
 import { http } from '@/plugins/axios'
 
 onMounted(() => load())
@@ -10,10 +11,43 @@ const expandedRows = ref([])
 // omits lines to stay light; the detail endpoint hydrates them).
 const linesByOrder = ref({})
 
+// Danish display label for an order's ownerType. Anything we don't recognise
+// falls back to "Andet" so the Type column (and its filter) is exhaustive.
+const ownerTypeLabel = (ownerType) => {
+  switch (ownerType) {
+    case 'patrulje':
+      return 'Patrulje'
+    case 'klan':
+      return 'Klan'
+    case 'gøgler':
+      return 'Gøgler'
+    case 'crew':
+      return 'Crew'
+    default:
+      return 'Andet'
+  }
+}
+const typeOptions = ['Patrulje', 'Klan', 'Gøgler', 'Crew', 'Andet']
+
+// The API emits a binary status (OPEN/PAID; cancelled collapses into PAID).
+const statusLabelOf = (status) => (status === 'PAID' ? 'Betalt' : 'Åben')
+const statusOptions = ['Åben', 'Betalt']
+
+// Filter on the Danish labels so "Andet" is filterable and the default status
+// value can be expressed as "Betalt" directly.
+const filters = ref({
+  typeLabel: { value: null, matchMode: FilterMatchMode.EQUALS },
+  statusLabel: { value: 'Betalt', matchMode: FilterMatchMode.EQUALS }
+})
+
 const load = async () => {
   try {
     const response = await http.get('/orders')
-    orders.value = response.data.orders || []
+    orders.value = (response.data.orders || []).map((o) => ({
+      ...o,
+      typeLabel: ownerTypeLabel(o.ownerType),
+      statusLabel: statusLabelOf(o.status)
+    }))
   } catch (error) {
     console.log('orders list load failed', error)
   }
@@ -45,15 +79,16 @@ const formatDateTime = (value) => {
   return `${day}. ${month} ${time}`
 }
 
-const statusLabel = (status) => (status === 'PAID' ? 'Betalt' : 'Åben')
-const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
+const statusSeverity = (statusLabel) => (statusLabel === 'Betalt' ? 'success' : 'warn')
 </script>
 
 <template>
-  <h1 class="font-nathejk text-2xl">Betalinger</h1>
+  <h1 class="font-nathejk text-2xl">Ordrehistorik</h1>
   <div class="card" id="orders">
     <DataTable
       :value="orders"
+      v-model:filters="filters"
+      filterDisplay="row"
       sortMode="single"
       sortField="createdAt"
       :sortOrder="-1"
@@ -64,8 +99,8 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
       dataKey="orderId"
       @rowExpand="onRowExpand"
     >
-      <template #loading>Henter bestillinger - vent... </template>
-      <template #empty>Ingen bestillinger fundet</template>
+      <template #loading>Henter ordrer - vent... </template>
+      <template #empty>Ingen ordrer fundet</template>
       <Column expander />
       <Column field="createdAt" header="Tid" sortable>
         <template #body="{ data }">
@@ -73,6 +108,21 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
         </template>
       </Column>
       <Column field="ownerName" header="Ejer" sortable></Column>
+      <Column field="typeLabel" header="Type" sortable :showFilterMenu="false">
+        <template #body="{ data }">
+          {{ data.typeLabel }}
+        </template>
+        <template #filter="{ filterModel, filterCallback }">
+          <Select
+            v-model="filterModel.value"
+            :options="typeOptions"
+            placeholder="Alle"
+            showClear
+            class="w-full"
+            @change="filterCallback()"
+          />
+        </template>
+      </Column>
       <Column field="totalAmount" header="Beløb" sortable>
         <template #body="{ data }">
           {{ formatAmount(data.totalAmount, data.currency) }}
@@ -88,9 +138,19 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
           {{ formatAmount(data.dueAmount, data.currency) }}
         </template>
       </Column>
-      <Column field="status" header="Status">
+      <Column field="statusLabel" header="Status" :showFilterMenu="false">
         <template #body="{ data }">
-          <Tag :value="statusLabel(data.status)" :severity="statusSeverity(data.status)" />
+          <Tag :value="data.statusLabel" :severity="statusSeverity(data.statusLabel)" />
+        </template>
+        <template #filter="{ filterModel, filterCallback }">
+          <Select
+            v-model="filterModel.value"
+            :options="statusOptions"
+            placeholder="Alle"
+            showClear
+            class="w-full"
+            @change="filterCallback()"
+          />
         </template>
       </Column>
       <template #expansion="{ data }">
