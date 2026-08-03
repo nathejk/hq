@@ -118,7 +118,8 @@ const statusSeverity = (statusLabel) => (statusLabel === 'Betalt' ? 'success' : 
             :options="typeOptions"
             placeholder="Alle"
             showClear
-            class="w-full"
+            size="small"
+            class="w-28"
             @change="filterCallback()"
           />
         </template>
@@ -148,7 +149,8 @@ const statusSeverity = (statusLabel) => (statusLabel === 'Betalt' ? 'success' : 
             :options="statusOptions"
             placeholder="Alle"
             showClear
-            class="w-full"
+            size="small"
+            class="w-24"
             @change="filterCallback()"
           />
         </template>
