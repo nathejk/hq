@@ -25,10 +25,10 @@ type Queries interface {
 	// ListByOwner returns every order for the given owner, newest first.
 	ListByOwner(ctx context.Context, year types.YearSlug, ownerType types.TeamType, ownerID string) ([]Order, error)
 
-	// ListByYear returns every order for the given year, newest first, WITHOUT
-	// hydrating line items. It is the light query behind the year-wide
-	// Betalinger list; paid/due amounts are still computed. Use GetByID when
-	// an order's lines are needed (e.g. a row expansion).
+	// ListByYear returns every order for the given year, newest first, with line
+	// items hydrated via a single grouped query (no per-order N+1). Paid/due
+	// amounts are computed. Used by the year-wide Ordrehistorik list and its
+	// line-item summary.
 	ListByYear(ctx context.Context, year types.YearSlug) ([]Order, error)
 
 	// ReservedQuantity returns the total quantity of the given product
@@ -155,9 +155,57 @@ func (q *querier) ListByYear(ctx context.Context, year types.YearSlug) ([]Order,
 	if err := rows.Err(); err != nil {
 		return nil, err
 	}
-	// Lines are intentionally not hydrated here — keep the year-wide list
-	// light. Callers needing lines fetch a single order via GetByID.
+	// Hydrate lines for the whole year in one grouped query — the year-wide list
+	// feeds a line-item summary, and a per-order fetch here would be N+1.
+	linesByOrder, err := q.linesForYear(ctx, year)
+	if err != nil {
+		return nil, err
+	}
+	for i := range orders {
+		orders[i].Lines = linesByOrder[orders[i].OrderID]
+	}
 	return orders, nil
+}
+
+// linesForYear returns every order line belonging to the given year, grouped by
+// orderId, in a single query. Used by ListByYear so hydrating a whole year of
+// orders costs one extra round-trip instead of one per order.
+func (q *querier) linesForYear(ctx context.Context, year types.YearSlug) (map[string][]Line, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT l.orderId, l.lineId, l.productSku, l.productName, l.memberId, l.unitPrice, l.quantity, l.lineTotal, l.origin, l.attributes
+			FROM order_line l
+			JOIN orders o ON o.orderId = l.orderId
+			WHERE o.year = ?
+			ORDER BY l.createdAt ASC, l.lineId ASC`,
+		year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	byOrder := map[string][]Line{}
+	for rows.Next() {
+		var (
+			orderID  string
+			l        Line
+			attrJSON sql.NullString
+		)
+		if err := rows.Scan(&orderID, &l.LineID, &l.ProductSKU, &l.ProductName, &l.MemberID, &l.UnitPrice, &l.Quantity, &l.LineTotal, &l.Origin, &attrJSON); err != nil {
+			return nil, err
+		}
+		if attrJSON.Valid && strings.TrimSpace(attrJSON.String) != "" {
+			if err := json.Unmarshal([]byte(attrJSON.String), &l.Attributes); err != nil {
+				// Tolerate malformed attributes JSON, same as listLines.
+				log.Printf("order.linesForYear: skipping bad attributes for %s/%s: %v", orderID, l.LineID, err)
+				l.Attributes = nil
+			}
+		}
+		byOrder[orderID] = append(byOrder[orderID], l)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return byOrder, nil
 }
 
 func (q *querier) ReservedQuantity(ctx context.Context, year types.YearSlug, productSKU string) (int, error) {

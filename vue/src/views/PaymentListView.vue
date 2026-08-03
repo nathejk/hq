@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { FilterMatchMode } from '@primevue/core/api'
 import { http } from '@/plugins/axios'
 
@@ -7,9 +7,6 @@ onMounted(() => load())
 
 const orders = ref([])
 const expandedRows = ref([])
-// orderId -> line items, lazily fetched on row expand (the list endpoint
-// omits lines to stay light; the detail endpoint hydrates them).
-const linesByOrder = ref({})
 
 // Danish display label for an order's ownerType. Anything we don't recognise
 // falls back to "Andet" so the Type column (and its filter) is exhaustive.
@@ -53,17 +50,40 @@ const load = async () => {
   }
 }
 
-const onRowExpand = async (event) => {
-  const order = event.data
-  if (linesByOrder.value[order.orderId]) return
-  try {
-    const response = await http.get('/order/' + order.orderId)
-    linesByOrder.value[order.orderId] = response.data.order.lines || []
-  } catch (error) {
-    console.log('order detail load failed', error)
-    linesByOrder.value[order.orderId] = []
-  }
+// The rows actually shown, i.e. after the Type/Status filters. Drives both the
+// table and the summary so the two can never disagree. (The DataTable applies
+// the same filters again, which is a no-op on an already-filtered list.)
+const shownOrders = computed(() =>
+  orders.value.filter((o) => {
+    const type = filters.value.typeLabel.value
+    const status = filters.value.statusLabel.value
+    if (type && o.typeLabel !== type) return false
+    if (status && o.statusLabel !== status) return false
+    return true
+  })
+)
+
+// Product variant (e.g. t-shirt size) is recorded on the line's attributes.
+const lineSize = (line) => {
+  const a = line.attributes || {}
+  return a.size || a.tshirtSize || a.Size || null
 }
+
+// Aggregate line items across the shown orders. Merchandise with a size (e.g.
+// t-shirts) is counted per size, so each size gets its own row.
+const lineSummary = computed(() => {
+  const counts = {}
+  for (const order of shownOrders.value) {
+    for (const line of order.lines || []) {
+      const size = lineSize(line)
+      const label = size ? `${line.productName} (${String(size).toUpperCase()})` : line.productName
+      counts[label] = (counts[label] || 0) + (line.quantity || 0)
+    }
+  }
+  return Object.entries(counts)
+    .map(([label, count]) => ({ label, count }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'da-DK'))
+})
 
 const formatAmount = (value, currency) => {
   if (value == null) return ''
@@ -84,9 +104,20 @@ const statusSeverity = (statusLabel) => (statusLabel === 'Betalt' ? 'success' : 
 
 <template>
   <h1 class="font-nathejk text-2xl">Ordrehistorik</h1>
+
+  <div class="my-3 rounded border border-gray-200 bg-gray-50 p-3 text-sm">
+    <div class="font-semibold pb-1">{{ shownOrders.length }} ordrer vist</div>
+    <div v-if="lineSummary.length" class="flex flex-wrap gap-x-5 gap-y-1">
+      <span v-for="item in lineSummary" :key="item.label">
+        {{ item.label }}: <span class="font-semibold">{{ item.count }}</span>
+      </span>
+    </div>
+    <div v-else class="text-gray-500 italic">Ingen ordrelinjer</div>
+  </div>
+
   <div class="card" id="orders">
     <DataTable
-      :value="orders"
+      :value="shownOrders"
       v-model:filters="filters"
       filterDisplay="row"
       sortMode="single"
@@ -97,7 +128,6 @@ const statusSeverity = (statusLabel) => (statusLabel === 'Betalt' ? 'success' : 
       paginator
       :rows="50"
       dataKey="orderId"
-      @rowExpand="onRowExpand"
     >
       <template #loading>Henter ordrer - vent... </template>
       <template #empty>Ingen ordrer fundet</template>
@@ -158,9 +188,14 @@ const statusSeverity = (statusLabel) => (statusLabel === 'Betalt' ? 'success' : 
       <template #expansion="{ data }">
         <div class="p-3">
           <h3 class="font-semibold mb-2">Ordrelinjer</h3>
-          <DataTable :value="linesByOrder[data.orderId] || []">
+          <DataTable :value="data.lines || []">
             <template #empty>Ingen linjer</template>
             <Column field="productName" header="Produkt"></Column>
+            <Column header="Størrelse">
+              <template #body="{ data: line }">
+                {{ lineSize(line) ? String(lineSize(line)).toUpperCase() : '' }}
+              </template>
+            </Column>
             <Column field="memberId" header="Medlem"></Column>
             <Column field="quantity" header="Antal"></Column>
             <Column field="unitPrice" header="Stykpris">
