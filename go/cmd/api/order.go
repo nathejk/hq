@@ -115,10 +115,25 @@ func (app *application) resolveOwnerName(ctx context.Context, cache map[string]s
 		if k, err := app.models.Klan.GetByID(ctx, types.TeamID(ownerID)); err == nil && k != nil && k.Name != "" {
 			name = k.Name
 		}
-	default:
-		// crew / gøgler and any other owner type are personnel users.
+	case types.TeamTypeCrew:
+		// Crew members are projected into their own table with a generated UUID
+		// as userId — not into personnel.
+		if m, err := app.models.CrewMember.GetByID(ctx, types.UserID(ownerID)); err == nil && m != nil && m.Name != "" {
+			name = m.Name
+			break
+		}
 		if pers, err := app.models.Personnel.GetByID(ctx, types.UserID(ownerID)); err == nil && pers != nil && pers.Name != "" {
 			name = pers.Name
+		}
+	default:
+		// gøgler and other person owners live in the personnel projection; fall
+		// back to crewmember so a person owner resolves either way.
+		if pers, err := app.models.Personnel.GetByID(ctx, types.UserID(ownerID)); err == nil && pers != nil && pers.Name != "" {
+			name = pers.Name
+			break
+		}
+		if m, err := app.models.CrewMember.GetByID(ctx, types.UserID(ownerID)); err == nil && m != nil && m.Name != "" {
+			name = m.Name
 		}
 	}
 
