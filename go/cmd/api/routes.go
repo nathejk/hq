@@ -38,7 +38,6 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodDelete, "/api/checkpersonnel/:id", app.deleteCheckpersonnelHandler)
 
 	router.HandlerFunc(http.MethodGet, "/api/personnel", app.listPersonnelHandler)
-	router.HandlerFunc(http.MethodGet, "/api/payments", app.listPaymentsHandler)
 	router.HandlerFunc(http.MethodGet, "/api/orders", app.listOrdersHandler)
 	router.HandlerFunc(http.MethodGet, "/api/order/:id", app.showOrderHandler)
 
