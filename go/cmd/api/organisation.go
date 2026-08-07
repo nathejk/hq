@@ -5,10 +5,10 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/nathejk/shared-go/tables/crewmember"
+	"github.com/nathejk/shared-go/tables/section"
 	"github.com/nathejk/shared-go/types"
 	jsonapi "nathejk.dk/cmd/api/app"
-	"nathejk.dk/nathejk/table/crewmember"
-	"nathejk.dk/nathejk/table/section"
 )
 
 // showOrganisationHandler returns the sections for the current year plus the

@@ -10,9 +10,9 @@ import (
 	"github.com/jrgensen/stream"
 	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
+	"github.com/nathejk/shared-go/tables/product"
 	"github.com/nathejk/shared-go/types"
 	tables "nathejk.dk/nathejk/table"
-	"nathejk.dk/nathejk/table/product"
 )
 
 // Errors returned by the commander. Mapped to HTTP 4xx by the API layer.

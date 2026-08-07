@@ -3,13 +3,13 @@ package commands
 import (
 	"github.com/jrgensen/stream"
 	"github.com/nathejk/shared-go/messages"
+	"github.com/nathejk/shared-go/tables/crewmember"
+	"github.com/nathejk/shared-go/tables/section"
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/internal/data"
 	"nathejk.dk/nathejk/table/checkgroup"
 	"nathejk.dk/nathejk/table/checkpersonnel"
 	"nathejk.dk/nathejk/table/checkpoint"
-	"nathejk.dk/nathejk/table/crewmember"
-	"nathejk.dk/nathejk/table/section"
 	"nathejk.dk/nathejk/table/year"
 )
 

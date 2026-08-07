@@ -9,8 +9,8 @@ import (
 	"github.com/nathejk/shared-go/types"
 	"github.com/xuri/excelize/v2"
 
+	"github.com/nathejk/shared-go/tables/klan"
 	"nathejk.dk/internal/data"
-	"nathejk.dk/nathejk/table/klan"
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/personnel"
 )
@@ -119,7 +119,7 @@ func (app *application) excelPatruljeHandler(w http.ResponseWriter, r *http.Requ
 }
 
 func (app *application) excelKlanHandler(w http.ResponseWriter, r *http.Request) {
-	filter := klan.Filter{YearSlug: app.YearSlug(r)}
+	filter := klan.Filter{YearSlug: string(app.YearSlug(r))}
 	teams, err := app.models.Klan.GetAll(context.Background(), filter)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)

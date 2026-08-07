@@ -6,19 +6,19 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/nathejk/shared-go/tables/klan"
+	"github.com/nathejk/shared-go/tables/senior"
 	"github.com/nathejk/shared-go/types"
 	jsonapi "nathejk.dk/cmd/api/app"
 	"nathejk.dk/internal/data"
 	"nathejk.dk/nathejk/commands"
-	"nathejk.dk/nathejk/table/klan"
 	"nathejk.dk/nathejk/table/lok"
 	"nathejk.dk/nathejk/table/personnel"
-	"nathejk.dk/nathejk/table/senior"
 )
 
 func (app *application) showLoksHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	teams, err := app.models.Klan.GetAll(ctx, klan.Filter{YearSlug: app.YearSlug(r)})
+	teams, err := app.models.Klan.GetAll(ctx, klan.Filter{YearSlug: string(app.YearSlug(r))})
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 		return

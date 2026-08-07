@@ -28,8 +28,8 @@ import (
 
 	"github.com/jrgensen/cqrs"
 	"github.com/jrgensen/stream"
+	"github.com/nathejk/shared-go/tables/product"
 	"github.com/nathejk/shared-go/types"
-	"nathejk.dk/nathejk/table/product"
 
 	_ "embed"
 )
