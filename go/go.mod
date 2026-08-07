@@ -8,6 +8,7 @@ require (
 	github.com/go-sql-driver/mysql v1.6.0
 	github.com/golang-migrate/migrate/v4 v4.16.2
 	github.com/google/uuid v1.6.0
+	github.com/jrgensen/cqrs v0.1.0
 	github.com/jrgensen/stream v0.1.2
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/lib/pq v1.10.7

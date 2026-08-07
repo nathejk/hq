@@ -4,18 +4,18 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/jrgensen/cqrs"
 	"github.com/jrgensen/stream"
 	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
-	"nathejk.dk/pkg/tablerow"
 )
 
 type confirm struct {
-	w tablerow.Consumer
+	w cqrs.Writer
 }
 
-func NewConfirm(w tablerow.Consumer) *confirm {
+func NewConfirm(w cqrs.Writer) *confirm {
 	table := &confirm{w: w}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
 		log.Printf("Error creating table %q", err)

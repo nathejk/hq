@@ -5,11 +5,11 @@ import (
 	"log"
 	"time"
 
+	"github.com/jrgensen/cqrs"
 	"github.com/jrgensen/stream"
 	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
-	"nathejk.dk/pkg/tablerow"
 
 	_ "embed"
 )
@@ -29,10 +29,10 @@ type Senior struct {
 }
 
 type senior struct {
-	w tablerow.Consumer
+	w cqrs.Writer
 }
 
-func NewSenior(w tablerow.Consumer) *senior {
+func NewSenior(w cqrs.Writer) *senior {
 	table := &senior{w: w}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
 		log.Printf("Error creating table %q", err)

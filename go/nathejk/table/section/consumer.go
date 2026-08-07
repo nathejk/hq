@@ -6,11 +6,11 @@ import (
 
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/mysql"
+	"github.com/jrgensen/cqrs"
 	"github.com/jrgensen/stream"
 	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
-	"nathejk.dk/pkg/tablerow"
 )
 
 // bodyNathejkSectionsSorted is the wire body for NATHEJK.{year}.sections.sorted.
@@ -33,7 +33,7 @@ type bodyNathejkSectionMoved struct {
 }
 
 type consumer struct {
-	w tablerow.Consumer
+	w cqrs.Writer
 }
 
 func (c *consumer) Consumes() []stream.Subject {

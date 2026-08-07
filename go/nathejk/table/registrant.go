@@ -4,19 +4,19 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/jrgensen/cqrs"
 	"github.com/jrgensen/stream"
 	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
-	"nathejk.dk/pkg/tablerow"
 
 	_ "embed"
 )
 
 type registrant struct {
-	w tablerow.Consumer
+	w cqrs.Writer
 }
 
-func NewRegistrant(w tablerow.Consumer) *registrant {
+func NewRegistrant(w cqrs.Writer) *registrant {
 	table := &registrant{w: w}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
 		log.Printf("Error creating table %q", err)

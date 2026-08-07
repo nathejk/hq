@@ -5,11 +5,11 @@ import (
 	"log"
 	"time"
 
+	"github.com/jrgensen/cqrs"
 	"github.com/jrgensen/stream"
 	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
-	"nathejk.dk/pkg/tablerow"
 
 	_ "embed"
 )
@@ -30,10 +30,10 @@ type Spejder struct {
 }
 
 type spejder struct {
-	w tablerow.Consumer
+	w cqrs.Writer
 }
 
-func NewSpejder(w tablerow.Consumer) *spejder {
+func NewSpejder(w cqrs.Writer) *spejder {
 	table := &spejder{w: w}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
 		log.Printf("Error creating table %q", err)

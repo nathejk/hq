@@ -7,9 +7,9 @@ import (
 
 	"github.com/nathejk/shared-go/messages"
 
+	"github.com/jrgensen/cqrs"
 	"github.com/jrgensen/stream"
 	"github.com/jrgensen/stream/subject"
-	"nathejk.dk/pkg/tablerow"
 )
 
 // consumer projects the four order events onto the orders / order_line
@@ -17,7 +17,7 @@ import (
 // lines for the order are deleted and replaced with the lines from the
 // event. This keeps the projector trivially idempotent and replay-safe.
 type consumer struct {
-	w tablerow.Consumer
+	w cqrs.Writer
 }
 
 func (c *consumer) Consumes() []stream.Subject {

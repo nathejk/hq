@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/jrgensen/cqrs"
 	"github.com/jrgensen/stream"
 	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
-	"nathejk.dk/pkg/tablerow"
 
 	_ "embed"
 )
@@ -27,10 +27,10 @@ type PatruljeStatus struct {
 }
 
 type patruljeStatus struct {
-	w tablerow.Consumer
+	w cqrs.Writer
 }
 
-func NewPatruljeStatus(w tablerow.Consumer) *patruljeStatus {
+func NewPatruljeStatus(w cqrs.Writer) *patruljeStatus {
 	table := &patruljeStatus{w: w}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
 		log.Printf("Error creating table %q %q", err, table.CreateTableSql())

@@ -3,17 +3,17 @@ package year
 import (
 	"fmt"
 
+	"github.com/jrgensen/cqrs"
 	"github.com/jrgensen/stream"
 	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
-	"nathejk.dk/pkg/tablerow"
 
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/mysql"
 )
 
 type consumer struct {
-	w tablerow.Consumer
+	w cqrs.Writer
 }
 
 func (c *consumer) Consumes() (subjs []stream.Subject) {

@@ -3,9 +3,9 @@ package table
 import (
 	"log"
 
+	"github.com/jrgensen/cqrs"
 	"github.com/jrgensen/stream"
 	"github.com/nathejk/shared-go/types"
-	"nathejk.dk/pkg/tablerow"
 
 	_ "embed"
 )
@@ -18,10 +18,10 @@ type SpejderStatus struct {
 }
 
 type spejderstatus struct {
-	w tablerow.Consumer
+	w cqrs.Writer
 }
 
-func NewSpejderStatus(w tablerow.Consumer) *spejderstatus {
+func NewSpejderStatus(w cqrs.Writer) *spejderstatus {
 	table := &spejderstatus{w: w}
 	if err := w.Consume(table.CreateTableSql()); err != nil {
 		log.Printf("Error creating table %q", err)

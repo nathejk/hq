@@ -4,15 +4,15 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/jrgensen/cqrs"
 	"github.com/jrgensen/stream"
 	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
-	"nathejk.dk/pkg/tablerow"
 )
 
 type consumer struct {
-	w tablerow.Consumer
+	w cqrs.Writer
 }
 
 func (c *consumer) Consumes() (subjs []stream.Subject) {

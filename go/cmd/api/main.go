@@ -10,6 +10,7 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/jrgensen/cqrs/sqlpersister"
 	"github.com/jrgensen/stream"
 	"github.com/jrgensen/stream/jetstream"
 	"github.com/jrgensen/stream/metatagger"
@@ -42,7 +43,6 @@ import (
 	"nathejk.dk/nathejk/table/signup"
 	"nathejk.dk/nathejk/table/spejder"
 	"nathejk.dk/nathejk/table/year"
-	"nathejk.dk/pkg/sqlpersister"
 )
 
 var (
@@ -149,7 +149,7 @@ func main() {
 	logger.PrintInfo("Database connected", nil)
 
 	reader := db.DB()
-	writer := sqlpersister.New(db.DB(), db.Dialect())
+	writer := sqlpersister.New(db.DB())
 
 	year := year.New(publisher, writer, reader)
 	signuptable := signup.New(writer, db.DB())

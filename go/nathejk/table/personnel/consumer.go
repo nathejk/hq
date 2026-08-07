@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/jrgensen/cqrs"
 	"github.com/jrgensen/stream"
 	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
-	"nathejk.dk/pkg/tablerow"
 
 	_ "embed"
 )
 
 type consumer struct {
-	w tablerow.Consumer
+	w cqrs.Writer
 }
 
 func (*consumer) Consumes() []stream.Subject {
