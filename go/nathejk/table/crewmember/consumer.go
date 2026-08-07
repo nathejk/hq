@@ -6,25 +6,26 @@ import (
 
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/mysql"
+	"github.com/jrgensen/stream"
+	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"nathejk.dk/pkg/tablerow"
-	"nathejk.dk/superfluids/streaminterface"
 )
 
 type consumer struct {
 	w tablerow.Consumer
 }
 
-func (c *consumer) Consumes() []streaminterface.Subject {
-	return []streaminterface.Subject{
-		streaminterface.SubjectFromStr("NATHEJK.*.crewmember.*.registered"),
-		streaminterface.SubjectFromStr("NATHEJK.*.crewmember.*.updated"),
-		streaminterface.SubjectFromStr("NATHEJK.*.crewmember.*.deleted"),
-		streaminterface.SubjectFromStr("NATHEJK.*.crewmember.*.section.assigned"),
+func (c *consumer) Consumes() []stream.Subject {
+	return []stream.Subject{
+		subject.FromStr("NATHEJK.*.crewmember.*.registered"),
+		subject.FromStr("NATHEJK.*.crewmember.*.updated"),
+		subject.FromStr("NATHEJK.*.crewmember.*.deleted"),
+		subject.FromStr("NATHEJK.*.crewmember.*.section.assigned"),
 	}
 }
 
-func (c *consumer) HandleMessage(msg streaminterface.Message) error {
+func (c *consumer) HandleMessage(msg stream.Message) error {
 	dialect := goqu.Dialect("mysql")
 	parts := msg.Subject().Parts()
 

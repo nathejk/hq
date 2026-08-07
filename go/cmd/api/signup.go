@@ -8,11 +8,11 @@ import (
 
 	"github.com/davecgh/go-spew/spew"
 	"github.com/google/uuid"
+	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
 	jsonapi "nathejk.dk/cmd/api/app"
 	"nathejk.dk/internal/data"
-	"nathejk.dk/superfluids/streaminterface"
 )
 
 /*
@@ -137,7 +137,7 @@ func (app *application) signupHandler(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			app.logger.PrintError(err, nil)
 		}
-		msg := app.jetstream.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.%s.%s.mail.%s.sent", "2024", input.TeamType, team.TeamID, types.PingTypeSignup)))
+		msg := app.publisher.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.%s.%s.mail.%s.sent", "2024", input.TeamType, team.TeamID, types.PingTypeSignup)))
 		msg.SetBody(&messages.NathejkMailSent{
 			PingType:  types.PingTypeSignup,
 			TeamID:    team.TeamID,
@@ -145,7 +145,7 @@ func (app *application) signupHandler(w http.ResponseWriter, r *http.Request) {
 			Subject:   "Bekræft e-mailadresse",
 		})
 		msg.SetMeta(&messages.Metadata{Producer: "tilmelding-api", Phase: data["secret"].(string)})
-		if err := app.jetstream.Publish(msg); err != nil {
+		if err := app.publisher.Publish(msg); err != nil {
 			app.logger.PrintError(err, nil)
 		}
 	})

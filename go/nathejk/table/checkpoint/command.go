@@ -8,10 +8,11 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jrgensen/stream"
+	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/internal/requestctx"
-	"nathejk.dk/superfluids/streaminterface"
 )
 
 type Commands interface {
@@ -22,7 +23,7 @@ type Commands interface {
 }
 
 type commander struct {
-	p streaminterface.Publisher
+	p stream.Publisher
 	q Queries
 }
 
@@ -32,7 +33,7 @@ func (c commander) Create(ctx context.Context, yearSlug types.YearSlug, checkgro
 		return "", errors.New("context values missing")
 	}
 	checkpointID := types.CheckpointID(uuid.New().String())
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.checkpoint.%s.created", yearSlug, checkpointID)))
+	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.checkpoint.%s.created", yearSlug, checkpointID)))
 	msg.SetBody(&messages.NathejkCheckpointCreated{
 		CheckgroupID: checkgroupID,
 		CheckpointID: checkpointID,
@@ -98,7 +99,7 @@ func (c commander) Update(ctx context.Context, ID types.CheckpointID, cmd Update
 			End:   *cmd.OpenUntil,
 		}
 	}
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.checkpoint.%s.updated", cp.Year, ID)))
+	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.checkpoint.%s.updated", cp.Year, ID)))
 	msg.SetBody(&body)
 	msg.SetMeta(&messages.Metadata{UserID: u.ID})
 
@@ -117,7 +118,7 @@ func (c commander) Delete(ctx context.Context, ID types.CheckpointID) error {
 	if err != nil {
 		return err
 	}
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.checkpoint.%s.deleted", cp.Year, ID)))
+	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.checkpoint.%s.deleted", cp.Year, ID)))
 	msg.SetBody(&messages.NathejkCheckpointDeleted{
 		CheckpointID: ID,
 	})

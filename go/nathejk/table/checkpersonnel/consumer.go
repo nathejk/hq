@@ -4,26 +4,27 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/jrgensen/stream"
+	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"nathejk.dk/pkg/tablerow"
-	"nathejk.dk/superfluids/streaminterface"
 )
 
 type consumer struct {
 	w tablerow.Consumer
 }
 
-func (c *consumer) Consumes() (subjs []streaminterface.Subject) {
-	return []streaminterface.Subject{
-		streaminterface.SubjectFromStr("NATHEJK.*.checkpersonnel.*.added"),
-		streaminterface.SubjectFromStr("NATHEJK.*.checkpersonnel.*.timespecified"),
-		streaminterface.SubjectFromStr("NATHEJK.*.checkpersonnel.*.removed"),
-		streaminterface.SubjectFromStr("NATHEJK.*.checkgroup.*.deleted"),
-		streaminterface.SubjectFromStr("NATHEJK.*.checkpoint.*.deleted"),
+func (c *consumer) Consumes() (subjs []stream.Subject) {
+	return []stream.Subject{
+		subject.FromStr("NATHEJK.*.checkpersonnel.*.added"),
+		subject.FromStr("NATHEJK.*.checkpersonnel.*.timespecified"),
+		subject.FromStr("NATHEJK.*.checkpersonnel.*.removed"),
+		subject.FromStr("NATHEJK.*.checkgroup.*.deleted"),
+		subject.FromStr("NATHEJK.*.checkpoint.*.deleted"),
 	}
 }
 
-func (c *consumer) HandleMessage(msg streaminterface.Message) error {
+func (c *consumer) HandleMessage(msg stream.Message) error {
 	switch true {
 	case msg.Subject().Match("NATHEJK.*.checkpersonnel.*.added"):
 		var body messages.NathejkCheckpersonnelAdded

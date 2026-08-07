@@ -1,6 +1,7 @@
 package commands
 
 import (
+	"github.com/jrgensen/stream"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/internal/data"
@@ -10,7 +11,6 @@ import (
 	"nathejk.dk/nathejk/table/crewmember"
 	"nathejk.dk/nathejk/table/section"
 	"nathejk.dk/nathejk/table/year"
-	"nathejk.dk/superfluids/streaminterface"
 )
 
 type Commands struct {
@@ -36,7 +36,7 @@ type Commands struct {
 	}
 }
 
-func New(stream streaminterface.Publisher, models data.Models) Commands {
+func New(stream stream.Publisher, models data.Models) Commands {
 	return Commands{
 		//Checkgroup: NewCheckgroup(stream, models.Checkgroup),
 		//Checkpoint: models.Checkpoint,

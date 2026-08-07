@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"log"
 
+	"github.com/jrgensen/stream"
+	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"nathejk.dk/pkg/tablerow"
-	"nathejk.dk/superfluids/streaminterface"
 
 	_ "embed"
 )
@@ -16,19 +17,19 @@ type consumer struct {
 	w tablerow.Consumer
 }
 
-func (*consumer) Consumes() []streaminterface.Subject {
-	return []streaminterface.Subject{
-		streaminterface.SubjectFromStr("NATHEJK.*.gøgler.*.signedup"),
-		streaminterface.SubjectFromStr("NATHEJK.*.gøgler.*.updated"),
-		streaminterface.SubjectFromStr("NATHEJK.*.gøgler.*.status.changed"),
-		streaminterface.SubjectFromStr("NATHEJK.*.friend.*.signedup"),
-		streaminterface.SubjectFromStr("NATHEJK.*.friend.*.updated"),
-		streaminterface.SubjectFromStr("NATHEJK.*.friend.*.status.changed"),
-		streaminterface.SubjectFromStr("NATHEJK.*.bandit.*.armNumber.assigned"),
+func (*consumer) Consumes() []stream.Subject {
+	return []stream.Subject{
+		subject.FromStr("NATHEJK.*.gøgler.*.signedup"),
+		subject.FromStr("NATHEJK.*.gøgler.*.updated"),
+		subject.FromStr("NATHEJK.*.gøgler.*.status.changed"),
+		subject.FromStr("NATHEJK.*.friend.*.signedup"),
+		subject.FromStr("NATHEJK.*.friend.*.updated"),
+		subject.FromStr("NATHEJK.*.friend.*.status.changed"),
+		subject.FromStr("NATHEJK.*.bandit.*.armNumber.assigned"),
 	}
 }
 
-func (c *consumer) HandleMessage(msg streaminterface.Message) error {
+func (c *consumer) HandleMessage(msg stream.Message) error {
 	switch true {
 
 	case msg.Subject().Match("NATHEJK.*.*.*.signedup"):

@@ -73,7 +73,7 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPost, "/api/crewmember", app.registerCrewMemberHandler)
 	router.HandlerFunc(http.MethodPut, "/api/crewmember/:userId/section", app.assignCrewMemberSectionHandler)
 	/*
-		ctrlgrp := NewCrudRoute(NewControlGroupCmd(app.jetstream), &CreateRequest{}, &ReadRequest{}, &UpdateRequest{}, &DeleteRequest{})
+		ctrlgrp := NewCrudRoute(NewControlGroupCmd(app.publisher), &CreateRequest{}, &ReadRequest{}, &UpdateRequest{}, &DeleteRequest{})
 		router.HandlerFunc(http.MethodGet, "/api/cgstatus", checkgroup.NewControlgroupStatusHandler(app.db.DB()))
 		router.HandlerFunc(http.MethodGet, "/api/controlgroup", ctrlgrp.Handler)
 		router.HandlerFunc(http.MethodPost, "/api/controlgroup", ctrlgrp.Handler)

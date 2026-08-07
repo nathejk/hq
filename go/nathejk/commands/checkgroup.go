@@ -7,12 +7,13 @@ import (
 	"log"
 	"time"
 
+	"github.com/jrgensen/stream"
+	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/internal/requestctx"
 	"nathejk.dk/nathejk/table/checkgroup"
 	"nathejk.dk/nathejk/table/checkpoint"
-	"nathejk.dk/superfluids/streaminterface"
 )
 
 type querier interface {
@@ -29,14 +30,14 @@ type CheckgroupQuerier struct {
 }
 
 type checkgroupcommand struct {
-	p streaminterface.Publisher
+	p stream.Publisher
 	q querier
 
 	producerSlug string
 	yearSlug     types.YearSlug
 }
 
-func NewCheckgroup(p streaminterface.Publisher, q querier) *checkgroupcommand {
+func NewCheckgroup(p stream.Publisher, q querier) *checkgroupcommand {
 	return &checkgroupcommand{
 		p: p,
 		q: q,
@@ -125,7 +126,7 @@ func (cmd checkgroupcommand) UpdateCheckgroup(ctx context.Context, ID types.Chec
 		Scheme:               cg.Scheme,
 		RelativeCheckgroupID: cg.RelativeCheckgroupID,
 	}
-	msg := cmd.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.checkgroup.%s.updated", v.Year, ID)))
+	msg := cmd.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.checkgroup.%s.updated", v.Year, ID)))
 	msg.SetBody(&body)
 	msg.SetMeta(&messages.Metadata{Producer: cmd.producerSlug})
 
@@ -162,7 +163,7 @@ func (cmd checkgroupcommand) UpdateCheckpoint(ctx context.Context, ID types.Chec
 			End:   *cp.OpenUntil,
 		}
 	}
-	msg := cmd.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.checkpoint.%s.updated", v.Year, ID)))
+	msg := cmd.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.checkpoint.%s.updated", v.Year, ID)))
 	msg.SetBody(&body)
 	msg.SetMeta(&messages.Metadata{Producer: cmd.producerSlug})
 
@@ -196,7 +197,7 @@ func (cmd checkgroupcommand) UpdateCheckpoint(ctx context.Context, ID types.Chec
 			}*/
 /*
 	//body.Checkpoints = append(body.Checkpoints, checkpoint)
-	msg := cmd.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.checkgroup.%s.updated", cmd.yearSlug, ID)))
+	msg := cmd.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.checkgroup.%s.updated", cmd.yearSlug, ID)))
 	//msg := eventstream.NewMessage()
 	//msg.Msg().Type = "controlgroup.updated"
 	msg.SetBody(body)
@@ -215,7 +216,7 @@ func (cmd checkgroupcommand) Delete(ctx context.Context, ID types.CheckgroupID) 
 	body := messages.NathejkCheckgroupDeleted{
 		CheckgroupID: ID,
 	}
-	msg := cmd.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.checkgroup.%s.deleted", cmd.yearSlug, ID)))
+	msg := cmd.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.checkgroup.%s.deleted", cmd.yearSlug, ID)))
 	msg.SetBody(body)
 	msg.SetMeta(&messages.Metadata{Producer: cmd.producerSlug})
 	return cmd.p.Publish(msg)

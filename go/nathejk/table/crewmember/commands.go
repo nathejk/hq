@@ -6,9 +6,10 @@ import (
 	"fmt"
 
 	"github.com/google/uuid"
+	"github.com/jrgensen/stream"
+	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
-	"nathejk.dk/superfluids/streaminterface"
 )
 
 // Commands is the write-side interface for crew members.
@@ -19,7 +20,7 @@ type Commands interface {
 }
 
 type commander struct {
-	p streaminterface.Publisher
+	p stream.Publisher
 	q Queries
 }
 
@@ -39,7 +40,7 @@ func (c commander) Register(ctx context.Context, year types.YearSlug, name strin
 		Phone:  phone,
 		Email:  email,
 	}
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(
+	msg := c.p.MessageFunc()(subject.FromStr(
 		fmt.Sprintf("NATHEJK.%s.crewmember.%s.registered", year, userID),
 	))
 	msg.SetBody(&body)
@@ -75,7 +76,7 @@ func (c commander) AssignSection(ctx context.Context, year types.YearSlug, userI
 		UserID:      userID,
 		SectionSlug: section,
 	}
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(
+	msg := c.p.MessageFunc()(subject.FromStr(
 		fmt.Sprintf("NATHEJK.%s.crewmember.%s.section.assigned", year, userID),
 	))
 	msg.SetBody(&body)
@@ -86,7 +87,7 @@ func (c commander) AssignSection(ctx context.Context, year types.YearSlug, userI
 // Delete publishes NathejkCrewMemberDeleted (soft delete in the read model).
 func (c commander) Delete(ctx context.Context, year types.YearSlug, userID types.UserID) error {
 	body := messages.NathejkCrewMemberDeleted{UserID: userID}
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(
+	msg := c.p.MessageFunc()(subject.FromStr(
 		fmt.Sprintf("NATHEJK.%s.crewmember.%s.deleted", year, userID),
 	))
 	msg.SetBody(&body)

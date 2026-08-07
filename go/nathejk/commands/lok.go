@@ -6,24 +6,25 @@ import (
 	"slices"
 
 	"github.com/google/uuid"
+	"github.com/jrgensen/stream"
+	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/nathejk/table/lok"
-	"nathejk.dk/superfluids/streaminterface"
 )
 
 type lokQuerier interface {
 	GetByID(context.Context, types.LokID) (*lok.Lok, error)
 }
 type lokcmd struct {
-	p streaminterface.Publisher
+	p stream.Publisher
 	q lokQuerier
 
 	producerSlug string
 	yearSlug     string
 }
 
-func NewLok(p streaminterface.Publisher, q lokQuerier) *lokcmd {
+func NewLok(p stream.Publisher, q lokQuerier) *lokcmd {
 	return &lokcmd{
 		p: p,
 		q: q,
@@ -45,7 +46,7 @@ func (c *lokcmd) UpdateLok(lokID types.LokID, name string, sortOrder int, userID
 	if !dirty {
 		return nil
 	}
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK.%s.lok.%s.updated", c.yearSlug, lokID)))
+	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK.%s.lok.%s.updated", c.yearSlug, lokID)))
 	msg.SetBody(&messages.NathejkLokUpdated{
 		LokID:     lokID,
 		Name:      name,
@@ -61,7 +62,7 @@ func (c *lokcmd) UpdateLok(lokID types.LokID, name string, sortOrder int, userID
 	return nil
 }
 func (c *lokcmd) DeleteLok(lokID types.LokID) error {
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK.%s.lok.%s.deleted", c.yearSlug, lokID)))
+	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK.%s.lok.%s.deleted", c.yearSlug, lokID)))
 	msg.SetBody(&messages.NathejkLokDeleted{
 		LokID: lokID,
 	})
@@ -72,7 +73,7 @@ func (c *lokcmd) DeleteLok(lokID types.LokID) error {
 	return nil
 }
 func (c *lokcmd) UpdateUser(userID types.UserID, armNumber string) error {
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK.%s.bandit.%s.armNumber.assigned", c.yearSlug, userID)))
+	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK.%s.bandit.%s.armNumber.assigned", c.yearSlug, userID)))
 	msg.SetBody(&messages.NathejkLokArmNumberAssigned{
 		ArmNumber: armNumber,
 		Type:      "lokchef",
@@ -81,7 +82,7 @@ func (c *lokcmd) UpdateUser(userID types.UserID, armNumber string) error {
 	return c.p.Publish(msg)
 }
 func (c *lokcmd) UpdateMember(memberID types.MemberID, armNumber string) error {
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK.%s.bandit.%s.armNumber.assigned", c.yearSlug, memberID)))
+	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK.%s.bandit.%s.armNumber.assigned", c.yearSlug, memberID)))
 	msg.SetBody(&messages.NathejkLokArmNumberAssigned{
 		ArmNumber: armNumber,
 		Type:      types.TeamTypeKlan,

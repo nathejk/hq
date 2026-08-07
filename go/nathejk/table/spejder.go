@@ -5,10 +5,11 @@ import (
 	"log"
 	"time"
 
+	"github.com/jrgensen/stream"
+	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/pkg/tablerow"
-	"nathejk.dk/superfluids/streaminterface"
 
 	_ "embed"
 )
@@ -47,15 +48,15 @@ func (t *spejder) CreateTableSql() string {
 	return spejderSchema
 }
 
-func (c *spejder) Consumes() (subjs []streaminterface.Subject) {
-	return []streaminterface.Subject{
-		streaminterface.SubjectFromStr("NATHEJK.*.spejder.*.updated"),
-		streaminterface.SubjectFromStr("NATHEJK.*.spejder.*.deleted"),
-		//streaminterface.SubjectFromStr("monolith:nathejk_member"),
+func (c *spejder) Consumes() (subjs []stream.Subject) {
+	return []stream.Subject{
+		subject.FromStr("NATHEJK.*.spejder.*.updated"),
+		subject.FromStr("NATHEJK.*.spejder.*.deleted"),
+		//subject.FromStr("monolith:nathejk_member"),
 	}
 }
 
-func (c *spejder) HandleMessage(msg streaminterface.Message) error {
+func (c *spejder) HandleMessage(msg stream.Message) error {
 	switch true {
 	case msg.Subject().Match("nathejk.*.spejder.*.updated"):
 		var body messages.NathejkScoutUpdated

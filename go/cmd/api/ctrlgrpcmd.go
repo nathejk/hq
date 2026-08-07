@@ -8,16 +8,17 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/jrgensen/stream"
+	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
-	"nathejk.dk/superfluids/streaminterface"
 )
 
 type ctrlgrpCmd struct {
-	publisher streaminterface.Publisher
+	publisher stream.Publisher
 }
 
-func NewControlGroupCmd(publisher streaminterface.Publisher) *ctrlgrpCmd {
+func NewControlGroupCmd(publisher stream.Publisher) *ctrlgrpCmd {
 	return &ctrlgrpCmd{
 		publisher: publisher,
 	}
@@ -66,7 +67,7 @@ func (cmd ctrlgrpCmd) Update(req interface{}) (interface{}, error) {
 		}
 		body.Controls = append(body.Controls, control)
 	}
-	msg := cmd.publisher.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.checkgroup.%s.updated", "2026", r.ID)))
+	msg := cmd.publisher.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.checkgroup.%s.updated", "2026", r.ID)))
 	//msg := eventstream.NewMessage()
 	//msg.Msg().Type = "controlgroup.updated"
 	msg.SetBody(body)
@@ -80,7 +81,7 @@ func (cmd ctrlgrpCmd) Delete(req interface{}) (interface{}, error) {
 	body := messages.NathejkControlGroupDeleted{
 		ControlGroupID: r.ID,
 	}
-	msg := cmd.publisher.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.checkgroup.%s.deleted", "2026", r.ID)))
+	msg := cmd.publisher.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.checkgroup.%s.deleted", "2026", r.ID)))
 	//msg := eventstream.NewMessage()
 	//msg.Msg().Type = "controlgroup.deleted"
 	msg.SetBody(body)

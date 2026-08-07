@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/jrgensen/stream"
+	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
-	"nathejk.dk/superfluids/streaminterface"
 )
 
 type Commands interface {
@@ -19,7 +20,7 @@ type Commands interface {
 }
 
 type commander struct {
-	p streaminterface.Publisher
+	p stream.Publisher
 	q Queries
 	r repository
 }
@@ -33,7 +34,7 @@ type SignupCommand struct {
 /*
 	func (c *commander) Signup(ctx context.Context, year types.YearSlug, cmd SignupCommand) (types.TeamID, error) {
 		teamID := types.TeamID(uuid.New().String())
-		msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.%s.%s.signedup", year, types.TeamTypeKlan, teamID)))
+		msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.%s.%s.signedup", year, types.TeamTypeKlan, teamID)))
 		msg.SetBody(&messages.NathejkTeamSignedUp{
 			TeamID:  teamID,
 			Name:    cmd.Name,
@@ -56,7 +57,7 @@ type SignupCommand struct {
 			return tables.ErrVerificationFailed
 		}
 
-		msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.%s.%s.email_verified", signup.TeamType, types.TeamTypeKlan, teamID)))
+		msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.%s.%s.email_verified", signup.TeamType, types.TeamTypeKlan, teamID)))
 		msg.SetBody(&messages.NathejkSignupEmailLinkClicked{
 			TeamID: teamID,
 			Email:  signup.EmailPending,
@@ -77,7 +78,7 @@ type SignupCommand struct {
 			return tables.ErrVerificationFailed
 		}
 
-		msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.%s.%s.phone_verified", signup.TeamType, types.TeamTypeKlan, teamID)))
+		msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.%s.%s.phone_verified", signup.TeamType, types.TeamTypeKlan, teamID)))
 		msg.SetBody(&messages.NathejkSignupPincodeUsed{
 			TeamID:  teamID,
 			Phone:   signup.PhonePending,
@@ -120,7 +121,7 @@ func (c *commander) Update(ctx context.Context, teamID types.TeamID, cmd UpdateC
 		return nil
 	}
 
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.klan.%s.updated", klan.Year, teamID)))
+	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.klan.%s.updated", klan.Year, teamID)))
 	msg.SetBody(&messages.NathejkKlanUpdated{
 		TeamID:    teamID,
 		Name:      name,
@@ -144,7 +145,7 @@ func (c *commander) AssignToLok(ctx context.Context, teamID types.TeamID, lok st
 		return nil
 	}
 
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.klan.%s.assigned", klan.Year, teamID)))
+	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.klan.%s.assigned", klan.Year, teamID)))
 	msg.SetBody(&messages.NathejkKlanAssigned{
 		TeamID: teamID,
 		Lok:    lok,
@@ -161,7 +162,7 @@ func (c *commander) Delete(ctx context.Context, teamID types.TeamID) error {
 		return err
 	}
 
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.klan.%s.status.changed", klan.Year, teamID)))
+	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.klan.%s.status.changed", klan.Year, teamID)))
 	msg.SetBody(&messages.NathejkKlanStatusChanged{
 		TeamID: teamID,
 		Status: types.SignupStatus("deleted"),

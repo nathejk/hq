@@ -5,11 +5,12 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/jrgensen/stream"
+	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/internal/requestctx"
 	tables "nathejk.dk/nathejk/table"
-	"nathejk.dk/superfluids/streaminterface"
 )
 
 type Commands interface {
@@ -19,7 +20,7 @@ type Commands interface {
 }
 
 type commander struct {
-	p streaminterface.Publisher
+	p stream.Publisher
 	q Queries
 }
 
@@ -39,7 +40,7 @@ func (c commander) Create(ctx context.Context, slug types.YearSlug) error {
 		return err
 	}
 
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK.%s.created", slug)))
+	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK.%s.created", slug)))
 	msg.SetBody(&messages.NathejkYearDeleted{Slug: slug})
 	msg.SetMeta(&messages.Metadata{UserID: u.ID})
 	return c.p.Publish(msg)
@@ -84,7 +85,7 @@ func (c commander) Update(ctx context.Context, slug types.YearSlug, cmd UpdateCo
 		DateStart:       cmd.DateStart,
 		DateEnd:         cmd.DateEnd,
 	}
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK:%s.updated", slug)))
+	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.updated", slug)))
 	msg.SetBody(&body)
 	msg.SetMeta(&messages.Metadata{UserID: u.ID})
 
@@ -101,7 +102,7 @@ func (c commander) Delete(ctx context.Context, slug types.YearSlug) error {
 		return err
 	}
 
-	msg := c.p.MessageFunc()(streaminterface.SubjectFromStr(fmt.Sprintf("NATHEJK.%s.deleted", slug)))
+	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK.%s.deleted", slug)))
 	msg.SetBody(&messages.NathejkYearDeleted{Slug: slug})
 	msg.SetMeta(&messages.Metadata{UserID: u.ID})
 	return c.p.Publish(msg)

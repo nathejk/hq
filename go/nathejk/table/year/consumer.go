@@ -3,9 +3,10 @@ package year
 import (
 	"fmt"
 
+	"github.com/jrgensen/stream"
+	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"nathejk.dk/pkg/tablerow"
-	"nathejk.dk/superfluids/streaminterface"
 
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/mysql"
@@ -15,15 +16,15 @@ type consumer struct {
 	w tablerow.Consumer
 }
 
-func (c *consumer) Consumes() (subjs []streaminterface.Subject) {
-	return []streaminterface.Subject{
-		streaminterface.SubjectFromStr("NATHEJK.*.created"),
-		streaminterface.SubjectFromStr("NATHEJK.*.updated"),
-		streaminterface.SubjectFromStr("NATHEJK.*.deleted"),
+func (c *consumer) Consumes() (subjs []stream.Subject) {
+	return []stream.Subject{
+		subject.FromStr("NATHEJK.*.created"),
+		subject.FromStr("NATHEJK.*.updated"),
+		subject.FromStr("NATHEJK.*.deleted"),
 	}
 }
 
-func (c *consumer) HandleMessage(msg streaminterface.Message) error {
+func (c *consumer) HandleMessage(msg stream.Message) error {
 	var dialect = goqu.Dialect("mysql")
 
 	switch true {

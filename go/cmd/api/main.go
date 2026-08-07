@@ -10,6 +10,10 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/jrgensen/stream"
+	"github.com/jrgensen/stream/jetstream"
+	"github.com/jrgensen/stream/metatagger"
+	"github.com/jrgensen/stream/xstream"
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/cmd/api/app"
 	"nathejk.dk/internal/data"
@@ -39,9 +43,6 @@ import (
 	"nathejk.dk/nathejk/table/spejder"
 	"nathejk.dk/nathejk/table/year"
 	"nathejk.dk/pkg/sqlpersister"
-	"nathejk.dk/superfluids/jetstream"
-	"nathejk.dk/superfluids/streaminterface"
-	"nathejk.dk/superfluids/xstream"
 )
 
 var (
@@ -81,7 +82,7 @@ type application struct {
 	db        *database
 	config    config
 	models    data.Models
-	jetstream streaminterface.Stream
+	publisher stream.Publisher
 	commands  commands.Commands
 	mailer    mailer.Mailer
 	sms       sms.Sender
@@ -120,13 +121,20 @@ func main() {
 	logger := jsonlog.New(os.Stdout, jsonlog.LevelInfo)
 	logger.PrintInfo("Starting API...", nil)
 
-	js, err := jetstream.New(cfg.jetstream.dsn, map[string]any{"producer": "hq-api", "version": "1234"})
+	js, err := jetstream.New(cfg.jetstream.dsn)
 	if err != nil {
 		log.Printf("Error connecting %q", err)
 		return
 	}
 	logger.PrintInfo("Jetstream connected", nil)
-	/*msg, err := js.LastMessage(streaminterface.SubjectFromStr("NATHEJK.2024.>"))
+	// jrgensen/stream's jetstream.New takes only a URL; the default publish
+	// metadata that superfluids' jetstream applied via SetDefaultMeta is now
+	// provided by the metatagger publisher decorator (per-message meta wins).
+	publisher, err := metatagger.New(js, map[string]any{"producer": "hq-api", "version": "1234"})
+	if err != nil {
+		logger.PrintFatal(err, nil)
+	}
+	/*msg, err := js.LastMessage(subject.FromStr("NATHEJK.2024.>"))
 	if err != nil {
 		log.Fatalf("Last message: %q", err)
 	}
@@ -143,28 +151,28 @@ func main() {
 	reader := db.DB()
 	writer := sqlpersister.New(db.DB(), db.Dialect())
 
-	year := year.New(js, writer, reader)
+	year := year.New(publisher, writer, reader)
 	signuptable := signup.New(writer, db.DB())
-	klantable := klan.New(js, writer, reader)
+	klantable := klan.New(publisher, writer, reader)
 	seniortable := senior.New(writer, db.DB())
 	patruljetable := patrulje.New(writer, db.DB())
 	patruljemergedtable := patruljemerged.New(writer, db.DB())
 	personneltable := personnel.New(writer, db.DB())
 	paymenttable := payment.New(writer, db.DB())
 	spejdertable := spejder.New(writer, db.DB())
-	checkgroup := checkgroup.New(js, writer, reader)
-	checkpoint := checkpoint.New(js, writer, reader)
-	checkpersonnel := checkpersonnel.New(js, writer, reader)
+	checkgroup := checkgroup.New(publisher, writer, reader)
+	checkpoint := checkpoint.New(publisher, writer, reader)
+	checkpersonnel := checkpersonnel.New(publisher, writer, reader)
 	scantable := scan.New(writer, db.DB())
 	loktable := lok.New(writer, db.DB())
-	sectiontable := section.New(js, writer, db.DB())
-	crewmembertable := crewmember.New(js, writer, db.DB())
+	sectiontable := section.New(publisher, writer, db.DB())
+	crewmembertable := crewmember.New(publisher, writer, db.DB())
 	producttable := product.New(writer, db.DB())
 	if err := producttable.Seed(product.Seeds2026()); err != nil {
 		logger.PrintFatal(err, nil)
 	}
 	currentYear := types.YearSlug(fmt.Sprintf("%d", time.Now().Year()))
-	ordertable := order.New(js, writer, db.DB(), currentYear, producttable)
+	ordertable := order.New(publisher, writer, db.DB(), currentYear, producttable)
 
 	mux := xstream.NewMux(js)
 	mux.AddConsumer(signuptable, table.NewConfirm(writer), klantable, seniortable, patruljetable, table.NewPatruljeStatus(writer) /*table.NewPatruljeMerged(writer),, table.NewSpejder(writer)*/, table.NewSpejderStatus(writer), personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, patruljemergedtable, loktable, year, sectiontable, crewmembertable, ordertable)
@@ -175,7 +183,7 @@ func main() {
 	}
 
 	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, ordertable)
-	cmds := commands.New(js, models)
+	cmds := commands.New(publisher, models)
 	cmds.Year = year
 	cmds.Checkpoint = checkpoint
 	cmds.Checkgroup = checkgroup
@@ -204,7 +212,7 @@ func main() {
 		config:    cfg,
 		payment:   payment,
 		models:    models,
-		jetstream: js,
+		publisher: publisher,
 		commands:  cmds,
 		mailer:    mailer.NewFromConfig(cfg.smtp),
 		sms:       smsclient,

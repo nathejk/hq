@@ -5,10 +5,11 @@ import (
 	"log"
 	"time"
 
+	"github.com/jrgensen/stream"
+	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/pkg/tablerow"
-	"nathejk.dk/superfluids/streaminterface"
 
 	_ "embed"
 )
@@ -46,15 +47,15 @@ func (t *senior) CreateTableSql() string {
 	return seniorSchema
 }
 
-func (c *senior) Consumes() (subjs []streaminterface.Subject) {
-	return []streaminterface.Subject{
-		streaminterface.SubjectFromStr("NATHEJK.*.senior.*.updated"),
-		streaminterface.SubjectFromStr("NATHEJK.*.senior.*.deleted"),
-		//streaminterface.SubjectFromStr("monolith:nathejk_member"),
+func (c *senior) Consumes() (subjs []stream.Subject) {
+	return []stream.Subject{
+		subject.FromStr("NATHEJK.*.senior.*.updated"),
+		subject.FromStr("NATHEJK.*.senior.*.deleted"),
+		//subject.FromStr("monolith:nathejk_member"),
 	}
 }
 
-func (c *senior) HandleMessage(msg streaminterface.Message) error {
+func (c *senior) HandleMessage(msg stream.Message) error {
 	switch true {
 	case msg.Subject().Match("nathejk.*.senior.*.updated"):
 		var body messages.NathejkSeniorUpdated

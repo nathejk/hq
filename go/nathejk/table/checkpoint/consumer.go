@@ -6,26 +6,27 @@ import (
 
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/mysql"
+	"github.com/jrgensen/stream"
+	"github.com/jrgensen/stream/subject"
 	"github.com/nathejk/shared-go/messages"
 	"nathejk.dk/pkg/tablerow"
-	"nathejk.dk/superfluids/streaminterface"
 )
 
 type consumer struct {
 	w tablerow.Consumer
 }
 
-func (c *consumer) Consumes() (subjs []streaminterface.Subject) {
-	return []streaminterface.Subject{
-		streaminterface.SubjectFromStr("NATHEJK.*.checkpoint.*.created"),
-		streaminterface.SubjectFromStr("NATHEJK.*.checkpoint.*.updated"),
-		streaminterface.SubjectFromStr("NATHEJK.*.checkpoint.*.deleted"),
-		streaminterface.SubjectFromStr("NATHEJK.*.checkgroup.*.deleted"),
-		streaminterface.SubjectFromStr("NATHEJK.*.checkgroup.*.checkpoints_sorted"),
+func (c *consumer) Consumes() (subjs []stream.Subject) {
+	return []stream.Subject{
+		subject.FromStr("NATHEJK.*.checkpoint.*.created"),
+		subject.FromStr("NATHEJK.*.checkpoint.*.updated"),
+		subject.FromStr("NATHEJK.*.checkpoint.*.deleted"),
+		subject.FromStr("NATHEJK.*.checkgroup.*.deleted"),
+		subject.FromStr("NATHEJK.*.checkgroup.*.checkpoints_sorted"),
 	}
 }
 
-func (c *consumer) HandleMessage(msg streaminterface.Message) error {
+func (c *consumer) HandleMessage(msg stream.Message) error {
 	var dialect = goqu.Dialect("mysql")
 	switch true {
 	case msg.Subject().Match("NATHEJK.*.checkpoint.*.created"):
