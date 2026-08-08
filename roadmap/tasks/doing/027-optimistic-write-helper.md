@@ -1,10 +1,10 @@
 # 027 — Optimistic write helper
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-08-08
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (zed)
+**Started:** 2026-08-08
 **Completed:**
 
 ## Description
@@ -46,3 +46,6 @@ Apply the change to the cache immediately, issue the write, then reconcile:
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-08 15:53 — Task created. Depends on 024. Last of PRD 004 Phase 1.
+- 2026-08-08 18:20 — Picked up. Plan: `optimisticWrite(resource, apply, write)` — snapshot,
+  apply locally, issue the write, then revalidate from the server; restore the snapshot
+  and rethrow on failure. Tests cover rollback, reconciliation and out-of-order writes.
