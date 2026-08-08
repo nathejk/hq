@@ -1,10 +1,10 @@
 # 032 — `GET /api/stream` SSE endpoint
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-08-08
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (zed)
+**Started:** 2026-08-08
 **Completed:**
 
 ## Description
@@ -73,3 +73,8 @@ idle stream.
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-08 18:46 — Task created. Depends on 030.
+- 2026-08-08 20:08 — Picked up. Plan: streaming mechanics as an `http.Handler` in
+  `internal/live` (unit-testable with `httptest`), a thin `cmd/api/stream.go` adapter
+  wiring the year default, and the route registered on the mux **outside** `Metrics`.
+  Hub constructed in `main.go` now, with no consumers notified yet, so the spike (035)
+  can exercise the endpoint before 033.
