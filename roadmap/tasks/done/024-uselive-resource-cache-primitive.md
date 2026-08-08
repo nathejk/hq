@@ -1,11 +1,11 @@
 # 024 — `useLiveResource` cache primitive
 
-**Status:** doing
+**Status:** done
 **Priority:** high
 **Created:** 2026-08-08
 **Picked up by:** agent session (zed)
 **Started:** 2026-08-08
-**Completed:**
+**Completed:** 2026-08-08
 
 ## Description
 
@@ -50,18 +50,18 @@ route changes — which is what makes navigating back instant, with **zero** req
 
 ## Acceptance Criteria
 
-- [ ] `useLiveResource(key, fetcher, { dependsOn })` exists, with `dependsOn` required
-- [ ] Cache lives at module level and survives unmount/remount with no refetch
-- [ ] Returning to a cached key issues **zero** blocking requests and renders
+- [x] `useLiveResource(key, fetcher, { dependsOn })` exists, with `dependsOn` required
+- [x] Cache lives at module level and survives unmount/remount with no refetch
+- [x] Returning to a cached key issues **zero** blocking requests and renders
       immediately; background revalidation is silent
-- [ ] `pending` is true only when there is no cached value
-- [ ] A signal for a declared entity **type** revalidates the resource (proves new
+- [x] `pending` is true only when there is no cached value
+- [x] A signal for a declared entity **type** revalidates the resource (proves new
       rows appear in lists)
-- [ ] A signal for a declared **instance** revalidates only that resource
-- [ ] `resync` revalidates every held resource
-- [ ] A 404 on revalidation, or a `deleted` signal, evicts the entry without throwing
-- [ ] Overlapping revalidations of the same key collapse into one in-flight request
-- [ ] No new `vue-tsc` errors in touched files; `npm run lint` clean
+- [x] A signal for a declared **instance** revalidates only that resource
+- [x] `resync` revalidates every held resource
+- [x] A 404 on revalidation, or a `deleted` signal, evicts the entry without throwing
+- [x] Overlapping revalidations of the same key collapse into one in-flight request
+- [x] No new `vue-tsc` errors in touched files; `npm run lint` clean
 
 ## Progress Log
 
@@ -72,3 +72,26 @@ route changes — which is what makes navigating back instant, with **zero** req
   resource key, each holding `data`/`pending`/`error` + its `dependsOn`; one bus
   subscription fans signals to matching entries; SWR on access. Verification as for
   023 (no new vue-tsc errors in touched files, lint clean).
+- 2026-08-08 16:45 — Implemented `composables/useLiveResource.ts`. Shape: a
+  module-level `Map` of entries, each with `data`/`pending`/`error` and its
+  `dependsOn`; **one** bus subscription fans signals out to matching entries rather
+  than every consumer subscribing separately.
+  Decisions worth recording:
+  • `EMPTY` sentinel rather than `undefined` for "never loaded", so a resource whose
+    real value is `undefined`/`null` is not mistaken for a cache miss.
+  • `pending` is set only on first load, never on revalidation — that is what stops a
+    revisited page flashing a spinner.
+  • In-flight promise stored on the entry so concurrent triggers collapse; a burst of
+    signals costs one request.
+  • After an await, re-check `entries.get(key) === entry` before writing, so a result
+    from a request that outlived an eviction or a year-flush cannot resurrect it.
+  • A `deleted` signal evicts only an entry keyed to that instance alone; lists and
+    aggregates depending on the type revalidate instead of being dropped.
+- 2026-08-08 16:48 — Blocked: acceptance criteria are behavioural and `vitest` is
+  referenced by `test:unit` but missing from `devDependencies`, so nothing could be
+  proven. Created 028 and left this in `doing/` rather than tick unverified boxes.
+- 2026-08-08 17:20 — Unblocked by 028: 11 tests written against this contract, all
+  passing. Every behavioural criterion above is now backed by a test rather than an
+  assertion in a commit message.
+- 2026-08-08 17:24 — Completed. `vue-tsc` 108 (baseline, none mine), eslint clean,
+  `npm run test:unit` green. Next: 025 (year switch).
