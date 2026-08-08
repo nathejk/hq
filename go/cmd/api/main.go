@@ -32,6 +32,7 @@ import (
 	"nathejk.dk/cmd/api/app"
 	"nathejk.dk/internal/data"
 	"nathejk.dk/internal/jsonlog"
+	"nathejk.dk/internal/live"
 	"nathejk.dk/internal/mailer"
 	"nathejk.dk/internal/payment/mobilepay"
 	"nathejk.dk/internal/sms"
@@ -94,6 +95,10 @@ type application struct {
 	sms       sms.Sender
 	payment   mobilepay.Client
 	logger    *jsonlog.Logger
+
+	// live fans read-model changes out to connected browsers. Not configuration,
+	// so it is a dependency rather than a config field.
+	live *live.Hub
 }
 
 func main() {
@@ -181,6 +186,12 @@ func main() {
 	ordertable := order.New(publisher, writer, db.DB(), currentYear, producttable)
 
 	mux := xstream.NewMux(js)
+	// The live hub is constructed before the mux so consumers can be wrapped with
+	// live.Notify to broadcast read-model changes. Wrapping the consumer list is
+	// task 033; until then the hub is reachable over /api/stream and delivers the
+	// resync every client gets on connect, which is enough for the proxy spike.
+	livehub := live.NewHub()
+	defer livehub.Close()
 	mux.AddConsumer(signuptable, table.NewConfirm(writer), klantable, seniortable, patruljetable, table.NewPatruljeStatus(writer) /*table.NewPatruljeMerged(writer),, table.NewSpejder(writer)*/, table.NewSpejderStatus(writer), personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, patruljemergedtable, loktable, year, sectiontable, crewmembertable, ordertable)
 
 	//mux.AddConsumer(table.NewSpejder(writer), table.NewSpejderStatus(writer))
@@ -223,6 +234,7 @@ func main() {
 		mailer:    mailer.NewFromConfig(cfg.smtp),
 		sms:       smsclient,
 		logger:    logger,
+		live:      livehub,
 	}
 	logger.PrintInfo("Application initialized", nil)
 

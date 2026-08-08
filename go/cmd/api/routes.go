@@ -92,6 +92,11 @@ func (app *application) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.Handle("/", http.FileServer(SpaFileSystem(http.Dir(app.config.webroot))))
 	mux.HandleFunc("/api/v1/healthcheck", app.HealthcheckHandler)
+	// Deliberately outside app.Metrics: metricsResponseWriter does not implement
+	// http.Flusher, and a stream held open for hours would also be recorded as one
+	// multi-hour request. ServeMux prefers the longer pattern, so this wins over
+	// "/api/" below.
+	mux.Handle("/api/stream", app.authenticate(app.streamHandler()))
 	mux.Handle("/api/", app.Metrics(app.authenticate(router)))
 	mux.Handle("/confirm/", router)
 	mux.Handle("/debug/vars", expvar.Handler())
