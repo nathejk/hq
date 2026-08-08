@@ -1,10 +1,10 @@
 # 026 — Connection state exposed and displayed
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-08-08
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (zed)
+**Started:** 2026-08-08
 **Completed:**
 
 ## Description
@@ -45,3 +45,7 @@ the UI should not claim real-time behaviour the transport does not have.
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-08 15:51 — Task created. Depends on 023.
+- 2026-08-08 17:55 — Picked up. Plan: `useConnectionState()` composable over the
+  transport's reactive state, plus a small `ConnectionState.vue` indicator placed in
+  `App.vue` so it is on every page without touching Navigation (which has pre-existing
+  type errors I would rather not disturb).
