@@ -31,6 +31,14 @@ type Entry<T = unknown> = {
   fetcher: () => Promise<unknown>;
   /** In-flight request, so overlapping revalidations collapse into one. */
   inFlight?: Promise<void>;
+  /**
+   * Bumped whenever the entry's contents are invalidated wholesale, e.g. a year
+   * change. A response that resolves after its generation has passed is
+   * discarded — otherwise a slow request from the previous year could land on
+   * top of the new year's data, which is exactly the stale-data-that-looks-live
+   * failure this whole design exists to avoid.
+   */
+  gen: number;
   /** Number of live consumers; an entry with none is kept (it is a cache). */
   refs: number;
 };
@@ -43,13 +51,36 @@ export function liveCacheSize(): number {
 }
 
 /**
- * Drop everything.
+ * Drop everything, discarding the entries themselves.
  *
- * Used when the selected year changes (task 025): the cache is keyed by resource,
- * not by year, so anything left behind would be silently from the wrong year.
+ * Note this orphans any entry a mounted component is still holding, so it is for
+ * teardown and tests. To reset a running app — a year change — use
+ * {@link flushLiveCache}, which resets entries in place so mounted views follow
+ * along.
  */
 export function clearLiveCache(): void {
   entries.clear();
+}
+
+/**
+ * Reset every entry in place and refetch.
+ *
+ * Used when the selected year changes (task 025). The cache is keyed by resource,
+ * not by year, so everything held is now from the wrong year. Resetting in place
+ * rather than dropping the map matters: components captured their entry at setup,
+ * so a dropped entry would leave them displaying old-year data forever, with no
+ * signal able to reach it. Bumping the generation also invalidates any in-flight
+ * request from the previous year.
+ */
+export function flushLiveCache(): void {
+  for (const [key, entry] of entries) {
+    entry.gen += 1;
+    entry.inFlight = undefined;
+    entry.data.value = EMPTY;
+    entry.error.value = undefined;
+    entry.pending.value = false;
+    void revalidate(key, entry);
+  }
 }
 
 /** Remove a single key, e.g. after a delete. */
@@ -76,16 +107,19 @@ function revalidate(key: string, entry: Entry): Promise<void> {
   const firstLoad = entry.data.value === EMPTY;
   if (firstLoad) entry.pending.value = true;
 
+  const gen = entry.gen;
+  /** Is this response still wanted? */
+  const current = () => entries.get(key) === entry && entry.gen === gen;
+
   const run = entry
     .fetcher()
     .then((value) => {
-      // The entry may have been evicted or replaced while in flight.
-      if (entries.get(key) !== entry) return;
+      if (!current()) return;
       entry.data.value = value;
       entry.error.value = undefined;
     })
     .catch((error: unknown) => {
-      if (entries.get(key) !== entry) return;
+      if (!current()) return;
       if (isNotFound(error)) {
         entries.delete(key);
         return;
@@ -93,6 +127,7 @@ function revalidate(key: string, entry: Entry): Promise<void> {
       entry.error.value = error;
     })
     .finally(() => {
+      if (entry.gen !== gen) return; // a newer generation owns the entry now
       entry.pending.value = false;
       entry.inFlight = undefined;
     });
@@ -182,6 +217,7 @@ export function useLiveResource<T>(
       error: ref<unknown>(undefined),
       dependsOn: [...options.dependsOn],
       fetcher: fetcher as () => Promise<unknown>,
+      gen: 0,
       refs: 0,
     };
     entries.set(key, entry as Entry);

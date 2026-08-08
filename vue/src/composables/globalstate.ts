@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 
 const navTitle = computed(() => 'Nathejk ' + yearSlug.value);
-const yearSlug = computed(() => (new Date().getFullYear() != rawYearSlug.value) ? rawYearSlug.value : '');
+const yearSlug = computed(() => (String(new Date().getFullYear()) !== rawYearSlug.value) ? rawYearSlug.value : '');
 
 const extraHeader = ref<string | null>(null)
 const rawYearSlug = ref('')

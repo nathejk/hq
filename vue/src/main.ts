@@ -16,6 +16,7 @@ import { fab } from '@fortawesome/free-brands-svg-icons'
 import { far } from '@fortawesome/free-regular-svg-icons'
 import { faPhone } from '@fortawesome/free-solid-svg-icons'
 import { useBuildInfo } from './composables/useBuildInfo'
+import { installLiveYearSync } from './composables/useLiveYear'
 library.add(fas, far, fab, faPhone)
 dom.watch()
 
@@ -44,5 +45,9 @@ app.use(createPinia())
 app.use(router)
 app.component('FontAwesomeIcon', FontAwesomeIcon)
 app.provide('buildInfo', buildInfo)
+
+// Live updates follow the selected year: a change flushes the cache and
+// resubscribes, so no data from another year can survive on screen.
+installLiveYearSync()
 
 app.mount('#app')
