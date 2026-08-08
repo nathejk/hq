@@ -1,10 +1,10 @@
 # 031 — `notify` consumer decorator
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-08-08
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (zed)
+**Started:** 2026-08-08
 **Completed:**
 
 ## Description
@@ -66,3 +66,6 @@ accident).
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-08 18:44 — Task created. Depends on 029, 030.
+- 2026-08-08 19:48 — Picked up. Plan: `internal/live/notify.go` with a `Publisher`
+  interface (the hub satisfies it), `Notify(p, consumer)` and a `NotifyAll` helper for
+  wiring the nineteen consumers in main.go. Tests with fakes for both sides.
