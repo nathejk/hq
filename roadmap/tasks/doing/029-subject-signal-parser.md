@@ -1,10 +1,10 @@
 # 029 — Subject → signal parser
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-08-08
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (zed)
+**Started:** 2026-08-08
 **Completed:**
 
 ## Description
@@ -63,3 +63,6 @@ invalidate nothing while appearing to work.
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-08 18:40 — Task created. First of Phase 2 (029–035).
+- 2026-08-08 18:55 — Picked up. Plan: `internal/live/signal.go` with the Signal type and
+  `SignalFromSubject`, table-driven tests using subjects copied from this repo's
+  consumers. Using `cqrs` aliases rather than importing `jrgensen/stream` directly.
