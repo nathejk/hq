@@ -12,6 +12,7 @@
  */
 import { createPollingTransport, type LiveTransport } from './transport';
 
+export { createPollingTransport, emitSignal } from './transport';
 export type { ConnectionState, LiveTransport } from './transport';
 export * from './signals';
 

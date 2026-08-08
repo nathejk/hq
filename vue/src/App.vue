@@ -4,6 +4,7 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 import HelloWorld from './components/HelloWorld.vue'
 import Navigation from '@/components/Navigation.vue'
 import Foooter from '@/components/Footer.vue'
+import ConnectionIndicator from '@/components/ConnectionIndicator.vue'
 import { useToast } from 'primevue/usetoast'
 
 const toast = useToast()
@@ -13,7 +14,13 @@ const isFullbleed = computed(() => route.path === '/kort')
 
 <template>
   <navigation title="Nathejk 2019" class="dark" />
-  <header></header>
+  <header>
+    <!-- On every page: the operator must always be able to tell whether what
+         they are looking at is still being updated. -->
+    <div class="connection-bar">
+      <ConnectionIndicator />
+    </div>
+  </header>
   <main v-if="isFullbleed" role="main" class="fullbleed">
     <RouterView />
   </main>
@@ -27,6 +34,12 @@ const isFullbleed = computed(() => route.path === '/kort')
 </template>
 
 <style scoped>
+.connection-bar {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0.25rem 0.75rem 0;
+}
+
 .lightgrey {
   color: #d5d5d5;
 }
