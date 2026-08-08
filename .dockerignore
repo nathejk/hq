@@ -1,0 +1,11 @@
+# Legacy reference trees, kept locally but never built
+_go
+_vue
+_attic
+
+.git
+.github
+.agents
+roadmap
+**/node_modules
+vue/dist

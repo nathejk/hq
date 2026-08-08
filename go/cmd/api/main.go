@@ -10,6 +10,12 @@ import (
 	"runtime"
 	"time"
 
+	// Embed the timezone database in the binary. The code calls
+	// time.LoadLocation("Europe/Copenhagen") in several places, and the production
+	// image has no system tzdata — without this those calls fail and every parsed
+	// date silently becomes the zero time.
+	_ "time/tzdata"
+
 	"github.com/jrgensen/cqrs/sqlpersister"
 	"github.com/jrgensen/stream"
 	"github.com/jrgensen/stream/jetstream"

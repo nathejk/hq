@@ -1,6 +1,6 @@
 volumes:
-  go:
-  vue:
+  api:
+  ui-node_modules:
 
 networks:
   local:
@@ -10,51 +10,46 @@ networks:
     external: true
 
 services:
-  gw:
-    image: jrgensen/gateway
-    platform: linux/x86_64
+  ui:
+    build:
+      context: .
+      target: ui-dev
+      dockerfile: docker/Dockerfile
+    volumes:
+    - ./vue:/app
+    - ui-node_modules:/app/node_modules
     environment:
-      PROXY_MAPPINGS: >
-        hq:ui
-        mysql:adminer:8080
-        redis:redis-commander:8081
+      DEBUG: "true"
+      NODE_ENV: development
     networks:
     - local
     - traefik
     labels:
       traefik.enable: true
       traefik.docker.network: traefik
-      traefik.http.routers.hq.rule: Host(`hq.dev.nathejk.dk`) || Host(`hq.local.nathejk.dk`) || HostRegexp(`.+\.hq\..+\.nathejk\.dk`)
-
-  ui:
-    build:
-      context: .
-      target: ui-dev
-      dockerfile: docker/Dockerfile
-        #entrypoint: ["sleep", "infinity"]
-    volumes:
-    - ./vue:/app
-    - vue:/app/node_modules
-    environment:
-      DEBUG: "true"
-      NODE_ENV: development
-      AUTH_BASEURL: https://lukmigind.nathejk.dk
-      API_BASEURL: http://api.hq.dev.nathejk.dk
-    depends_on:
-    - gw
-    networks:
-    - local
+      # HTTP: redirect to HTTPS so the SPA always gets a browser secure context
+      traefik.http.routers.hq.rule: Host(`hq.local.nathejk.dk`) || Host(`hq.dev.nathejk.dk`)
+      traefik.http.routers.hq.entrypoints: web
+      traefik.http.routers.hq.middlewares: redirect-to-https
+      traefik.http.routers.hq.service: hq
+      # HTTPS: serve with the desec cert
+      traefik.http.routers.hq-secure.rule: Host(`hq.local.nathejk.dk`) || Host(`hq.dev.nathejk.dk`)
+      traefik.http.routers.hq-secure.entrypoints: websecure
+      traefik.http.routers.hq-secure.tls.certresolver: desec
+      traefik.http.routers.hq-secure.service: hq
 
   api:
     build:
       context: .
-      target: api-dev
+      target: base
       dockerfile: docker/Dockerfile
-    #entrypoint: /app/docker/bin/init-dev
-    #command: api
     volumes:
     - ./go:/app
-    - go:/go
+    # Sibling checkout of github.com/nathejk/shared-go. The path inside the
+    # container matches what go/go.work expects (../../shared-go relative to
+    # /app resolves to /shared-go).
+    - ../shared-go:/shared-go
+    - api:/go
     networks:
     - local
     - jetstream
@@ -68,8 +63,6 @@ services:
       JWT_COOKIE_NAME: jwttoken
       AUTH_BASEURL: https://lukmigind.nathejk.dk
     depends_on:
-    - gw
-    #- redis
     - mysql
 
   mysql:
@@ -92,21 +85,11 @@ services:
       ADMINER_DEFAULT_DB: hq
     networks:
     - local
+    - traefik
+    labels:
+      traefik.enable: true
+      traefik.docker.network: traefik
+      traefik.http.routers.hq-sql.rule: Host(`mysql.hq.local.nathejk.dk`) || Host(`mysql.hq.dev.nathejk.dk`)
+      traefik.http.services.hq-sql.loadbalancer.server.port: 8080
     depends_on:
-    - gw
     - mysql
-
-#  redis:
-#    image: redis:4.0-alpine3.8
-#    entrypoint: redis-server --appendonly yes
-#    networks:
-#    - local
-#
-#  redis-commander:
-#    image: rediscommander/redis-commander:latest
-#    platform: linux/x86_64
-#    environment:
-#      REDIS_HOSTS: auth:redis:6379
-#    networks:
-#    - local
-

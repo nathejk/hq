@@ -126,7 +126,7 @@ hq/
 - **Orchestration**: Docker Compose (dev), Traefik (routing)
 - **Database**: MariaDB 10.8 (timezone: Europe/Copenhagen)
 - **Event Bus**: NATS JetStream (external Docker network)
-- **Reverse Proxy**: Traefik (external) + `jrgensen/gateway` (internal subdomain routing)
+- **Reverse Proxy**: Traefik (external). Each web-exposed service declares its own Traefik labels and joins the external `traefik` network — there is no gateway container
 - **CI/CD**: GitHub Actions → DockerHub (`nathejk/hq`)
 - **Auth**: External service at `lukmigind.nathejk.dk` (JWT cookie-based)
 
@@ -193,8 +193,8 @@ docker compose up
 ### Services & URLs
 | Service | Internal URL | External URL |
 |---------|-------------|--------------|
-| Frontend (Vite dev) | `http://ui:80` | `http://hq.local.nathejk.dk` |
-| API | `http://api:80` | `http://hq.local.nathejk.dk/api/` |
+| Frontend (Vite dev) | `http://ui:80` | `https://hq.local.nathejk.dk` (HTTP redirects) |
+| API | `http://api:80` | `https://hq.local.nathejk.dk/api/` |
 | DB Admin (Adminer) | `http://adminer:8080` | `http://mysql.hq.local.nathejk.dk` |
 | MariaDB | `mysql:3306` | — |
 
