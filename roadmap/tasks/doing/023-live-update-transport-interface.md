@@ -1,10 +1,10 @@
 # 023 — Live-update transport interface + polling implementation
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-08-08
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (zed)
+**Started:** 2026-08-08
 **Completed:**
 
 ## Description
@@ -60,3 +60,7 @@ connection-state UI (026), optimistic writes (027), and anything server-side.
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-08 15:45 — Task created. Split from PRD 004 Phase 1; first of 023–027.
+- 2026-08-08 15:55 — Picked up. Plan: declare the bus event map first (it blocks using
+  the bus at all), then a `transport` module exporting the interface + signal types,
+  then the polling implementation. Verification is "no new vue-tsc errors in touched
+  files" against a 109-error baseline, plus lint.
