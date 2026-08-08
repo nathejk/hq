@@ -1,10 +1,10 @@
 # 024 — `useLiveResource` cache primitive
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-08-08
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (zed)
+**Started:** 2026-08-08
 **Completed:**
 
 ## Description
@@ -68,3 +68,7 @@ route changes — which is what makes navigating back instant, with **zero** req
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-08 15:47 — Task created. Depends on 023.
+- 2026-08-08 16:40 — Picked up. Plan: a module-level registry of cache entries keyed by
+  resource key, each holding `data`/`pending`/`error` + its `dependsOn`; one bus
+  subscription fans signals to matching entries; SWR on access. Verification as for
+  023 (no new vue-tsc errors in touched files, lint clean).
