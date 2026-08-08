@@ -1,10 +1,10 @@
 # 028 — Wire up the unit test harness (vitest)
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-08-08
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (zed)
+**Started:** 2026-08-08
 **Completed:**
 
 ## Description
@@ -45,3 +45,6 @@ environment is not needed and should not be added on spec.
 - 2026-08-08 16:50 — Task created mid-024, on discovering the test script has no
   runner behind it. 024 stays in `doing/` until this lands so its behavioural criteria
   can be verified rather than assumed.
+- 2026-08-08 16:52 — Picked up. Plan: add vitest + a vitest config reusing the Vite
+  alias config, then tests for the 024 behaviours. Node environment (no jsdom) since
+  Vue reactivity works without a DOM.
