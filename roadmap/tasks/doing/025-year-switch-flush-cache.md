@@ -1,10 +1,10 @@
 # 025 — Year switching flushes the cache and refetches
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-08-08
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (zed)
+**Started:** 2026-08-08
 **Completed:**
 
 ## Description
@@ -52,3 +52,6 @@ explicitly regardless, so it never relies on that.
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-08 15:49 — Task created. Depends on 023, 024.
+- 2026-08-08 17:26 — Picked up. Plan: a `useLiveYear` composable that watches the one
+  source of truth (`globalstate`), and on change stops the transport, clears the cache,
+  restarts for the new year and refetches. Tests assert no pre-change entry survives.
