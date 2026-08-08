@@ -1,10 +1,10 @@
 # 030 — SSE hub: coalescing, bounded buffers, overflow → resync
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-08-08
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (zed)
+**Started:** 2026-08-08
 **Completed:**
 
 ## Description
@@ -66,3 +66,8 @@ a checkpoint-scan rush off screens that do not care.
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-08 18:42 — Task created. Depends on 029 for the signal type.
+- 2026-08-08 19:18 — Picked up. Plan: one mutex; `Publish` debounces into a pending
+  map keyed by `Signal.Key()`, a timer flushes and fans out; per-client buffered
+  channel with non-blocking sends so a slow client can never block a publisher;
+  `Subscribe(ctx, filter)` auto-cleans on context cancel. Tests with a short window,
+  plus `-race`.
