@@ -11,12 +11,20 @@
  * the legacy mistake of every view knowing about the channel.
  */
 import { createPollingTransport, type LiveTransport } from './transport';
+import { createSseTransport, supportsEventSource } from './sse';
 
 export { createPollingTransport, emitSignal } from './transport';
+export { createSseTransport, supportsEventSource } from './sse';
+export type { EventSourceLike, SseTransportOptions } from './sse';
 export type { ConnectionState, LiveTransport } from './transport';
 export * from './signals';
 
-let transport: LiveTransport = createPollingTransport();
+// SSE where the browser supports it; polling otherwise (tests, and anywhere
+// EventSource is absent). Polling is kept exported so it remains a deliberate
+// fallback rather than dead code, per the transport seam's whole purpose.
+let transport: LiveTransport = supportsEventSource()
+  ? createSseTransport()
+  : createPollingTransport();
 let startedYear: string | undefined;
 
 /** The active transport. Swapped wholesale when SSE lands (PRD 004 Phase 2). */
