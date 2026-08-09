@@ -110,3 +110,9 @@ idle stream.
 - 2026-08-08 20:32 — Completed. The endpoint is live and self-sufficient: it delivers
   the connect-time resync without any consumer being wrapped yet, which is exactly what
   035 needs to test the proxies before 033/034 are built.
+- 2026-08-09 00:14 — Follow-up under task 035: this endpoint had a defect not caught by
+  its own tests. The server's `WriteTimeout` (app/server.go:22) is a deadline on the
+  whole response, so the stream delivered its resync and one heartbeat and then died
+  silently mid-flight. Fixed in `internal/live/http.go` by clearing the write/read
+  deadlines per response via `http.ResponseController`, with a regression test proven to
+  fail without it. See 035's log for the diagnosis.

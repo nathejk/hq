@@ -27,16 +27,22 @@ services:
     labels:
       traefik.enable: true
       traefik.docker.network: traefik
-      # HTTP: redirect to HTTPS so the SPA always gets a browser secure context
-      traefik.http.routers.hq.rule: Host(`hq.local.nathejk.dk`) || Host(`hq.dev.nathejk.dk`)
+      # HTTP: redirect to HTTPS so the SPA always gets a browser secure context.
+      # The middleware is defined here rather than using the shared
+      # `redirect-to-https` the org rules describe: that one is not present in the
+      # running Traefik (only the @internal dashboard middlewares are), so
+      # referencing it disables this router. Repo-scoped name to avoid collisions.
+      traefik.http.middlewares.hq-redirect-to-https.redirectscheme.scheme: https
+      traefik.http.middlewares.hq-redirect-to-https.redirectscheme.permanent: true
+      traefik.http.routers.hq.rule: Host(`hq.local.nathejk.dk`)
       traefik.http.routers.hq.entrypoints: web
-      traefik.http.routers.hq.middlewares: redirect-to-https
-      traefik.http.routers.hq.service: hq
-      # HTTPS: serve with the desec cert
-      traefik.http.routers.hq-secure.rule: Host(`hq.local.nathejk.dk`) || Host(`hq.dev.nathejk.dk`)
+      traefik.http.routers.hq.middlewares: hq-redirect-to-https
+      # HTTPS: serve with the desec cert. Both routers deliberately omit an
+      # explicit .service: Traefik infers this container's own auto-created
+      # service, and naming one that is never defined disables the router.
+      traefik.http.routers.hq-secure.rule: Host(`hq.local.nathejk.dk`)
       traefik.http.routers.hq-secure.entrypoints: websecure
       traefik.http.routers.hq-secure.tls.certresolver: desec
-      traefik.http.routers.hq-secure.service: hq
 
   api:
     build:

@@ -65,6 +65,26 @@ func (h StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	// hanging with no output. ResponseController follows Unwrap() to find the
 	// real flusher, so this keeps working whatever is layered on later.
 	rc := http.NewResponseController(w)
+
+	// Clear the write deadline for this response.
+	//
+	// The server sets WriteTimeout (30s, app/server.go) so an ordinary endpoint
+	// cannot be held open by a slow client. That is a deadline on the *whole*
+	// response, which for a stream is fatal in a way that is easy to misread: the
+	// connection is established, the first events arrive, and then writes start
+	// failing silently mid-flight. Symptom observed before this line existed: the
+	// initial resync and exactly one heartbeat arrived, then nothing.
+	//
+	// Clearing it per-response is the narrow fix — the global timeout keeps
+	// protecting every other endpoint. Read deadline likewise: nothing further is
+	// read from this request, and ReadTimeout would otherwise apply to the
+	// connection.
+	//
+	// Best-effort: if the writer does not support deadlines the stream still works,
+	// it just inherits whatever the server imposes.
+	_ = rc.SetWriteDeadline(time.Time{})
+	_ = rc.SetReadDeadline(time.Time{})
+
 	flush := func() { _ = rc.Flush() }
 	flush()
 

@@ -195,6 +195,54 @@ func TestStreamEmitsHeartbeat(t *testing.T) {
 	t.Error("no heartbeat comment observed")
 }
 
+// Regression test for a failure that is invisible until it matters: the API's
+// http.Server sets WriteTimeout to protect ordinary endpoints from slow clients,
+// and that deadline applies to the whole response. On a stream it does not refuse
+// the connection — it lets the first events through and then kills writes
+// mid-flight, which reads like "the proxy is buffering" rather than "our own
+// server hung up".
+//
+// A short WriteTimeout plus a fast heartbeat reproduces it in under a second.
+func TestStreamSurvivesServerWriteTimeout(t *testing.T) {
+	hub := newTestHub(t)
+
+	srv := httptest.NewUnstartedServer(StreamHandler{
+		Hub:         hub,
+		Heartbeat:   20 * time.Millisecond,
+		DefaultYear: func() string { return "2026" },
+	})
+	srv.Config.WriteTimeout = 100 * time.Millisecond
+	srv.Config.ReadTimeout = 100 * time.Millisecond
+	srv.Start()
+	t.Cleanup(srv.Close)
+
+	resp, err := http.Get(srv.URL + "/api/stream")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	reader := bufio.NewReader(resp.Body)
+	readEvent(t, reader) // initial resync
+
+	// Well past the write timeout: 15 heartbeats at 20ms is ~300ms, three times the
+	// 100ms deadline, so this cannot pass by finishing before the deadline bites.
+	heartbeats := 0
+	deadline := time.Now().Add(3 * time.Second)
+	for heartbeats < 15 && time.Now().Before(deadline) {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			t.Fatalf("stream died after %d heartbeats: %v", heartbeats, err)
+		}
+		if strings.HasPrefix(line, ":") {
+			heartbeats++
+		}
+	}
+
+	if heartbeats < 15 {
+		t.Errorf("only %d heartbeats before the deadline; the write timeout is still killing the stream", heartbeats)
+	}
+}
+
 func TestStreamUnsubscribesWhenClientDisconnects(t *testing.T) {
 	hub := newTestHub(t)
 	srv := serve(t, StreamHandler{Hub: hub, DefaultYear: func() string { return "2026" }})
