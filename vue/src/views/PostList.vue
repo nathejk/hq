@@ -1,9 +1,10 @@
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, watch } from 'vue'
 import draggable from 'vuedraggable'
 
 //import { useToast } from 'primevue/usetoast'
 import { http } from '@/plugins/axios'
+import { useLiveResource } from '@/composables/useLiveResource'
 import { hhmm } from '@/composables/datefilters'
 /*
 import ScreeningSwitch from '@/components/ScreeningSwitch.vue'
@@ -23,6 +24,8 @@ const checkpointSchemes = [
 //const toast = useToast()
 const scanners = ref([])
 const checkgroups = ref([])
+const startedTeamCount = ref(0)
+const checkgroupStats = ref([])
 const checkgroup = (id) => checkgroups.value.filter((cg) => cg.id == id).shift()
 const edit = ref({ controls: [] })
 const expandedPanels = ref(new Set())
@@ -33,36 +36,74 @@ const personName = (userId) => {
   return p ? p.name : 'Ukendt'
 }
 
-onMounted(() => load())
-
-const load = async () => {
-  try {
+// Live, cached page state.
+//
+// The fetcher only *shapes* the response; the refs above are filled from it by a
+// watcher rather than being computed off the cache, because the drag-to-reorder
+// binds `:list="checkgroups"` and splices that array in place. A computed cannot
+// be spliced, and the cache holds its value in a shallowRef, so mutating the
+// cached array would not re-render either. Local copies keep the reorder working
+// while still being replaced wholesale on every revalidation.
+//
+// dependsOn, all verified against the consumers' Consumes() rather than guessed:
+//   checkgroup/checkgroups  the lines themselves, incl. `checkgroups.sorted`,
+//                           which is collection-level and carries no id
+//   checkpoint              the posts within a line
+//   checkpersonnel          the staffing shown per post
+//   qr                      scans. NOTE the token is `qr` (NATHEJK.*.qr.*.scanned),
+//                           not `scan`: a projection's name is not its subject's.
+//                           Needed by the per-line progress meters, which are the
+//                           whole point of this page during the race.
+//   patrulje                startedTeamCount, from patrulje.*.started
+//
+// On the cost of depending on scans: measured, not assumed. Peak scan rate in the
+// existing data is 17/minute (2025-09-20 13:45) and /checkgroups answers in ~3.5ms
+// with a 10KB body, so a revalidation per scan is negligible. Revisit if either
+// number changes by an order of magnitude.
+const { data: postData, error, refresh } = useLiveResource(
+  'post:list',
+  async () => {
     const rsp = await http.get('/checkgroups', { withCredentials: true })
-    if (rsp.status == 200) {
-      const cgs = rsp.data.checkgroups
-      const allPersonnel = rsp.data.assignedPersonnel || []
-      cgs.map((cg) => {
-        cg.checkpoints = rsp.data.checkpoints.filter((cp) => cp.checkgroupId == cg.id)
-        cg.checkpoints.forEach((cp) => {
-          cp.personnel = allPersonnel.filter((p) => p.checkpointId === cp.id)
-        })
-      })
-      checkgroups.value = cgs.sort((a, b) => a.sortOrder - b.sortOrder)
-      assignedPersonnel.value = allPersonnel
-      personnel.value = rsp.data.personnel || []
-      startedTeamCount.value = rsp.data.startedTeamCount || 0
-      checkgroupStats.value = rsp.data.checkgroupStats || []
-      scanners.value = [
-        { name: 'Søren Sølvmus', id: 1 },
-        { name: 'Hanne Sjakke', id: 2 }
-      ]
-      //this.startedCount = resp.data.startedCount
+    const allPersonnel = rsp.data.assignedPersonnel || []
+    const cgs = (rsp.data.checkgroups || []).map((cg) => ({
+      ...cg,
+      checkpoints: (rsp.data.checkpoints || [])
+        .filter((cp) => cp.checkgroupId == cg.id)
+        .map((cp) => ({ ...cp, personnel: allPersonnel.filter((p) => p.checkpointId === cp.id) }))
+    }))
+    return {
+      checkgroups: cgs.sort((a, b) => a.sortOrder - b.sortOrder),
+      assignedPersonnel: allPersonnel,
+      personnel: rsp.data.personnel || [],
+      startedTeamCount: rsp.data.startedTeamCount || 0,
+      checkgroupStats: rsp.data.checkgroupStats || []
     }
-  } catch (error) {
-    console.log('error happend', error)
-    throw new Error(error.response.data)
-  }
-}
+  },
+  { dependsOn: ['checkgroup', 'checkgroups', 'checkpoint', 'checkpersonnel', 'qr', 'patrulje'] }
+)
+
+watch(
+  postData,
+  (payload) => {
+    if (!payload) return
+    // Copied, not aliased: the drag-to-reorder splices `checkgroups`, and doing
+    // that to the array the cache holds would quietly reorder the cached value too.
+    checkgroups.value = [...payload.checkgroups]
+    assignedPersonnel.value = payload.assignedPersonnel
+    personnel.value = payload.personnel
+    startedTeamCount.value = payload.startedTeamCount
+    checkgroupStats.value = payload.checkgroupStats
+    scanners.value = [
+      { name: 'Søren Sølvmus', id: 1 },
+      { name: 'Hanne Sjakke', id: 2 }
+    ]
+  },
+  { immediate: true }
+)
+
+watch(error, (err) => {
+  if (err) console.log('checkgroups load failed', err)
+})
 const persistSortOrder = async () => {
   try {
     const ids = checkgroups.value.map((cg) => cg.id)
@@ -81,12 +122,12 @@ const closeEdit = () => (addCheckgroupModal.value = false)
 const openPersonnel = () => (addCheckgroupPersonnelModal.value = true)
 const closePersonnel = () => (addCheckgroupPersonnelModal.value = false)
 const saved = (/*checkgroupId*/) => {
-  load()
+  refresh()
   closeEdit()
   closePersonnel()
 }
 const deleted = (/*checkgroupId*/) => {
-  load()
+  refresh()
   closeEdit()
 }
 const addCheckgroupModal = ref(false)
@@ -107,7 +148,7 @@ const deleteCheckgroup = async (id) => {
     if (rsp.status != 200) {
       throw new Error(rsp.data)
     }
-    load()
+    refresh()
   } catch (error) {
     console.log('error deleting checkgroup', error)
   }
@@ -132,8 +173,6 @@ dt.value = new Date('2025-09-19T19:00:00Z')
 //const iso = computed(() => new Date(dt.value).toISOString())
 
 //const selectedCategory = ref('')
-const startedTeamCount = ref(0)
-const checkgroupStats = ref([])
 
 const meterForCheckgroup = (cgId) => {
   const stats = checkgroupStats.value.find((s) => s.checkgroupId === cgId)
