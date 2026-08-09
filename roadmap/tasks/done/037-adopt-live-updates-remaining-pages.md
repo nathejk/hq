@@ -1,11 +1,11 @@
 # 037 — Adopt live updates on the remaining pages
 
-**Status:** doing
+**Status:** done
 **Priority:** medium
 **Created:** 2026-08-09
 **Picked up by:** agent
 **Started:** 2026-08-09
-**Completed:**
+**Completed:** 2026-08-09
 
 ## Description
 
@@ -50,8 +50,8 @@ commands actually publish before settling each list:
 ## Acceptance Criteria
 
 - [x] Betalinger, klaner and poster use `useLiveResource` with explicit `dependsOn`
-- [ ] Each verified in two tabs: an edit in one appears in the other *(awaiting the
-      user; no browser available to the agent — see log)*
+- [x] Each verified in two tabs: an edit in one appears in the other — **confirmed by
+      the user, 2026-08-09**
 - [x] Navigating between adopted pages issues no refetch for cached ones (inherent to
       the module-level cache; proven for the pattern in 036)
 - [x] No page depends on `scan` unless it demonstrably needs it — and the token turned
@@ -152,3 +152,16 @@ commands actually publish before settling each list:
   DOM. Deleted afterwards rather than committed: it needs `vite.config.ts` (for the
   SFC plugin) and jsdom, which is the "component tests arrive" change
   `vitest.config.ts` explicitly defers. Worth its own ticket if we want it standing.
+- 2026-08-09 — ✅ **Confirmed by the user in two tabs.** That closes the last criterion
+  and the task. All eight adopted views work: betalinger, poster, badutter, klaner,
+  kort, forsiden, the patrulje detail and the active-patrulje scan trail — alongside
+  the patrulje list from 036.
+- 2026-08-09 — Done. Two notes for whoever picks up the next page:
+  - Task **040** now backs this up independently: the API advertises the entity tokens
+    it can emit and the SPA warns in dev about a `dependsOn` nothing can satisfy. Had
+    it existed first, the `scan`/`personnel` mistakes would have announced themselves
+    in the console instead of needing a read through the Go consumers. A ninth
+    adoption is therefore materially safer than these eight were.
+  - The pages left unadopted were left so **on purpose**, not by omission — the edit
+    forms and modals, plus `OrganisationView`, which wants the dirty-guard treatment
+    kort and klaner got and deserves its own ticket. The reasoning is above.
