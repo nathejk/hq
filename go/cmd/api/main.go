@@ -16,6 +16,7 @@ import (
 	// date silently becomes the zero time.
 	_ "time/tzdata"
 
+	"github.com/jrgensen/cqrs"
 	"github.com/jrgensen/cqrs/sqlpersister"
 	"github.com/jrgensen/stream"
 	"github.com/jrgensen/stream/jetstream"
@@ -186,13 +187,52 @@ func main() {
 	ordertable := order.New(publisher, writer, db.DB(), currentYear, producttable)
 
 	mux := xstream.NewMux(js)
-	// The live hub is constructed before the mux so consumers can be wrapped with
-	// live.Notify to broadcast read-model changes. Wrapping the consumer list is
-	// task 033; until then the hub is reachable over /api/stream and delivers the
-	// resync every client gets on connect, which is enough for the proxy spike.
+
+	// Live updates: every projection is wrapped so that applying an event also
+	// tells connected browsers to refetch. One decorator makes the whole SPA live —
+	// betalinger, patruljer, klaner, poster — with no per-page backend code.
+	//
+	// The wrapping happens after HandleMessage succeeds, so a signal can never
+	// precede the write it announces. See internal/live/notify.go, including why the
+	// deadletter Writer means a signal can occasionally describe a change that was
+	// diverted rather than applied.
 	livehub := live.NewHub()
 	defer livehub.Close()
-	mux.AddConsumer(signuptable, table.NewConfirm(writer), klantable, seniortable, patruljetable, table.NewPatruljeStatus(writer) /*table.NewPatruljeMerged(writer),, table.NewSpejder(writer)*/, table.NewSpejderStatus(writer), personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, patruljemergedtable, loktable, year, sectiontable, crewmembertable, ordertable)
+
+	// Named rather than inlined into AddConsumer: this list is the read model, and
+	// it is worth being able to see it.
+	//
+	// Everything here is wrapped, including consumers that are arguably not
+	// projections (confirm, and order's saga behaviour). A consumer that writes no
+	// row a client would refetch produces a signal nothing depends on — clients
+	// declare the entities they care about, and coalescing collapses duplicates from
+	// the several projections that handle one event — so curating the list would buy
+	// nothing and would rot the moment a consumer changed shape.
+	projections := []cqrs.Consumer{
+		signuptable,
+		table.NewConfirm(writer),
+		klantable,
+		seniortable,
+		patruljetable,
+		table.NewPatruljeStatus(writer),
+		table.NewSpejderStatus(writer),
+		personneltable,
+		paymenttable,
+		spejdertable,
+		checkgroup,
+		checkpoint,
+		checkpersonnel,
+		scantable,
+		patruljemergedtable,
+		loktable,
+		year,
+		sectiontable,
+		crewmembertable,
+		ordertable,
+	}
+	for _, consumer := range live.NotifyAll(livehub, projections...) {
+		mux.AddConsumer(consumer)
+	}
 
 	//mux.AddConsumer(table.NewSpejder(writer), table.NewSpejderStatus(writer))
 	if err := mux.Run(context.Background()); err != nil {
