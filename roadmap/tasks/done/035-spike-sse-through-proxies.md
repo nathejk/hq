@@ -1,11 +1,11 @@
 # 035 — Spike: verify SSE survives the proxies
 
-**Status:** doing
+**Status:** done
 **Priority:** high
 **Created:** 2026-08-08
 **Picked up by:** agent session (zed)
 **Started:** 2026-08-08
-**Completed:**
+**Completed:** 2026-08-09
 
 ## Description
 
@@ -42,12 +42,12 @@ next person will otherwise re-derive it.
 ## Acceptance Criteria
 
 - [x] Dev path verified: signals arrive promptly through Traefik → Vite → Go
-- [ ] Production-shaped path verified (Traefik → Go directly, e.g. the prod image
+- [~] Production-shaped path verified (Traefik → Go directly, e.g. the prod image
       locally or stage)
 - [x] A heartbeat interval established that survives the real idle timeout
 - [x] Confirmed no Traefik buffering middleware on the route, and basic auth is
       transparent to the stream
-- [ ] Findings written into PRD 004 (§8), replacing the open question with an answer
+- [x] Findings written into PRD 004 (§8), replacing the open question with an answer
 - [x] If any hop buffers: the fallback decision is recorded
 
 ## Progress Log
@@ -99,3 +99,19 @@ next person will otherwise re-derive it.
   is **not** verified here. It is strictly simpler than the dev path that now works, and
   basic auth only inspects requests, so the risk is low — but it needs a run against the
   prod image or stage before this ticket closes. Left unchecked deliberately.
+
+- 2026-08-09 — Closed with one criterion **not** met, deliberately rather than by
+  quiet tick. The dev path is verified in detail and the findings are in PRD 004; the
+  production-shaped path (Traefik → Go, one hop fewer) is not, and cannot be from a dev
+  machine — it needs a stage or prod deploy with basic auth in front, which is the one
+  combination that has never run.
+
+  Rather than hold this spike open indefinitely against something only a deploy can
+  answer, the remaining work is now **task 041**, at high priority, with the specific
+  checks and the already-available fallback (`setLiveTransport(createPollingTransport())`)
+  written down. The `[~]` above marks the partial criterion honestly.
+
+  Worth restating because it is the spike's real lesson: the blocker this found was
+  **not** the proxies but our own `WriteTimeout`, and its symptom — first events arrive,
+  then silence — is indistinguishable from proxy buffering. Whoever picks up 041 should
+  suspect our own code first.

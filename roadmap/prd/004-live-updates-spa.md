@@ -1,6 +1,6 @@
 # PRD 004 — Live updates for the SPA
 
-**Status:** draft
+**Status:** done — shipped 2026-08-09; see §12 for what was deliberately left out
 **Author:** agent session
 **Created:** 2026-08-07
 **Last updated:** 2026-08-09
@@ -731,3 +731,61 @@ Proposed tasks for `roadmap/tasks/open/`:
 - **Testing approach.** How do we test the notifier's ordering guarantee?
   `cqrs/cqrstest` and `stream/streamtest` provide in-memory fakes — worth
   confirming they can assert "signal emitted after write".
+
+---
+
+## 12. Closure
+
+**Closed as completed 2026-08-09**, after the last adoption task (037) was confirmed
+in two browser tabs by the product owner.
+
+### What shipped
+
+Tasks 023–034 built the capability, 036–037 adopted it, 040 made adopting it safe:
+
+| Half | Delivered |
+|---|---|
+| BFF (`go/internal/live/`) | subject→signal parser; `notify` decorator emitting only after a projection applies; hub with central coalescing, bounded per-client buffers and overflow→`resync`; `GET /api/stream` (SSE, heartbeats, `?year=`/`?entities=`, mounted outside the metrics chain); entity-set advertisement |
+| Frontend (`vue/src/plugins/live/`, `composables/`) | transport interface + polling and SSE implementations; `useLiveResource` (keyed module cache, mandatory `dependsOn`, stale-while-revalidate, request collapsing, generation counter); year-switch flush; optimistic write helper; connection indicator; dev-only dependency validation |
+| Adopted | patruljer, betalinger, poster, badutter, klaner, kort, forsiden, patrulje detail, active-patrulje scan trail |
+
+All ~20 projections are wrapped, so **every** entity is live; making a page live is a
+three-line change, or a slightly larger one for a page holding unsaved state.
+
+Verification: 57 frontend tests, Go tests/vet/staticcheck/gofmt clean, and — the part
+that mattered — confirmed in two tabs against a real stream, twice (036, 037).
+
+### Deliberately not done
+
+Recorded rather than ticked, because none of it is finished:
+
+1. **SSE on the production-shaped path (Traefik → Go) is unverified.** The dev path
+   (Traefik → Vite → Go) is verified in detail (task 035); production has one hop
+   fewer, so it is *likely* fine, and the one real blocker found was in our own code
+   (`WriteTimeout`), not the proxies. But "likely" is not "verified", and this is the
+   single item most able to embarrass us: live updates silently not working for
+   operators. **Carried forward as task 041** — do it on the first stage deploy.
+2. **`KeepAlive` on list views + route-chunk preload.** Never started. The module-level
+   cache already delivers most of the perceived speed, which is why this never became
+   urgent; revisit only if navigation still feels slow.
+3. **`xstream.MuxBlockUntilLive()` is a silent no-op upstream.** Belongs with the boot
+   gate rather than here; already on PRD 005's task list.
+4. **Adoption on SOS**, which cannot happen until PRD 001 is built. PRD 001 should
+   compose `useLiveResource` from the start rather than treating it as a later step.
+
+### What this PRD got wrong, for the next one
+
+- **The feared cost was the wrong cost.** Most of the design worry went into scan
+  volume and filtering granularity; measurement showed 17 scans in the busiest minute
+  against ~3.5ms endpoints, so `?entities=` was never needed. The *actual* recurring
+  defect was mundane: `dependsOn` tokens are bare strings, two of six were wrong, and
+  a wrong one fails silently. Cheap safeguards on the boring part beat sophistication
+  on the interesting part.
+- **A stale value that looks live is the whole enemy**, and it kept reappearing in new
+  disguises — buffer overflow, a year-switch race, a slow response from a previous
+  generation, a proxy-looking `WriteTimeout`, an editor clobbered by its own
+  revalidation. Every one was solved by preferring an honest refetch or an honest
+  "paused" over a plausible-looking screen.
+- **Three-line adoption only suits pages owning no unsaved state.** Kort and klaner
+  needed a dirty-guard; `OrganisationView` still does. Worth saying in the pattern's
+  documentation rather than discovering per page.
