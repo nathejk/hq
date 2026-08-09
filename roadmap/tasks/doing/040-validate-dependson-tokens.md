@@ -1,10 +1,10 @@
 # 040 — Catch a `dependsOn` token that nothing can ever emit
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-08-09
-**Picked up by:**
-**Started:**
+**Picked up by:** agent
+**Started:** 2026-08-09
 **Completed:**
 
 ## Description
@@ -53,3 +53,26 @@ can never fire.
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-09 — Created from 037, after two of six planned tokens turned out wrong.
+- 2026-08-09 — Picked up. First finding changes the design: **the set cannot be
+  exhaustive.** Five wired subject patterns use `*` in the *entity* position —
+  `NATHEJK:*.*.*.signedup` plus the `emailaddress.verified`, `phonenumber.verified`,
+  `mail.validate.sent` and `sms.validate.sent` patterns — so hq listens to those
+  events for *any* entity, and a token outside the enumerated set could legitimately
+  arrive. Claiming completeness would make the check lie.
+
+  So the contract becomes: the API reports the concrete tokens **and whether the set
+  is exhaustive**, and the client's warning is worded as advisory when it is not. That
+  still catches `scan` and `personnel` — the two real mistakes — while never asserting
+  something it cannot know.
+
+  Second decision: derive the tokens by feeding each pattern through
+  `SignalFromSubject`, the very function that produces the signals, rather than a
+  second parser. A pattern like `NATHEJK.*.checkgroup.*.created` yields
+  `Entity: "checkgroup"`, and `NATHEJK.*.created` yields the synthesised `year` — both
+  for free. If the parser ever changes, the advertised set changes with it, which is
+  the property that makes this worth having at all.
+
+  Third: derive from the **wired consumers at runtime**, not by grepping source. A
+  grep of `FromStr("…")` also picks up commented-out patterns (`monolith:nathejk_team`,
+  `nathejk`) and fragments of multi-line concatenations (`"NATHEJK:2026.payment."`,
+  `".received"`). Runtime derivation excludes all of it by construction.
