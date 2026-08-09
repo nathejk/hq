@@ -1,7 +1,14 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import bus from '@/plugins/bus';
 import { createSseTransport, type EventSourceLike } from '@/plugins/live/sse';
-import { SIGNAL_ENTITY_CHANGED, SIGNAL_RESYNC, type LiveSignal } from '@/plugins/live';
+import {
+  SIGNAL_ENTITIES,
+  SIGNAL_ENTITY_CHANGED,
+  SIGNAL_RESYNC,
+  knownEntities,
+  resetKnownEntities,
+  type LiveSignal,
+} from '@/plugins/live';
 
 /**
  * Stand-in for EventSource, driven by the test.
@@ -242,5 +249,47 @@ describe('createSseTransport', () => {
 
     expect(received).toHaveLength(0);
     stop();
+  });
+});
+
+describe('entity-set announcement', () => {
+  beforeEach(() => {
+    resetKnownEntities();
+  });
+
+  it('routes the entities frame to the dependency checker, not the signal bus', () => {
+    const c = collect();
+    const t = newTransport();
+    t.start('2026');
+    FakeEventSource.last!.open();
+    c.received.length = 0; // drop the connect resync
+
+    FakeEventSource.last!.emit(SIGNAL_ENTITIES, { entities: ['klan', 'qr'], exhaustive: false });
+
+    expect(knownEntities()).toEqual({ entities: ['klan', 'qr'], exhaustive: false });
+    // It describes the stream rather than reporting a change, so nothing should
+    // treat it as an invalidation.
+    expect(c.received).toEqual([]);
+
+    c.stop();
+    t.stop();
+  });
+
+  it('ignores a malformed or shapeless frame rather than taking the stream down', () => {
+    const t = newTransport();
+    t.start('2026');
+    FakeEventSource.last!.open();
+
+    FakeEventSource.last!.emit(SIGNAL_ENTITIES, 'not json');
+    expect(knownEntities()).toBeUndefined();
+
+    FakeEventSource.last!.emit(SIGNAL_ENTITIES, { exhaustive: true });
+    expect(knownEntities()).toBeUndefined();
+
+    // Still working afterwards.
+    FakeEventSource.last!.emit(SIGNAL_ENTITIES, { entities: [], exhaustive: true });
+    expect(knownEntities()).toEqual({ entities: [], exhaustive: true });
+
+    t.stop();
   });
 });

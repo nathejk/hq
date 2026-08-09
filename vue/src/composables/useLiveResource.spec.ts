@@ -1,7 +1,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { effectScope } from 'vue';
 import bus from '@/plugins/bus';
-import { SIGNAL_ENTITY_CHANGED, SIGNAL_RESYNC } from '@/plugins/live';
+import {
+  SIGNAL_ENTITY_CHANGED,
+  SIGNAL_RESYNC,
+  setKnownEntities,
+  resetKnownEntities,
+} from '@/plugins/live';
 import { useLiveResource, clearLiveCache, liveCacheSize } from '@/composables/useLiveResource';
 
 /** Let queued promise callbacks run. */
@@ -189,5 +194,49 @@ describe('useLiveResource', () => {
     clearLiveCache();
 
     expect(liveCacheSize()).toBe(0);
+  });
+});
+
+// The check is only useful if every resource actually goes through it. Asserted
+// here rather than trusted, because removing the one call in useLiveResource would
+// otherwise leave all of entities.spec.ts passing while nothing was ever validated.
+describe('useLiveResource dependency validation', () => {
+  beforeEach(() => {
+    resetKnownEntities();
+  });
+
+  it('warns when a resource declares an entity the server does not advertise', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setKnownEntities({ entities: ['qr', 'patrulje'], exhaustive: true });
+
+    const { stop } = inScope(() =>
+      useLiveResource('post:list', async () => 'x', { dependsOn: ['scan'] }),
+    );
+    await flush();
+
+    expect(warn).toHaveBeenCalledTimes(1);
+    const message = String(warn.mock.calls[0][0]);
+    expect(message).toContain('post:list');
+    expect(message).toContain('"scan"');
+
+    warn.mockRestore();
+    stop();
+    resetKnownEntities();
+  });
+
+  it('stays silent for a correct declaration', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    setKnownEntities({ entities: ['qr', 'patrulje'], exhaustive: true });
+
+    const { stop } = inScope(() =>
+      useLiveResource('ok:list', async () => 'x', { dependsOn: ['patrulje', 'qr'] }),
+    );
+    await flush();
+
+    expect(warn).not.toHaveBeenCalled();
+
+    warn.mockRestore();
+    stop();
+    resetKnownEntities();
   });
 });

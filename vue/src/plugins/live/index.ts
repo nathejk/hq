@@ -3,6 +3,7 @@
  *
  * Structure:
  *   signals.ts    the wire vocabulary and dependency matching
+ *   entities.ts   dev-only check that a declared dependency can ever fire
  *   transport.ts  the transport interface + the polling implementation
  *   index.ts      the app-wide singleton and its lifecycle
  *
@@ -14,9 +15,16 @@ import { createPollingTransport, type LiveTransport } from './transport';
 import { createSseTransport, supportsEventSource } from './sse';
 
 export { createPollingTransport, emitSignal } from './transport';
-export { createSseTransport, supportsEventSource } from './sse';
+export { createSseTransport, supportsEventSource, SIGNAL_ENTITIES } from './sse';
 export type { EventSourceLike, SseTransportOptions } from './sse';
 export type { ConnectionState, LiveTransport } from './transport';
+export {
+  setKnownEntities,
+  knownEntities,
+  validateDependencies,
+  resetKnownEntities,
+} from './entities';
+export type { EntitySet } from './entities';
 export * from './signals';
 
 // SSE where the browser supports it; polling otherwise (tests, and anywhere

@@ -9,6 +9,10 @@ import {
   SIGNAL_RESYNC,
   type EntityChangedSignal,
 } from './signals';
+import { setKnownEntities, type EntitySet } from './entities';
+
+/** Event name for the server's entity-set announcement (live.SignalEntities). */
+export const SIGNAL_ENTITIES = 'entities' as const;
 
 /**
  * Minimal shape of the EventSource API this transport uses.
@@ -125,6 +129,15 @@ export function createSseTransport(options: SseTransportOptions = {}): LiveTrans
 
       es.addEventListener(SIGNAL_RESYNC, () => {
         emitSignal({ type: SIGNAL_RESYNC, reason: 'overflow' });
+      });
+
+      // Not a signal: it describes the stream rather than reporting a change, so
+      // it goes to the dependency checker rather than onto the bus. Arrives before
+      // the initial resync, and again on every reconnect — so a client that
+      // reconnects to a newly deployed build validates against that build's set.
+      es.addEventListener(SIGNAL_ENTITIES, (event) => {
+        const set = parse<EntitySet>(event.data);
+        if (set && Array.isArray(set.entities)) setKnownEntities(set);
       });
     },
 

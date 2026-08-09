@@ -4,6 +4,7 @@ import {
   isEntityChanged,
   isResync,
   signalMatches,
+  validateDependencies,
   type LiveDependency,
   type LiveSignal,
 } from '@/plugins/live';
@@ -233,6 +234,11 @@ export function useLiveResource<T>(
   onScopeDispose(() => {
     current.refs -= 1;
   });
+
+  // Dev-only: warn if a declared dependency names an entity no wired consumer can
+  // emit. A wrong token is otherwise invisible — the page looks live and simply
+  // never updates — which is exactly how two of six tokens were wrong in task 037.
+  validateDependencies(key, options.dependsOn);
 
   const hasValue = current.data.value !== EMPTY;
   if (options.immediate !== false && !hasValue && !current.inFlight) {
