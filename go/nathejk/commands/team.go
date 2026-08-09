@@ -2,7 +2,6 @@ package commands
 
 import (
 	"fmt"
-	"math/rand/v2"
 
 	"github.com/google/uuid"
 	"github.com/jrgensen/stream"
@@ -33,25 +32,6 @@ func NewTeam(p stream.Publisher, q teamQuerier) *team {
 		producerSlug: "hq-api",
 		yearSlug:     "2026",
 	}
-}
-
-func (c *team) Signup(teamType types.TeamType, body *messages.NathejkTeamSignedUp) error {
-	if body.TeamID == "" {
-		body.TeamID = types.TeamID(uuid.New().String())
-	}
-	if body.Pincode == "" {
-		body.Pincode = fmt.Sprintf("%d", rand.IntN(9000)+1000)
-	}
-
-	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.%s.%s.signedup", "2024", teamType, body.TeamID)))
-	msg.SetBody(body)
-	meta := messages.Metadata{Producer: "tilmelding-api"}
-	msg.SetMeta(&meta)
-
-	if err := c.p.Publish(msg); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (c *team) UpdatePatrulje(teamID types.TeamID, team Patrulje, contact Contact, members []Spejder) error {

@@ -41,9 +41,6 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodGet, "/api/orders", app.listOrdersHandler)
 	router.HandlerFunc(http.MethodGet, "/api/order/:id", app.showOrderHandler)
 
-	router.HandlerFunc(http.MethodPost, "/api/signup", app.signupHandler)
-	router.HandlerFunc(http.MethodPost, "/api/signup/pincode", app.signupPincodeHandler)
-	router.HandlerFunc(http.MethodGet, "/api/signup/:id", app.showSignupHandler)
 	router.HandlerFunc(http.MethodGet, "/api/patrulje", app.showPatruljeListHandler)
 	router.HandlerFunc(http.MethodGet, "/api/patrulje/:id", app.showPatruljeHandler)
 	router.HandlerFunc(http.MethodPut, "/api/patrulje/:id", app.updatePatruljeHandler)

@@ -2,7 +2,6 @@ package commands
 
 import (
 	"github.com/jrgensen/stream"
-	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/tables/crewmember"
 	"github.com/nathejk/shared-go/tables/section"
 	"github.com/nathejk/shared-go/types"
@@ -22,7 +21,6 @@ type Commands struct {
 	CrewMember     crewmember.Commands
 
 	Team interface {
-		Signup(types.TeamType, *messages.NathejkTeamSignedUp) error
 		UpdatePatrulje(types.TeamID, Patrulje, Contact, []Spejder) error
 		StartPatrulje(types.TeamID, []StartPatruljeMember) error
 		UpdateKlan(types.TeamID, Klan, []Senior) error
