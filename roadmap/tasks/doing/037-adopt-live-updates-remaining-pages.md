@@ -142,3 +142,13 @@ commands actually publish before settling each list:
   reading Go source. The API knows the full set of live entity tokens and could
   expose it, letting the client warn in dev about a `dependsOn` nothing can ever
   emit.
+- 2026-08-09 — Ran a throwaway SSR smoke check (not committed) to cover the one
+  thing `vue-tsc` cannot: whether each rewritten `setup()` actually *executes*.
+  Rendering each view with `@vue/server-renderer` runs setup but not `onMounted`,
+  which catches temporal-dead-zone errors and bad destructuring — a real risk here,
+  since `PostList`'s immediate watcher touches refs whose declarations had to be
+  moved above it. 8 of 9 views rendered clean; `KortView` failed only because
+  Leaflet touches `window` at import time and the committed vitest config has no
+  DOM. Deleted afterwards rather than committed: it needs `vite.config.ts` (for the
+  SFC plugin) and jsdom, which is the "component tests arrive" change
+  `vitest.config.ts` explicitly defers. Worth its own ticket if we want it standing.
