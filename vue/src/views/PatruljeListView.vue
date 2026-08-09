@@ -1,8 +1,9 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import { FilterMatchMode } from '@primevue/core/api';
 import { http } from '@/plugins/axios';
+import { useLiveResource } from '@/composables/useLiveResource';
 import PatruljeEmbeddedView, {
    rewardLevel,
    rewardLevels,
@@ -11,18 +12,36 @@ import PatruljeActiveView from '@/views/PatruljeActiveView.vue';
 
 const toast = useToast();
 
-onMounted(() => load())
-
-const patruljer = ref([])
-const load = async () => {
-  try {
+// Live, cached list. Two consequences worth knowing:
+//
+//  - Returning to this page renders from cache with no request, so navigating
+//    away and back is instant rather than a round trip.
+//  - dependsOn: ['patrulje'] is a dependency on the entity *type*, not on the ids
+//    currently loaded. That is deliberate and it is what makes a newly signed-up
+//    patrol appear: a new row has an id this client has never seen, so an
+//    instance-keyed dependency could never catch it.
+const { data, pending, error } = useLiveResource(
+  'patrulje:list',
+  async () => {
     const response = await http.get('/patrulje');
-    patruljer.value = response.data.teams.filter(p => p.name != '');
-    console.log("patruljer", patruljer)
-  } catch (error) {
-    console.log('badut list load failed', error);
-  }
-}
+    return response.data.teams.filter((p) => p.name != '');
+  },
+  { dependsOn: ['patrulje'] },
+);
+
+const patruljer = computed(() => data.value ?? []);
+
+// Keep the previous failure behaviour: the composable surfaces the error rather
+// than swallowing it, so the view decides what the operator sees.
+watch(error, (err) => {
+  if (!err) return;
+  console.log('patrulje list load failed', err);
+  toast.add({
+    severity: 'error',
+    summary: 'Kunne ikke hente patruljer',
+    life: 5000,
+  });
+});
 const filters = ref({
     'global': {value: null, matchMode: FilterMatchMode.CONTAINS},
 });
@@ -59,7 +78,7 @@ const getSeverity = (status) => {
 <template>
     <div class="card" id="patruljer">
     <a href="/api/excel/patrulje">Eksport til Excel</a>
-        <DataTable :value="patruljer" sortMode="single" sortField="lok" :sortOrder="1" :stripedRows="true" :filters="filters"
+        <DataTable :value="patruljer" :loading="pending" sortMode="single" sortField="lok" :sortOrder="1" :stripedRows="true" :filters="filters"
             v-model:expandedRows="expandedRows" dataKey="teamId" @rowExpand="onRowExpand" @rowCollapse="onRowCollapse"
         >
             <template #header>

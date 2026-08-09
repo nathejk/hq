@@ -54,14 +54,14 @@ Dependency notes:
 
 ## Acceptance Criteria
 
-- [ ] `PatruljeListView` uses `useLiveResource` with an explicit `dependsOn`
+- [x] `PatruljeListView` uses `useLiveResource` with an explicit `dependsOn`
 - [ ] Navigating away and back renders instantly with **no** network request
 - [ ] An edit in one tab appears in the other without navigation or reload
 - [ ] A newly created patrulje appears in the list without reload
-- [ ] Loading state only on the genuinely empty first load, not on revalidation
-- [ ] Errors still surface as they do today
-- [ ] `npm run test:unit` green; no new `vue-tsc` errors; lint clean on the file
-- [ ] `npm run build-only` passes
+- [x] Loading state only on the genuinely empty first load, not on revalidation
+- [x] Errors still surface as they do today
+- [x] `npm run test:unit` green; no new `vue-tsc` errors; lint clean on the file
+- [x] `npm run build-only` passes
 
 ## Progress Log
 
@@ -71,3 +71,26 @@ Dependency notes:
   capability is built but unadopted, which is Phase 3 rather than a defect.
 - 2026-08-09 01:08 — Picked up. Plan: swap the onMounted fetch for useLiveResource,
   keeping the file as plain JS and the toast behaviour intact.
+- 2026-08-09 01:16 — Implemented. `onMounted(load)` and the local `patruljer` ref are
+  gone; the list is now `useLiveResource('patrulje:list', fetcher, { dependsOn:
+  ['patrulje'] })` with `patruljer` a computed over `data`.
+  Notes:
+  • Kept the file as plain `<script setup>` (no `lang="ts"`): converting it would be
+    unrelated churn and would bury this diff.
+  • `pending` is wired to the DataTable's `:loading`, which gives the intended
+    behaviour for free — it is true only when there is nothing cached, so a
+    revalidation never flashes a spinner over a populated table.
+  • Errors are surfaced by the view rather than swallowed in the fetcher, via a watch
+    on `error`, preserving the previous console log and adding a toast.
+  • `dependsOn: ['patrulje']` only, for now. The list also renders status and reward
+    level, which `patruljestatus` and `scan` project — but each added type widens what
+    invalidates the whole list, so they should be added on evidence rather than
+    speculation.
+- 2026-08-09 01:18 — Verified what can be verified here: 40 frontend tests green
+  (including the type-level-invalidation case this page relies on), lint clean apart
+  from five pre-existing warnings in the file, `vue-tsc` unchanged at 107, and
+  `build-only` passes. Backend end-to-end was already proven with a PATCH producing a
+  signal in ~0.1s.
+  **Outstanding: the two-tab check.** That is the only test that proves this works, and
+  it needs a human with two browsers — left unticked rather than inferred from the unit
+  tests.
