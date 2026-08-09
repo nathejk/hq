@@ -1,10 +1,10 @@
 # 039 — Remove the participant signup flow from hq
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-08-09
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (zed)
+**Started:** 2026-08-09
 **Completed:**
 
 ## Description
@@ -67,3 +67,6 @@ scope here.
 - 2026-08-09 01:46 — Task created while scoping 038, after asking whether the signup
   entity belongs in this service. The projection does; the participant write flow does
   not.
+- 2026-08-09 01:52 — Picked up. Plan: map every reference first (handlers, routes,
+  what `commands.Team.Signup` and the mail template are used by elsewhere) before
+  removing anything, so the read-side projection and any shared code are left intact.
