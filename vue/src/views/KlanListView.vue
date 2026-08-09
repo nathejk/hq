@@ -1,13 +1,13 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { http } from '@/plugins/axios'
+import { useLiveResource } from '@/composables/useLiveResource'
 import draggable from 'vuedraggable'
 import Menu from 'primevue/menu'
 import LokEditArmNumber from '@/views/LokEditArmNumber.vue'
 
 const toast = useToast()
-onMounted(() => load())
 
 const users = ref([])
 const teams = ref([])
@@ -26,23 +26,68 @@ const unassignedTeams = computed(() => {
   return ua
 })
 
-const load = async () => {
-  try {
+// Live and cached, but with a guard the read-only pages do not need: this is an
+// *editor*. The LOK arrangement lives in `loks` and is only persisted when the
+// operator presses "Gem LOKs", so applying an incoming revalidation mid-edit would
+// silently throw away their work. Updates are therefore deferred while unsaved
+// changes exist, and applied on save.
+//
+// dependsOn, from the handler (showLoksHandler) and the projections behind it:
+//   lok               the assignments being edited
+//   klan              the klans listed, and the paidAmount>0 filter below
+//   senior            each klan's memberCount is a COUNT over seniors
+//   order/payment     paidAmount is derived by joining payments to orders
+//   gøgler/friend     the "Banditter" personnel offered as lok/bandit chiefs
+//   bandit            armNumber assignments, edited from this page's dialog
+const { data: lokData, error: loadError, refresh } = useLiveResource(
+  'klan:loks',
+  async () => {
     const response = await http.get('/lok')
-    teams.value = response.data.teams.filter((k) => k.paidAmount > 0)
-    users.value = response.data.users
-    for (const lok of response.data.loks) {
-      loks.value.push({
-        lokId: lok.lokId,
-        name: lok.name,
-        users: lok.userIds.map((id) => user(id)).filter((u) => u),
-        teams: lok.teamIds.map((id) => team(id)).filter((t) => t)
-      })
+    return {
+      teams: response.data.teams || [],
+      users: response.data.users || [],
+      loks: response.data.loks || []
     }
-  } catch (error) {
-    console.log('klan list load failed', error)
-  }
+  },
+  { dependsOn: ['lok', 'klan', 'senior', 'order', 'payment', 'gøgler', 'friend', 'bandit'] }
+)
+
+/** Unsaved local edits exist, so incoming data must not overwrite them. */
+const dirty = ref(false)
+
+const applyPayload = (payload) => {
+  // Rebuilt, never appended to: the previous version pushed into `loks`, which
+  // duplicated every LOK if the load ever ran twice — harmless when it only ran
+  // on mount, fatal now that revalidation is a thing.
+  teams.value = payload.teams.filter((k) => k.paidAmount > 0)
+  // Copied: with no LOKs defined, `unassignedUsers` returns this very array, and
+  // dragging out of it would splice the value held in the cache.
+  users.value = [...payload.users]
+  loks.value = payload.loks.map((lok) => ({
+    lokId: lok.lokId,
+    name: lok.name,
+    users: lok.userIds.map((id) => user(id)).filter((u) => u),
+    teams: lok.teamIds.map((id) => team(id)).filter((t) => t)
+  }))
+  dirty.value = false
 }
+
+watch(
+  lokData,
+  (payload) => {
+    if (!payload) return
+    // Deliberately dropped while dirty rather than queued: saving refetches, so
+    // the next apply comes from a payload that already includes our own changes.
+    if (dirty.value) return
+    applyPayload(payload)
+  },
+  { immediate: true }
+)
+
+watch(loadError, (err) => {
+  if (err) console.log('klan list load failed', err)
+})
+
 const save = async () => {
   try {
     const payload = { loks: [] }
@@ -55,12 +100,20 @@ const save = async () => {
       })
     }
     await http.put(`/lok`, payload)
+    dirty.value = false
     toast.add({ severity: 'success', summary: 'LOK fordeling gemt', detail: 'OK', life: 3000 })
+    // Our own PUT will arrive as a signal too, but ask directly rather than wait.
+    void refresh()
   } catch (error) {
     console.log('udate loks failed', error)
   }
 }
-const add = () => loks.value.push({ name: 'LOK ' + loks.value.length, users: [], teams: [] })
+const add = () => {
+  loks.value.push({ name: 'LOK ' + loks.value.length, users: [], teams: [] })
+  dirty.value = true
+}
+/** Any drag, rename or addition means the arrangement on screen is unsaved. */
+const markDirty = () => (dirty.value = true)
 const deleteLok = async (lok) => {
   loks.value = loks.value.filter((l) => l != lok)
   if (lok.lokId) {
@@ -252,7 +305,7 @@ const closeInplace = (expr, next) => next()
                 <template #content="{ closeCallback }">
                   <span class="inline-flex items-center gap-2">
                     <InputText v-model="lok.name" autofocus />
-                    <Button icon="pi pi-check" text severity="success" @click="closeCallback" />
+                    <Button icon="pi pi-check" text severity="success" @click="closeInplace(markDirty(), closeCallback)" />
                     <Button icon="pi pi-times" text severity="danger" @click="closeInplace((lok.name = lok._), closeCallback)" />
                   </span>
                 </template>
@@ -276,7 +329,7 @@ const closeInplace = (expr, next) => next()
             <strong v-else>Lokchefer</strong>
             <span class="font-bold sm:ml-8 px-1">{{ lok.users.length }}</span>
           </div>
-          <draggable :list="lok.users" handle=".handle" group="chief" item-key="id">
+          <draggable :list="lok.users" handle=".handle" group="chief" item-key="id" @change="markDirty">
             <template #item="{ element }">
               <div class="flex flex-wrap p-1 items-center gap-4 w-full border-b border-slate-200 last:border-0 select-none">
                 <i class="w-6 shrink-0 rounded pi pi-bars handle cursor-move"></i>
@@ -288,7 +341,7 @@ const closeInplace = (expr, next) => next()
           </draggable>
           <strong v-if="lok.teams.length > 0 || !lok.lokId">Klaner</strong>
           <div v-if="lok.teams.length == 0 && !lok.lokId" class="italic text-slate-500 pl-5">- ingen klaner -</div>
-          <draggable :list="lok.teams" handle=".handle" group="a" item-key="id">
+          <draggable :list="lok.teams" handle=".handle" group="a" item-key="id" @change="markDirty">
             <template #item="{ element }">
               <div class="flex flex-wrap px-1 items-center gap-4 w-full border-b border-slate-200 last:border-0 select-none hover:bg-slate-50">
                 <i class="w-6 shrink-0 rounded pi pi-bars handle cursor-move"></i>
@@ -311,18 +364,21 @@ const closeInplace = (expr, next) => next()
       <div class="flex gap-2 pt-2">
         <Button icon="pi pi-plus" label="Tilføj LOK" size="small" @click="add" />
         <Button icon="pi pi-send" label="Gem LOKs" size="small" @click="save" />
+        <span v-if="dirty" class="self-center text-sm italic text-amber-700">
+          Ugemte ændringer — opdateringer fra andre er sat på pause indtil du gemmer
+        </span>
       </div>
     </div>
     <div class="grid gap-2">
       <Panel toggleable header="Tilmeldte hjælpere">
-        <draggable :list="unassignedUsers" handle=".handle" group="chief" item-key="id">
+        <draggable :list="unassignedUsers" handle=".handle" group="chief" item-key="id" @change="markDirty">
           <template #item="{ element }">
             <div class="select-none"><i class="pi pi-bars handle cursor-move"></i> {{ element.name }}</div>
           </template>
         </draggable>
       </Panel>
       <Panel toggleable header="Tilmeldte klaner">
-        <draggable :list="unassignedTeams" handle=".handle" group="a" item-key="id">
+        <draggable :list="unassignedTeams" handle=".handle" group="a" item-key="id" @change="markDirty">
           <template #item="{ element }">
             <div class="select-none"><i class="pi pi-bars handle cursor-move"></i> {{ element.name }}</div>
           </template>
