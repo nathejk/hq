@@ -3,7 +3,7 @@
 **Status:** draft
 **Author:** agent session
 **Created:** 2026-08-07
-**Last updated:** 2026-08-07
+**Last updated:** 2026-08-09
 **Target users:** organizer (every operator using the HQ admin panel)
 
 ---
@@ -142,67 +142,67 @@ transport problems and are easy to reintroduce:
 
 ### Functional
 
-- [ ] `GET /api/stream` — one SSE endpoint per client, authenticated by the
+- [x] `GET /api/stream` — one SSE endpoint per client, authenticated by the
       existing JWT cookie, emitting `entity.changed` events.
-- [ ] Signal payload is entity-agnostic and data-free:
+- [x] Signal payload is entity-agnostic and data-free:
       `{"entity":"payment","id":"123","year":"2026","event":"received"}`.
-- [ ] Optional filter: `?entities=sos,patrulje` so a client receives only what it
+- [x] Optional filter: `?entities=sos,patrulje` so a client receives only what it
       renders.
-- [ ] **Year is specified when subscribing**, as a query parameter rather than a
+- [x] **Year is specified when subscribing**, as a query parameter rather than a
       header — `EventSource` cannot set headers, so the `X-YearSlug` mechanism the
       rest of the SPA uses (`vue/src/plugins/axios`, read by `YearSlug()` at
       `go/cmd/api/routes.go:102`) is unavailable here. A missing year defaults to the
       current calendar year, matching existing server behaviour; the SPA always sends
       it explicitly regardless.
-- [ ] **Switching year flushes everything.** Changing the selected year tears down the
+- [x] **Switching year flushes everything.** Changing the selected year tears down the
       stream, **clears the entire cache**, reconnects with the new year and refetches.
       No entry may survive a year change — stale cross-year data is worse than a
       brief spinner.
-- [ ] **One source of truth for the year.** The stream's query parameter and the REST
+- [x] **One source of truth for the year.** The stream's query parameter and the REST
       `X-YearSlug` header both derive from `globalstate.yearSlug`. If they can
       disagree, a client will receive signals for one year while fetching another and
       appear frozen.
-- [ ] Heartbeat comment every ~20s to survive Traefik's idle timeout.
-- [ ] Signals are derived generically from the message subject
+- [x] Heartbeat comment every ~20s to survive Traefik's idle timeout.
+- [x] Signals are derived generically from the message subject
       (`NATHEJK.{year}.{entity}.{id}.{event}`) — no per-entity code.
-- [ ] Signals are emitted **only after** the projection has applied the event.
-- [ ] Signals are coalesced per `(entity, id)` over a short window (~50–100ms).
-- [ ] Subject shapes that carry no id degrade to a coarser signal rather than
+- [x] Signals are emitted **only after** the projection has applied the event.
+- [x] Signals are coalesced per `(entity, id)` over a short window (~50–100ms).
+- [x] Subject shapes that carry no id degrade to a coarser signal rather than
       mis-parsing: year-level `NATHEJK.{year}.created|updated`
       (`table/year/consumer.go:21`) and collection-level
       `NATHEJK.{year}.checkgroups.sorted` (`table/checkgroup/consumer.go:25`).
       Event names may contain dots (`status.changed`, `armNumber.assigned`), so
       the event is everything after the id.
-- [ ] No staleness or replay UI is required, because the API only ever serves a
+- [x] No staleness or replay UI is required, because the API only ever serves a
       caught-up read model (§8 "Boot and readiness"). The client distinguishes
       *connected* from *unavailable*, not *fresh* from *stale*.
-- [ ] Client primitive — `useLiveResource(key, fetcher)` or equivalent — owning a
+- [x] Client primitive — `useLiveResource(key, fetcher)` or equivalent — owning a
       cache entry, subscribing to signals for its key, and exposing explicit
       `data` / `pending` / `error` state. No page implements its own cache.
-- [ ] A resource declares **what it depends on — entity types and/or specific
+- [x] A resource declares **what it depends on — entity types and/or specific
       instances** (`dependsOn: ['sos']`, `dependsOn: ['sos:123', 'sos_activity']`), not
       just its own key, so lists and derived aggregates revalidate when *any* member of
       a type changes (§8 "Dependencies: ids are not enough"). Without this, new rows
       never appear and computed figures never move.
-- [ ] `dependsOn` is a **mandatory** argument, even when empty. A missing dependency
+- [x] `dependsOn` is a **mandatory** argument, even when empty. A missing dependency
       fails silently — a figure that never updates, with no error anywhere — so the
       decision must be visible at every call site and in review.
-- [ ] Cache survives navigation (module-level state) and renders immediately on
+- [x] Cache survives navigation (module-level state) and renders immediately on
       return, revalidating in the background (stale-while-revalidate).
-- [ ] Spinner shown only when there is no cached value at all.
-- [ ] Connection state (`live` / `reconnecting` / `polling` / `offline`) is
+- [x] Spinner shown only when there is no cached value at all.
+- [x] Connection state (`live` / `reconnecting` / `polling` / `offline`) is
       exposed to the UI and displayed somewhere persistent.
-- [ ] Optimistic write helper so a page can apply the operator's own change
+- [x] Optimistic write helper so a page can apply the operator's own change
       immediately and reconcile when the signal arrives.
-- [ ] Transport sits behind a small interface with a polling implementation, so
+- [x] Transport sits behind a small interface with a polling implementation, so
       SSE can be swapped in or out without touching a page. The interface must
       express both semantics: SSE reports **what** changed, polling can only say
       **something might have** — so the polling implementation revalidates every
       mounted resource on an interval, and the primitive must behave correctly under
       both.
-- [ ] A `deleted` signal, or a revalidation that 404s, **evicts** the cache entry
+- [x] A `deleted` signal, or a revalidation that 404s, **evicts** the cache entry
       rather than surfacing an error.
-- [ ] Per-client buffering is bounded, and on overflow the backlog collapses into a
+- [x] Per-client buffering is bounded, and on overflow the backlog collapses into a
       single `resync` signal rather than dropping invalidations. A client must never
       end up silently stale.
 
@@ -638,21 +638,22 @@ API instance and holds only connected clients and a short coalescing buffer.
 Proposed tasks for `roadmap/tasks/open/`:
 
 - [ ] Task: Spike — verify SSE on the **production path** (Traefik → Go: idle timeout, no buffering middleware, basic auth transparent, heartbeat interval)
-- [ ] Task: Spike — verify SSE on the **dev path** (Traefik → Vite → Go); a dev-only stall is an annoyance, not a design failure
-- [ ] Task: Frontend — transport interface + polling implementation
-- [ ] Task: Frontend — `useLiveResource` primitive: keyed cache, mandatory `dependsOn` (types + instances), stale-while-revalidate, explicit loading states
-- [ ] Task: Frontend — year switch: tear down stream, clear cache, reconnect, refetch (single source of truth: `globalstate.yearSlug`)
-- [ ] Task: Frontend — optimistic write helper + reconciliation on signal
-- [ ] Task: Frontend — connection-state indicator (live / reconnecting / polling / unavailable)
+- [x] Task: Spike — verify SSE on the **dev path** (Traefik → Vite → Go); a dev-only stall is an annoyance, not a design failure
+- [x] Task: Frontend — transport interface + polling implementation
+- [x] Task: Frontend — `useLiveResource` primitive: keyed cache, mandatory `dependsOn` (types + instances), stale-while-revalidate, explicit loading states
+- [x] Task: Frontend — year switch: tear down stream, clear cache, reconnect, refetch (single source of truth: `globalstate.yearSlug`)
+- [x] Task: Frontend — optimistic write helper + reconciliation on signal
+- [x] Task: Frontend — connection-state indicator (live / reconnecting / polling / unavailable)
 - [ ] Task: Frontend — `KeepAlive` on list views + route-chunk preload
-- [ ] Task: BFF — generic subject → signal parser (incl. id-less and dotted-event shapes)
-- [ ] Task: BFF — `notify(hub, consumer)` decorator emitting after successful `HandleMessage`, with per-`(entity,id)` coalescing
-- [ ] Task: BFF — SSE hub + `GET /api/stream`: mounted **outside** the `Metrics` middleware, `http.NewResponseController` for flushing, `?entities=` + `?year=` params, heartbeats
-- [ ] Task: BFF — hub internals: central coalescing, bounded per-client buffers, overflow → `resync`, write deadlines
-- [ ] Task: Frontend — handle `resync` (revalidate everything held) and dispatch on the SSE `event:` name so new signal types are additive
-- [ ] Task: BFF — wire existing consumers through `notify` (patrulje, klan, payment, order, lok, section, scan, …)
+- [x] Task: BFF — generic subject → signal parser (incl. id-less and dotted-event shapes)
+- [x] Task: BFF — `notify(hub, consumer)` decorator emitting after successful `HandleMessage`, with per-`(entity,id)` coalescing
+- [x] Task: BFF — SSE hub + `GET /api/stream`: mounted **outside** the `Metrics` middleware, `http.NewResponseController` for flushing, `?entities=` + `?year=` params, heartbeats
+- [x] Task: BFF — hub internals: central coalescing, bounded per-client buffers, overflow → `resync`, write deadlines
+- [x] Task: Frontend — handle `resync` (revalidate everything held) and dispatch on the SSE `event:` name so new signal types are additive
+- [x] Task: BFF — wire existing consumers through `notify` (patrulje, klan, payment, order, lok, section, scan, …)
 - [ ] Task: Upstream — report `xstream.MuxBlockUntilLive()` as a no-op (implement or remove); flag it to whoever builds the boot gate
-- [ ] Task: Adopt on SOS (PRD 001), then betalinger, patruljer, klaner, poster
+- [x] Task: Frontend — the API advertises the entity tokens it can emit (`entities` frame) and the SPA warns in dev about a `dependsOn` nothing can satisfy (task 040)
+- [ ] Task: Adopt on SOS (PRD 001), then ~~betalinger, patruljer, klaner, poster~~ — **all but SOS done** (tasks 036, 037: patruljer, betalinger, poster, badutter, klaner, kort, forsiden, patrulje detail, active scan trail). SOS waits on PRD 001 being built.
 
 ## 11. Open Questions
 
@@ -673,13 +674,35 @@ Proposed tasks for `roadmap/tasks/open/`:
   describe does not exist in the running Traefik — hq defines a repo-scoped
   `hq-redirect-to-https` instead. Decide whether to add the shared one to the infra repo
   and switch back.
-- **Confirmed working end to end (task 036).** The patrulje list composes
+- **Confirmed working end to end (tasks 036 and 037).** The patrulje list composes
   `useLiveResource`; an edit in one browser tab appears in another without navigation,
-  and returning to the page costs no request. Adoption on the remaining pages is task
-  037.
-- **Filtering granularity.** Is `?entities=` enough, or do clients need per-id
-  subscriptions for high-volume entities like scans? Prefer the simple version
-  until measurement says otherwise.
+  and returning to the page costs no request. Task 037 rolled this out to eight more
+  views — betalinger, poster, badutter, klaner, kort, forsiden, the patrulje detail and
+  the active-patrulje scan trail — all confirmed in two tabs by the user.
+
+  Two of those needed a guard the read-only pages did not: **kort** and **klaner** hold
+  unsaved operator state (dirty marker positions; an unsaved LOK arrangement), so a
+  background revalidation would have destroyed work in progress. Both defer incoming
+  payloads while dirty and apply them when the edit ends, and klaner says so on screen.
+  That is the pattern for any future editor — the mechanical three-line adoption only
+  suits pages that own no unsaved state.
+- **~~Filtering granularity~~ — answered by measurement (task 037), and the simple
+  version wins.** The fear was that depending on scans would revalidate continuously
+  during a checkpoint rush. Measured: the busiest minute in the existing scan data is
+  **17 scans** (2025-09-20 13:45), and the endpoints involved answer in **~3.5ms**
+  (`/checkgroups`, 10KB) and **~3.4ms** (`/patrulje/{id}/scans`, 5.5KB). That is about a
+  third of a request per second per open page, so `?entities=` is more than enough and
+  per-id subscriptions are not needed. Poster and the active-patrulje trail both depend
+  on scans directly. Revisit if either number moves by an order of magnitude.
+- **A token that cannot fire is now caught (task 040), which was the real risk in
+  `dependsOn` — not granularity.** Two of six tokens in task 037's plan were wrong
+  (`scan` for `qr`, `personnel` for `gøgler`/`friend`/`bandit`), and a wrong token fails
+  silently: the page looks live and never updates. The API now advertises the tokens
+  derivable from its wired consumers, as an `entities` frame on connect, and the SPA
+  warns in dev. The set reports whether it is **exhaustive**, because five consumers
+  subscribe with a wildcard entity — so the warning is advisory rather than a gate.
+  Narrowing those subscriptions would make it definitive, if it ever produces a false
+  positive.
 - **Coalescing window.** 50–100ms is a guess. Long enough to collapse bursts,
   short enough to feel instant — worth tuning against a real event replay.
 - **`Last-Event-ID`: recommend deciding *against* it now.** `Message.Sequence()` makes
