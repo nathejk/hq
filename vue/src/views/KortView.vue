@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { http } from '@/plugins/axios'
+import { useLiveResource } from '@/composables/useLiveResource'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -110,37 +111,90 @@ const haversineKm = (lat1: number, lon1: number, lat2: number, lon2: number): nu
 // ---------------------------------------------------------------------------
 // Load checkgroups + checkpoints from API
 // ---------------------------------------------------------------------------
-const loadCheckgroups = async () => {
-  try {
+//
+// This page is live and cached like the others, but it cannot simply re-render on
+// new data: markers are placed imperatively on the Leaflet map, and edit mode holds
+// unsaved positions. So the resource is the source of truth and `applyPayload`
+// re-projects it onto the map, with two rules that matter:
+//
+//   - Nothing is applied while editing. An incoming revalidation would otherwise
+//     discard the operator's unsaved marker positions, which is far worse than
+//     briefly showing older data. The payload is applied when edit mode ends.
+//   - The map is fitted to the checkpoints only on the first apply, so a later
+//     update does not yank the viewport out from under someone.
+//
+// The payload is cloned before use because dragging mutates cp.latitude/longitude
+// in place; mutating the cached value would corrupt it for the next reader.
+const { data: kortData, error: kortError, refresh: refreshCheckgroups } = useLiveResource(
+  'kort:checkgroups',
+  async () => {
     const rsp = await http.get('/checkgroups', { withCredentials: true })
-    if (rsp.status === 200) {
-      const cgs: Checkgroup[] = rsp.data.checkgroups ?? []
-      const cps: Checkpoint[] = rsp.data.checkpoints ?? []
-      cgs.forEach((cg) => {
-        cg.checkpoints = cps.filter((cp) => cp.checkgroupId === cg.id)
-      })
-      checkgroups.value = cgs
-
-      // Place markers for checkpoints that already have coordinates
-      const bounds: L.LatLng[] = []
-      cgs.forEach((cg) => {
-        cg.checkpoints.forEach((cp) => {
-          if (cp.latitude && cp.longitude) {
-            placeMarker(cp, [cp.latitude, cp.longitude])
-            bounds.push(L.latLng(cp.latitude, cp.longitude))
-          }
-        })
-      })
-
-      // Fit the map to show all positioned checkpoints
-      if (bounds.length > 0 && map) {
-        const latLngBounds = L.latLngBounds(bounds)
-        map.fitBounds(latLngBounds, { padding: [50, 50], maxZoom: 15 })
-      }
+    return {
+      checkgroups: (rsp.data.checkgroups ?? []) as Checkgroup[],
+      checkpoints: (rsp.data.checkpoints ?? []) as Checkpoint[]
     }
-  } catch (err) {
-    console.error('Failed to load checkgroups', err)
+  },
+  { dependsOn: ['checkgroup', 'checkgroups', 'checkpoint'] }
+)
+
+watch(kortError, (err) => {
+  if (err) console.error('Failed to load checkgroups', err)
+})
+
+/** A payload arrived while editing and still needs applying. */
+let applyDeferred = false
+/** The map has been fitted once; later applies leave the viewport alone. */
+let fitted = false
+
+const applyPayload = (payload: { checkgroups: Checkgroup[]; checkpoints: Checkpoint[] }) => {
+  if (!map) return
+
+  const cgs: Checkgroup[] = structuredClone(payload.checkgroups)
+  const cps: Checkpoint[] = structuredClone(payload.checkpoints)
+  cgs.forEach((cg) => {
+    cg.checkpoints = cps.filter((cp) => cp.checkgroupId === cg.id)
+  })
+
+  // Drop every existing marker: a checkpoint may have been deleted or moved by
+  // someone else, and placeMarker only replaces the ones it is given.
+  markers.forEach((marker) => marker.remove())
+  markers.clear()
+
+  checkgroups.value = cgs
+
+  const bounds: L.LatLng[] = []
+  cgs.forEach((cg) => {
+    cg.checkpoints.forEach((cp) => {
+      if (cp.latitude && cp.longitude) {
+        placeMarker(cp, [cp.latitude, cp.longitude])
+        bounds.push(L.latLng(cp.latitude, cp.longitude))
+      }
+    })
+  })
+
+  if (!fitted && bounds.length > 0) {
+    map.fitBounds(L.latLngBounds(bounds), { padding: [50, 50], maxZoom: 15 })
+    fitted = true
   }
+}
+
+/** Project the current payload onto the map, unless editing or not yet mounted. */
+const syncMap = () => {
+  const payload = kortData.value
+  if (!payload || !map) return
+  if (editMode.value) {
+    applyDeferred = true
+    return
+  }
+  applyDeferred = false
+  applyPayload(payload)
+}
+
+watch(kortData, () => syncMap())
+
+/** Called when edit mode ends, to pick up anything that arrived meanwhile. */
+const syncMapIfDeferred = () => {
+  if (applyDeferred) syncMap()
 }
 
 // ---------------------------------------------------------------------------
@@ -411,6 +465,9 @@ const cancelEditMode = () => {
 
   // Clear route lines
   clearRouteLines()
+
+  // Pick up anything that changed while we were editing.
+  syncMapIfDeferred()
 }
 
 const saveChanges = async () => {
@@ -420,6 +477,7 @@ const saveChanges = async () => {
       marker.dragging?.disable()
     })
     clearRouteLines()
+    syncMapIfDeferred()
     return
   }
 
@@ -466,6 +524,10 @@ const saveChanges = async () => {
 
     // Clear route lines
     clearRouteLines()
+
+    // Our own PUTs will come back as signals too, but revalidate directly rather
+    // than waiting for the round trip through the stream.
+    void refreshCheckgroups()
   } catch (err) {
     console.error('Failed to save checkpoint positions', err)
     alert('Der opstod en fejl under gem af positioner. Prøv igen.')
@@ -572,7 +634,9 @@ onMounted(async () => {
   map.on('movestart', hideContextMenu)
   document.addEventListener('click', onDocumentClick)
 
-  await loadCheckgroups()
+  // The data may already be cached, in which case this renders the map with no
+  // request at all; otherwise the watcher applies it when the fetch resolves.
+  syncMap()
 })
 
 onBeforeUnmount(() => {

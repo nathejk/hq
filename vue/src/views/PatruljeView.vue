@@ -97,7 +97,7 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
 
 <template>
     <div class="card" id="patruljer">
-        <h1 class="font-nathejk text-2xl">{{ patrulje.number | '&times;' }} - &times; {{ patrulje.name }}</h1>
+        <h1 class="font-nathejk text-2xl">{{ patrulje.number || '×' }} - {{ patrulje.name }}</h1>
 
         <Button label="Tilmelding" icon="pi pi-external-link" iconPos="right" @click="linkToSignUp" />
 
