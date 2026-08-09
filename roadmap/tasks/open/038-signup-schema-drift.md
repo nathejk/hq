@@ -33,18 +33,45 @@ an existing table, so the two added columns were never applied, and nothing repa
 it: `signup`'s `New()` does not call `cqrs.EnsureColumn` — only `order` and `product`
 do.
 
+### Does hq even need this entity?
+
+Asked, and worth the answer, because it changes the fix. Two halves, with opposite
+verdicts:
+
+**The read model is genuinely used by hq** — for team contact details:
+
+- `export.go` (3 sites) — Excel exports of klaner, patruljer and personnel read
+  `signup.EmailPending` / `signup.PhonePending`
+- `mail.go:88` and `klan.go:226` — resolving recipients
+
+So hq legitimately consumes signup events. Keep the projection.
+
+**The write endpoints look like another service's job.** `POST /api/signup`,
+`POST /api/signup/pincode` and `GET /api/signup/:id` implement the participant
+registration flow — including sending the verification mail — and **nothing in the SPA
+calls them**: `grep -rn signup vue/src` finds only `signupStatus` (a field on
+patrulje/klan) and `signupStart` (year config). That flow belongs to tilmelding. Task
+039 covers removing them; not this ticket.
+
+That split also explains the drift: hq's table predates columns added for *tilmelding's*
+needs. `secret` is a verification-flow concern hq never reads, and hq's only query is
+`GetByID(teamId)` with no year filter — yet the shared entity writes both, so hq's
+table must have them.
+
 ### Impact
 
-Worse than noisy logs:
+Measured rather than assumed, and less bad than first stated — but a trap:
 
-- **No signup has been projected since the columns were added.** The INSERT fails
-  outright, so the row never appears. The table holds 1345 rows from the last time the
-  projection worked, newest `createdAt` 2026-07-30 — it looks populated, which is why
-  this went unnoticed.
-- Anything reading the signup read model is therefore working from stale data —
-  `GET /api/signup/:id`, pincode verification, and the signup flow generally.
+- **No current team is missing.** `patrulje`/`klan` LEFT JOIN `signup` shows 0 orphans
+  of 718 and 230. The 1345 existing rows predate the drift and cover everything.
+- **But nothing lands any more.** The `INSERT … ON DUPLICATE KEY UPDATE` fails on the
+  `year` column, so it is not only new signups that are lost — the `UPDATE` half never
+  applies either. A team that corrects its email or phone after the drift began is
+  invisible to hq's mail and exports.
+- So the damage is *pending*, not historical: the next signup or contact change during
+  an event silently does not reach hq. That is worse than a visible gap.
 - It repeats on every boot, because projections replay the whole stream each time.
-- **Production is unverified.** If its table also predates the columns, it has the same
+- **Production is unverified.** If its table also predates the columns it has the same
   break. Check before assuming dev-only.
 
 ## Options
@@ -77,3 +104,10 @@ Recommended: (1) as the fix, with (2) as the immediate unblock in dev. They comp
 
 - 2026-08-09 01:34 — Task created. Found while verifying 033; evidence gathered by
   comparing `SHOW COLUMNS FROM signup` against `shared-go/tables/signup/table.sql`.
+- 2026-08-09 01:42 — Scoped after asking whether hq should own this entity at all.
+  Answer: keep the projection (exports and mail read it), drop the write endpoints
+  (nothing in the SPA calls them — task 039). Impact re-measured: no current team is
+  missing a signup row, so this is a pending failure rather than historical data loss —
+  the ON DUPLICATE KEY UPDATE half also never applies, so a contact-detail change after
+  the drift is invisible to hq. Corrects the overstated "no signup has been projected"
+  claim in the original description.
