@@ -1,10 +1,10 @@
 # 037 — Adopt live updates on the remaining pages
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-08-09
-**Picked up by:**
-**Started:**
+**Picked up by:** agent
+**Started:** 2026-08-09
 **Completed:**
 
 ## Description
@@ -61,3 +61,13 @@ commands actually publish before settling each list:
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-09 01:28 — Task created after 036 proved the pattern in two tabs.
+- 2026-08-09 — Picked up. Confirmed the entity tokens against the consumers rather
+  than guessing: shared-go publishes/consumes `order`, `payment`, `klan` (see
+  `../shared-go/tables/*/consumer.go` `Consumes()`), so those tokens are right.
+  Plan: betalinger first (pure read-only list), then poster, then badutter, then
+  the patrulje detail; `KortView` last.
+  **Caveat found on "klaner":** the `/klan` route renders `KlanListView`, which is
+  not a list but the LOK drag-and-drop editor holding *unsaved* local state until
+  the operator presses save. A background revalidation there would silently
+  discard an in-progress arrangement, which is worse than being stale. Handled
+  separately below rather than mechanically.
