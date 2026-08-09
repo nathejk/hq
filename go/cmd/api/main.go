@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"runtime"
+	"strings"
 	"time"
 
 	// Embed the timezone database in the binary. The code calls
@@ -100,6 +101,11 @@ type application struct {
 	// live fans read-model changes out to connected browsers. Not configuration,
 	// so it is a dependency rather than a config field.
 	live *live.Hub
+
+	// liveEntities is the set of entity tokens the stream can emit, advertised to
+	// each client so a mistyped or invented dependency can be reported instead of
+	// failing silently. Derived from the wired consumers; see task 040.
+	liveEntities *live.EntitySet
 }
 
 func main() {
@@ -234,6 +240,15 @@ func main() {
 		mux.AddConsumer(consumer)
 	}
 
+	// Which entity tokens the stream can possibly emit — derived from the same slice,
+	// so the advertisement cannot describe a different stream from the one served.
+	// The SPA uses it to warn (in dev) about a dependency nothing can ever satisfy.
+	liveEntities := live.EntitiesFrom(projections...)
+	logger.PrintInfo("Live entities advertised", map[string]string{
+		"entities":   strings.Join(liveEntities.Entities, ","),
+		"exhaustive": fmt.Sprintf("%t", liveEntities.Exhaustive),
+	})
+
 	//mux.AddConsumer(table.NewSpejder(writer), table.NewSpejderStatus(writer))
 	if err := mux.Run(context.Background()); err != nil {
 		logger.PrintFatal(err, nil)
@@ -265,16 +280,17 @@ func main() {
 		JsonApi: app.JsonApi{
 			Logger: logger,
 		},
-		db:        db,
-		config:    cfg,
-		payment:   payment,
-		models:    models,
-		publisher: publisher,
-		commands:  cmds,
-		mailer:    mailer.NewFromConfig(cfg.smtp),
-		sms:       smsclient,
-		logger:    logger,
-		live:      livehub,
+		db:           db,
+		config:       cfg,
+		payment:      payment,
+		models:       models,
+		publisher:    publisher,
+		commands:     cmds,
+		mailer:       mailer.NewFromConfig(cfg.smtp),
+		sms:          smsclient,
+		logger:       logger,
+		live:         livehub,
+		liveEntities: &liveEntities,
 	}
 	logger.PrintInfo("Application initialized", nil)
 

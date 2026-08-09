@@ -275,3 +275,62 @@ func TestStreamUnsubscribesWhenClientDisconnects(t *testing.T) {
 	}
 	t.Errorf("ClientCount() = %d after disconnect, want 0", hub.ClientCount())
 }
+
+// The announcement must arrive before the initial resync. A client that validated
+// its dependencies only when the set arrived would otherwise have already reacted to
+// signals it could not check.
+func TestStreamAnnouncesEntitiesBeforeAnySignal(t *testing.T) {
+	hub := newTestHub(t)
+	set := EntitySet{Entities: []string{"klan", "qr"}, Exhaustive: false}
+	srv := serve(t, StreamHandler{
+		Hub:         hub,
+		DefaultYear: func() string { return "2026" },
+		Entities:    &set,
+	})
+
+	resp, err := http.Get(srv.URL + "/api/stream")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	r := bufio.NewReader(resp.Body)
+
+	event, data := readEvent(t, r)
+	if event != SignalEntities {
+		t.Fatalf("first event = %q, want %q", event, SignalEntities)
+	}
+
+	var got EntitySet
+	if err := json.Unmarshal([]byte(data), &got); err != nil {
+		t.Fatalf("unmarshalling %q: %v", data, err)
+	}
+	if len(got.Entities) != 2 || got.Entities[0] != "klan" || got.Entities[1] != "qr" {
+		t.Errorf("entities = %q, want [klan qr]", got.Entities)
+	}
+	// Round-tripping this matters: a client that read a non-exhaustive set as
+	// exhaustive would reject dependencies that are in fact legitimate.
+	if got.Exhaustive {
+		t.Error("exhaustive = true, want false to survive the wire")
+	}
+
+	if event, _ := readEvent(t, r); event != SignalResync {
+		t.Errorf("second event = %q, want %q", event, SignalResync)
+	}
+}
+
+// A handler with no set configured must stream exactly as before, so the
+// announcement is additive rather than required.
+func TestStreamWithoutEntitiesAnnouncesNothing(t *testing.T) {
+	hub := newTestHub(t)
+	srv := serve(t, StreamHandler{Hub: hub, DefaultYear: func() string { return "2026" }})
+
+	resp, err := http.Get(srv.URL + "/api/stream")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if event, _ := readEvent(t, bufio.NewReader(resp.Body)); event != SignalResync {
+		t.Errorf("first event = %q, want %q", event, SignalResync)
+	}
+}

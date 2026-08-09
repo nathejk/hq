@@ -33,6 +33,18 @@ type StreamHandler struct {
 	// rather than computed here so this package needs no opinion about what
 	// "current" means, and so tests are not time-dependent.
 	DefaultYear func() string
+
+	// Entities, when set, is announced to each client on connect as an `entities`
+	// frame, before any signal.
+	//
+	// Sent on the stream rather than served from a route of its own: it costs no
+	// extra request, arrives before the signals it describes, and is refreshed
+	// automatically on every reconnect — so a client that reconnects to a newly
+	// deployed build cannot keep validating against the old build's set.
+	//
+	// Optional: a nil set simply announces nothing, and a client that never
+	// receives one skips the check.
+	Entities *EntitySet
 }
 
 // ServeHTTP streams until the client disconnects.
@@ -41,7 +53,7 @@ type StreamHandler struct {
 //	@Description	Server-Sent Events stream of invalidation signals. Each event names
 //	@Description	an entity that changed; the client refetches it over the normal REST
 //	@Description	endpoints. Carries no entity data, so it needs no authorisation model
-//	@Description	of its own. Event names: `entity.changed`, `resync`.
+//	@Description	of its own. Event names: `entity.changed`, `resync`, `entities`.
 //	@Tags			live
 //	@Produce		text/event-stream
 //	@Param			year		query	string	false	"Event year; defaults to the current year"
@@ -87,6 +99,16 @@ func (h StreamHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	flush := func() { _ = rc.Flush() }
 	flush()
+
+	// Announced before subscribing, so it precedes the initial resync and every
+	// signal. A client validating its declared dependencies therefore has the set
+	// in hand before the first thing it might have to refetch.
+	if h.Entities != nil {
+		if err := writeEntities(w, *h.Entities); err != nil {
+			return
+		}
+		flush()
+	}
 
 	signals := h.Hub.Subscribe(r.Context(), filter)
 
@@ -160,5 +182,22 @@ func writeEvent(w http.ResponseWriter, s Signal) error {
 		return err
 	}
 	_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", s.Type, payload)
+	return err
+}
+
+// SignalEntities is the event name for the entity-set announcement.
+//
+// Not a Signal: it describes the stream rather than reporting a change, and forcing
+// a list into Signal's (entity, id) shape would make Signal mean two things. A
+// client that does not know this event name ignores it, which is why adding it is
+// not a breaking change.
+const SignalEntities = "entities"
+
+func writeEntities(w http.ResponseWriter, set EntitySet) error {
+	payload, err := json.Marshal(set)
+	if err != nil {
+		return err
+	}
+	_, err = fmt.Fprintf(w, "event: %s\ndata: %s\n\n", SignalEntities, payload)
 	return err
 }

@@ -22,5 +22,8 @@ func (app *application) streamHandler() http.Handler {
 		DefaultYear: func() string {
 			return time.Now().Format("2006")
 		},
+		// Derived once at wiring time from the same consumers the hub is fed by,
+		// so it cannot describe a stream different from the one being served.
+		Entities: app.liveEntities,
 	}
 }
