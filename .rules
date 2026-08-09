@@ -28,6 +28,10 @@ MySQL (MariaDB) as the read-model store, a single Go HTTP API, and a Vue 3 SPA f
                                                    └────────────────────┘
 ```
 
+One arrow is missing above for legibility: the API also pushes **invalidation signals**
+back to the SPA over SSE (`GET /api/stream`), which is what keeps every page live — see
+*Live Updates (SSE)* below.
+
 ### Write Side (Commands)
 1. HTTP handler receives a request.
 2. Calls a command method (e.g. `commands.Team.Signup(...)`, `commands.Year.Update(...)`).
@@ -40,6 +44,16 @@ Each `nathejk/table/*` package implements `streaminterface.Consumer`:
 - On startup, JetStream ordered consumers replay all events to rebuild the read model.
 
 The `xstream.Mux` wires consumers to the stream and routes messages to the appropriate handler.
+
+### Live Updates (SSE)
+Every projection in the `projections` slice in `cmd/api/main.go` is wrapped by
+`live.NotifyAll`, so applying an event also tells connected browsers to refetch. The
+signal is derived from the event subject and carries **no entity data** — the client
+refetches over the normal REST endpoint, which keeps one serialization path and needs
+no separate authorisation model. One SSE endpoint (`GET /api/stream`) serves all of it.
+
+This makes every entity live, present and future, with no per-entity code. See
+*Coding Conventions → Live updates* for what is required when adding a page or entity.
 
 ### Event Subjects
 Pattern: `NATHEJK.{year}.{entityType}.{entityId}.{event}`
@@ -219,19 +233,57 @@ Vite proxies `/api/*` to `http://api` (the Go service inside Docker).
 
 ## Coding Conventions
 
+### Live updates — required for every new page and entity
+
+The SPA stays current without refreshing, and renders instantly on navigation, via one
+mechanism (PRD 004, `go/internal/live/` + `vue/src/plugins/live/`). It is
+entity-agnostic, so **new work is expected to use it rather than opt into it.** A page
+that fetches on mount and never updates is a regression, not a starting point.
+
+**Backend — a new projection becomes live by being wired, not by new code:**
+- Add every new consumer to the `projections` slice in `cmd/api/main.go`. It is wrapped
+  by `live.NotifyAll`, which emits a signal after `HandleMessage` returns nil. A
+  consumer added to the mux *outside* that slice silently emits nothing.
+- Signals are derived from the event subject alone, so a new entity needs no
+  per-entity signalling code and appears automatically in the advertised token set.
+- Never publish signals from a second, independent subscriber: the decorator exists so
+  a signal cannot precede the write it announces.
+
+**Frontend — new views compose the cache primitive; they do not fetch on mount:**
+- Load data with `useLiveResource(key, fetcher, { dependsOn })` — not `onMounted` +
+  `http.get` into a local `ref`.
+- `dependsOn` is **mandatory**, and the token is the event *subject's* entity, **not**
+  the projection's name or the UI's: scans are `qr` (not `scan`), personnel are
+  `gøgler` / `friend` / `bandit` (there is no `personnel` token). Check the
+  projection's `Consumes()` — or just run it: the SPA warns in the dev console about a
+  dependency nothing can emit.
+- Lists, counts and other derived aggregates depend on entity **types**; that is what
+  makes new rows appear, since a new row's id was never seen. Detail views depend on
+  the **instance** (`patrulje:{id}`) so one record's change does not refetch every open
+  page — *plus* types for anything the endpoint joins in (members, orders, payments).
+- Wire `pending` to the table's `:loading`. Do not add your own spinner: `pending` is
+  true only when nothing is cached, so a revisited page must not flash.
+- **A page holding unsaved state must not be updated underneath the operator.** Editors,
+  forms and drag-and-drop reorders defer incoming payloads while dirty and apply them
+  when the edit ends — see `KlanListView.vue` and `KortView.vue` — and should say on
+  screen that updates are paused. The three-line adoption suits read-only pages only.
+
 ### Go
 - Single service binary at `cmd/api/`
 - Each table projection follows a consistent structure: `table.go`, `consumer.go`, `query.go`, `commands.go`, `table.sql`, `filter.go`
+- New projections must be added to the `projections` slice in `main.go` (see Live updates above)
 - SQL schemas embedded via `//go:embed table.sql`
 - Domain events carry `eventId`, `correlationId`, `causationId` for tracing
-- Commands perform dirty-checking against read model before publishing events
+- Commands perform dirty-checking against read model before publishing events — so a no-op write publishes nothing and emits no live signal
 - Use `goqu` query builder for newer modules; raw SQL for older ones
 - MySQL-specific SQL: `INSERT ... ON DUPLICATE KEY UPDATE`, `IF()`, `?` placeholders
+- `CREATE TABLE IF NOT EXISTS` never alters an existing table, so adding a column to a `table.sql` has no effect where the table already exists. Harmless in stage/prod (database cleared before deploy), silent in dev
 
 ### Vue / TypeScript
 - Use `<script setup>` (Composition API) for all components
 - PrimeVue components are auto-imported (no manual imports needed)
 - State management: prefer composables with module-level `ref()` for shared state; use local `ref()` per view for component data
+- Data loading goes through `useLiveResource` (see Live updates above); a bare `http.get` in `onMounted` is for something genuinely one-shot
 - API calls via `http.get/post/put/patch/delete` from `src/plugins/axios`
 - Lazy-load all routes except HomeView
 - Danish locale for date formatting (`da-DK`)
