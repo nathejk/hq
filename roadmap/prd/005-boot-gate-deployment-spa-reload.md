@@ -3,7 +3,7 @@
 **Status:** draft — skeleton, to be filled in
 **Author:** agent session (captured from the PRD 001/004 design discussion)
 **Created:** 2026-08-07
-**Last updated:** 2026-08-07
+**Last updated:** 2026-08-09
 **Target users:** organizer (indirectly — every operator using the HQ panel), plus
 whoever operates deployments
 
@@ -157,6 +157,11 @@ needed.
       reattaches to its own read model instead of creating a new one.
 - [ ] Dev pins to a single fixed database name — `init-dev` restarts on every file
       change and must not create a database per restart.
+- [ ] **Dev recreates its schema on boot** (drops its projection tables or its
+      database), so it does not become the one environment where projection schema
+      drift survives. Nearly free: dev already replays the whole stream on every
+      start. Must be explicitly opted into, never inferred from a missing
+      `BUILD_NUMBER`, so it cannot fire outside dev.
 - [ ] Old build databases are cleaned up, retaining at least the current and the
       previous build.
 - [ ] A new version is fully caught up before it receives traffic.
@@ -261,6 +266,15 @@ per server, so a database is owned by exactly one process at a time. Blue/green
 means two *different builds* coexisting briefly, each with its own database — not
 two instances of the same build.
 
+**Why today's practice cannot simply continue.** Stage and prod currently *clear the
+read-model database before deploy*, which is what makes projection schema changes free
+there today. That works only because a deploy is stop-then-start: nothing is serving
+while the schema is recreated. Blue/green removes that assumption — clearing a shared
+database would destroy the read model the **outgoing** build is still serving traffic
+from. So per-build databases are not an alternative to clearing; they are what lets the
+clearing habit survive the move to zero-downtime deploys, by giving each build its own
+empty database instead of emptying a shared one.
+
 #### Naming
 
 Derive from the build, e.g. `hq_<build>`. Details to settle:
@@ -304,14 +318,80 @@ follows.
 Today `CREATE TABLE IF NOT EXISTS` does nothing to an existing table, so **adding a
 column to a `table.sql` has no effect on a database that already has that table** —
 silently. The projection then writes to a column that does not exist, or reads a
-column that is never populated. PRD 001 ran into exactly this: `spejderstatus.sql`
-lacks the `initialTeamId` / `currentTeamId` columns its own struct declares.
+column that is never populated.
 
-With a fresh database per build, every deploy creates its schema from scratch, so
-projection schema evolution needs no migrations at all. That is a substantial
-simplification and arguably reason enough on its own — read models are derived data,
-and treating them as a build artefact rather than as durable state is the honest
-model.
+This is not a theoretical risk; it has already cost time, in two distinct shapes worth
+telling apart:
+
+- **The live table is behind its `table.sql`.** `shared-go/tables/signup/table.sql`
+  declares `year` and `secret`; the dev table, created by an older schema, had
+  neither. Every replayed signup event failed — **17,336 `Error 1054` in a single
+  14-hour container lifetime**, in bursts of 2167 per process start. Nothing surfaced
+  it: no UI error, no failed request, just log lines. Because the failing statement was
+  an `INSERT … ON DUPLICATE KEY UPDATE`, the *update* half never applied either, so a
+  team correcting its email or phone would have been invisible to hq's exports and
+  mail. Dropping the table and letting replay rebuild it restored exactly the same 1345
+  rows, now with `year` populated on all of them. Task 038.
+- **The `table.sql` is behind its own struct.** `spejderstatus.go:15-16` declares
+  `InitialTeamID` and `CurrentTeamID`; `spejderstatus.sql` declares only
+  `id, year, status, updatedAt`. A fresh database does *not* fix this one — the schema
+  itself is incomplete. It is inert today (`Consumes()` returns an empty slice and
+  `HandleMessage` is entirely commented out) so nothing writes those fields, but it is
+  dormant scaffolding for the member-reassignment work PRD 001 specifies, and PRD 001
+  will hit it the moment it wires the consumer up.
+
+With a fresh database per build, every deploy creates its schema from scratch, so the
+**first** shape disappears: projection schema evolution needs no migrations at all.
+That is a substantial simplification and arguably reason enough on its own — read
+models are derived data, and treating them as a build artefact rather than as durable
+state is the honest model. The second shape is not a migration problem and stays a
+review problem.
+
+#### …except in dev, which this design deliberately excludes
+
+The per-build database rule above pins **dev to a single fixed name**, because
+`init-dev` restarts on every file change and must not litter the server. That is the
+right call, but it has a consequence worth stating plainly rather than discovering
+later:
+
+> Once per-build databases ship, **dev becomes the only environment where projection
+> schema drift can still happen** — and the only one with nothing to repair it.
+
+Every other environment clears its database before deploy, so `CREATE TABLE` always
+runs against an empty schema there. Dev reuses `hq` indefinitely. And the repair
+mechanism is the exception rather than the rule: `cqrs.EnsureColumn` is called by
+**2 of 10** shared-go entities (`order`, `product`) and **1 of 17** hq-local
+`table.sql` files, leaving 24 entities with no repair path at all.
+
+So the environment where a problem is hardest to notice — nobody reads dev logs — is
+the one left exposed. That is backwards.
+
+**Proposal: dev drops its projection tables on boot.** This is nearly free, because
+dev *already* rebuilds from scratch on every start: the JetStream consumer is an
+`OrderedConsumer` with no deliver policy, so it replays the whole stream regardless of
+what the database contains (see *What this does not buy*, above). The read model is
+already a build artefact in dev — it is simply not treated as one. Dropping the tables
+adds a `DROP TABLE` per entity and **no extra replay**, and makes dev behave like every
+other environment.
+
+Points to settle:
+
+- **Guard it hard.** This must be impossible to trigger anywhere but dev — keyed off an
+  explicit opt-in (an env var set only by `docker-compose.yml`), never inferred from the
+  *absence* of `BUILD_NUMBER`, so a misconfigured prod container cannot silently wipe
+  its read model on boot. Failing closed matters more than convenience here.
+- **Drop tables, or drop the database?** Dropping the database is simpler and matches
+  prod's "cleared before deploy" exactly; dropping tables leaves the database and its
+  grants alone. Either is fine; the database is probably cleaner.
+- **`product` is seeded, not projected.** `producttable.Seed(product.Seeds2026())` runs
+  at boot (`main.go:183`), so it should re-seed and be unaffected — but it is the one
+  table that is not purely derived, so verify rather than assume.
+- **Measure the boot cost first.** The claim "no extra replay" is sound in principle;
+  confirm it against a real dev restart before adopting, since `init-dev` runs on every
+  file save and developers feel every second of it.
+- **Alternative if this proves too slow:** add `EnsureColumn` to the entities that need
+  it. That fixes instances rather than the class, and 24 entities would still be
+  exposed, so it is the fallback rather than the plan.
 
 #### Retention and cleanup
 
@@ -550,6 +630,7 @@ Ordering matters: measure first, because the numbers decide the strategy.
 - [ ] Task: Cleanup of superseded build databases, retaining current + previous, never dropping one in use
 - [ ] Task: Measure per-build read-model size to choose a retention count
 - [ ] Task: Audit for any non-projection state living in the read-model database (it cannot be discarded with the build)
+- [ ] Task: Dev recreates its schema on boot (drop projection tables or database), behind an explicit dev-only opt-in — closes the drift class in the one environment per-build databases leave exposed. Measure the added boot cost first; expected ≈ 0 since dev already replays in full
 - [ ] Task: Implement the boot gate — gate HTTP serving on `CaughtUp()` across all consumers
 - [ ] Task: Add a readiness signal distinct from liveness; stop `/api/v1/healthcheck` reporting a hardcoded `"available"`
 - [ ] Task: Replay-progress logging on startup
@@ -591,6 +672,7 @@ rows that matter are ✅.
 | 3 | Check JetStream is healthy and reachable; a boot that cannot replay will never become ready | before | yes | easy — pre-flight probe |
 | 4 | Check database server disk headroom for one more build's read model | before | yes | easy once per-build size is known |
 | 5 | Confirm the DB account has `CREATE DATABASE` (first deploy after the change) | before | yes | one-off |
+| 5b | **Clear the read-model database** — today's practice in stage/prod, and load-bearing: it is the only reason projection schema changes need no migrations there. **Per-build databases make this step obsolete** rather than automated, since a new build's database is empty by construction; until then it must not be skipped | before | yes | ✅ superseded by per-build databases (§8) |
 | 6 | Announce to nødtelefon operators if deploying during an event | before | yes | partly — could post automatically, but the judgement is human |
 | 7 | Deploying in peak hours: only if genuinely needed. Note boot is invisible — only the switch is exposed, so the window of concern is seconds, not the whole rollout | before/switch | yes | partly — can warn/require confirmation; the judgement stays human |
 | 8 | Start the new build; watch replay progress | during | yes | yes, once readiness is exposed |
@@ -653,6 +735,10 @@ itself.
   assumes both instances report honestly; a build broken enough to miscount may also
   misreport. Row counts straight from SQL are harder to get wrong than derived
   aggregates.
+- **Should dev drop its schema on boot** (§8), and tables or the whole database? Nearly
+  free in principle since dev already replays in full — but `init-dev` runs on every
+  file save, so the measured cost decides it. If it is not free, the fallback is
+  `EnsureColumn` per entity, which fixes instances rather than the class.
 - **What is the smallest checklist that is still honest?** A long checklist nobody
   follows is worse than a short one that is always done. Which steps are genuinely
   required every time, and which only after specific kinds of change?
