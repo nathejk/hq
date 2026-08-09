@@ -26,6 +26,7 @@ RUN set -eux; \
 #    chmod +x /app/docker/bin/init-dev
 
 COPY docker/bin/init-dev /init
+EXPOSE 80
 ENTRYPOINT ["/init"]
 #ENTRYPOINT ["/init"]
 CMD ["api"]
@@ -75,6 +76,7 @@ COPY vue/init-dev /init
 # No build toolchain needed: every dependency is pure JavaScript, so there is no
 # node-gyp step to satisfy.
 
+EXPOSE 80
 ENTRYPOINT ["/init"]
 
 FROM ui-dev AS ui-builder
