@@ -656,6 +656,27 @@ Proposed tasks for `roadmap/tasks/open/`:
 
 ## 11. Open Questions
 
+- **~~Proxy behaviour~~ — answered (task 035), and it was not the proxies.** SSE survives
+  the dev path (Traefik → Vite → Go) with no buffering: resync at 0.05s, heartbeats at
+  20.1s / 40.1s / 60.1s. HTTPS serves over HTTP/2, so the HTTP/1.1 connection-limit
+  concern is moot. The spike did find a blocker, in our own code: the server's
+  `WriteTimeout` (30s, `app/server.go:22`) is a deadline on the *whole* response, so the
+  stream delivered its first events and then died silently mid-flight — which reads
+  exactly like proxy buffering. Fixed by clearing the write/read deadlines per response
+  via `http.ResponseController`, leaving the global timeout protecting every other
+  endpoint. Regression test included, verified to fail without the fix.
+  Still outstanding: the production-shaped path (Traefik → Go), one hop fewer than the
+  verified dev path.
+- **Two Traefik faults found while verifying, both worth knowing:** naming a router's
+  `.service` that nothing defines silently **disables** the router (Traefik reports it
+  only via its API), and the shared `redirect-to-https` middleware the org rules
+  describe does not exist in the running Traefik — hq defines a repo-scoped
+  `hq-redirect-to-https` instead. Decide whether to add the shared one to the infra repo
+  and switch back.
+- **Confirmed working end to end (task 036).** The patrulje list composes
+  `useLiveResource`; an edit in one browser tab appears in another without navigation,
+  and returning to the page costs no request. Adoption on the remaining pages is task
+  037.
 - **Filtering granularity.** Is `?entities=` enough, or do clients need per-id
   subscriptions for high-volume entities like scans? Prefer the simple version
   until measurement says otherwise.
