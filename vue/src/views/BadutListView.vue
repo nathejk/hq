@@ -1,22 +1,34 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import { http } from '@/plugins/axios';
+import { useLiveResource } from '@/composables/useLiveResource';
 
 const toast = useToast();
 
-onMounted(() => load())
-
-const badutter = ref([])
-const load = async () => {
-  try {
+// dependsOn, taken from what the personnel projection actually consumes
+// (go/nathejk/table/personnel/consumer.go) rather than from the table's name:
+// the subject token is `gøgler`, not `personnel`. `bandit` carries armNumber
+// assignments, which the expanded row shows. `order`/`payment` are here because
+// the Status column is paidAmount, which the query derives by joining payments to
+// orders — so a payment landing must refresh this list even though no gøgler event
+// occurred.
+const { data, pending, error } = useLiveResource(
+  'badut:list',
+  async () => {
     const response = await http.get('/badut');
-    badutter.value = response.data.personnel.filter(p => p.paidAmount > 0);
-    console.log("badutter", badutter)
-  } catch (error) {
-    console.log('badut list load failed', error);
-  }
-}
+    return (response.data.personnel || []).filter((p) => p.paidAmount > 0);
+  },
+  { dependsOn: ['gøgler', 'bandit', 'order', 'payment'] },
+);
+
+const badutter = computed(() => data.value ?? []);
+
+watch(error, (err) => {
+  if (!err) return;
+  console.log('badut list load failed', err);
+  toast.add({ severity: 'error', summary: 'Kunne ikke hente gøglere', life: 5000 });
+});
 const selectedValue = ref(null);
 const expandedRows = ref([]);
 const onRowExpand = (event) => {
@@ -51,7 +63,7 @@ const getSeverity = (status) => {
     <h1 class="font-nathejk text-2xl">Gøglere ({{ badutter.length }})</h1>
     <a href="/api/excel/personnel">Eksport til Excel</a>
     <div class="card" id="badut">
-        <DataTable :value="badutter" sortMode="single" sortField="lok" :sortOrder="1" :stripedRows="true"
+        <DataTable :value="badutter" :loading="pending" sortMode="single" sortField="lok" :sortOrder="1" :stripedRows="true"
             v-model:expandedRows="expandedRows" dataKey="id" @rowExpand="onRowExpand" @rowCollapse="onRowCollapse"
         >
             <Column expander />
