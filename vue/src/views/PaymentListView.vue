@@ -1,11 +1,12 @@
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
+import { useToast } from 'primevue/usetoast'
 import { FilterMatchMode } from '@primevue/core/api'
 import { http } from '@/plugins/axios'
+import { useLiveResource } from '@/composables/useLiveResource'
 
-onMounted(() => load())
+const toast = useToast()
 
-const orders = ref([])
 const expandedRows = ref([])
 
 // Danish display label for an order's ownerType. Anything we don't recognise
@@ -37,18 +38,32 @@ const filters = ref({
   statusLabel: { value: 'Betalt', matchMode: FilterMatchMode.EQUALS }
 })
 
-const load = async () => {
-  try {
+// Live, cached list. Returning to this page renders from cache with no request,
+// and an order paid elsewhere appears without a refresh.
+//
+// dependsOn covers both entities behind a row: `order` for the order itself and
+// its lines, `payment` because the OPEN/PAID status a row shows is settled by the
+// payment projection, which is a separate event from the order's own.
+const { data: ordersData, pending, error } = useLiveResource(
+  'payment:list',
+  async () => {
     const response = await http.get('/orders')
-    orders.value = (response.data.orders || []).map((o) => ({
+    return (response.data.orders || []).map((o) => ({
       ...o,
       typeLabel: ownerTypeLabel(o.ownerType),
       statusLabel: statusLabelOf(o.status)
     }))
-  } catch (error) {
-    console.log('orders list load failed', error)
-  }
-}
+  },
+  { dependsOn: ['order', 'payment'] }
+)
+
+const orders = computed(() => ordersData.value ?? [])
+
+watch(error, (err) => {
+  if (!err) return
+  console.log('orders list load failed', err)
+  toast.add({ severity: 'error', summary: 'Kunne ikke hente ordrer', life: 5000 })
+})
 
 // The rows actually shown, i.e. after the Type/Status filters. Drives both the
 // table and the summary so the two can never disagree. (The DataTable applies
@@ -118,6 +133,7 @@ const statusSeverity = (statusLabel) => (statusLabel === 'Betalt' ? 'success' : 
   <div class="card" id="orders">
     <DataTable
       :value="shownOrders"
+      :loading="pending"
       v-model:filters="filters"
       filterDisplay="row"
       sortMode="single"
