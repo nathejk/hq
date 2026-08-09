@@ -193,9 +193,9 @@ func main() {
 	// betalinger, patruljer, klaner, poster — with no per-page backend code.
 	//
 	// The wrapping happens after HandleMessage succeeds, so a signal can never
-	// precede the write it announces. See internal/live/notify.go, including why the
-	// deadletter Writer means a signal can occasionally describe a change that was
-	// diverted rather than applied.
+	// precede the write it announces — and a projection that fails announces
+	// nothing. See internal/live/notify.go for what would change if a deadletter
+	// Writer were introduced.
 	livehub := live.NewHub()
 	defer livehub.Close()
 

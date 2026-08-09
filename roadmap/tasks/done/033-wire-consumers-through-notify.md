@@ -77,3 +77,13 @@ and the rest into live pages without a line of per-page backend code.
   per-build-database argument in PRD 005 §8. Not fixed here.
 - 2026-08-09 00:40 — Completed. Gates green; the backend half is live end to end.
   Next: 034 (frontend SSE transport).
+- 2026-08-09 01:32 — **Correction to the 00:38 entry above.** I wrote that the failing
+  signup statements were "being diverted by `deadletter`". They are not:
+  `cmd/api/main.go:164` builds a plain `sqlpersister`, with no deadletter anywhere. The
+  layout skill describes the Writer as `deadletter` wrapping `sqlpersister`, and I took
+  it at its word instead of checking the code.
+  Consequence is the opposite of what I implied, and better: `Consume` returns the
+  error, the entity propagates it, and `notify` publishes nothing — a change that did
+  not land is not announced. The doc comment in `internal/live/notify.go` has been
+  rewritten to describe the current wiring, keeping the deadletter caveat as conditional
+  on that Writer ever being introduced. Drift itself is now task 038.

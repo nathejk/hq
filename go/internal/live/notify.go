@@ -30,20 +30,23 @@ type Publisher interface {
 // executes db.Exec inline and MariaDB autocommits, so a nil return from
 // HandleMessage means the read model has changed.
 //
-// # The deadletter caveat, accepted deliberately
+// # Failed projections, and the deadletter caveat
 //
-// cmd/api/main.go builds its Writer as cqrs/deadletter wrapping sqlpersister.
-// deadletter diverts a failing statement to a table instead of failing the
-// projection loop — so HandleMessage can return nil while the read model was *not*
-// updated, and this decorator will then emit a signal for a change that is not
-// visible.
+// Today `cmd/api/main.go` builds its Writer as a plain `sqlpersister`
+// (`main.go:164`), so a failing statement returns an error from `Consume`, the
+// wrapped consumer returns it, and this decorator publishes nothing. That is the
+// behaviour we want: a change that did not land is not announced. It is currently
+// observable — the `signup` projection fails on every event because its table is
+// missing columns the entity now writes, and no signals result.
 //
-// We accept that rather than removing deadletter from notified consumers, because
-// the failure is benign and self-correcting: the client refetches, sees no change,
-// and the next signal or resync brings it up to date. The alternative would trade
-// projection resilience — the reason deadletter exists — for signal precision that
-// nothing depends on. Recorded here so the next reader finds a decision rather
-// than an accident.
+// The caveat applies **if** `cqrs/deadletter` is ever introduced, as the layout
+// skill describes: it diverts a failing statement to a table instead of failing
+// the projection loop, so `HandleMessage` would return nil while the read model
+// was *not* updated, and this decorator would then emit a signal for a change that
+// is not visible. That failure would be benign and self-correcting — the client
+// refetches, sees no change, and the next signal or resync brings it up to date —
+// so it would not be a reason to keep deadletter away from notified consumers. But
+// it should be a decision taken knowingly rather than discovered.
 func Notify(p Publisher, c cqrs.Consumer) cqrs.Consumer {
 	return notifier{publisher: p, consumer: c}
 }
