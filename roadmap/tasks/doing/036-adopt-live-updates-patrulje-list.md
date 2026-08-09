@@ -1,10 +1,10 @@
 # 036 — Adopt live updates on the patrulje list
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-08-09
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (zed)
+**Started:** 2026-08-09
 **Completed:**
 
 ## Description
@@ -69,3 +69,5 @@ Dependency notes:
 
 - 2026-08-09 01:06 — Task created after a two-tab test showed no live update: the
   capability is built but unadopted, which is Phase 3 rather than a defect.
+- 2026-08-09 01:08 — Picked up. Plan: swap the onMounted fetch for useLiveResource,
+  keeping the file as plain JS and the toast behaviour intact.
