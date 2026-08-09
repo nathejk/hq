@@ -1,22 +1,42 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { computed, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import { http } from '@/plugins/axios';
+import { useLiveResource } from '@/composables/useLiveResource';
 
 const toast = useToast();
 
-onMounted(() => load())
+type HomeConfig = {
+  timeCountdown?: string;
+  videos?: unknown;
+  patruljeCount: number;
+  spejderCount: number;
+  badutCount: number;
+};
 
-const config = ref({patruljeCount:0})
-const load = async () => {
-  try {
+const emptyConfig: HomeConfig = { patruljeCount: 0, spejderCount: 0, badutCount: 0 };
+
+// Every figure here is a derived count, which is precisely why dependsOn must name
+// entity *types*: a count has no id for a signal to match, and a newly signed-up
+// patrol carries an id this client has never seen. The handler (cmd/api/home.go)
+// counts patrols with paidAmount > 0 and their members, plus paid gøglere — hence
+// patrulje, spejder, gøgler, and order/payment for the paid part.
+const { data, error } = useLiveResource<HomeConfig>(
+  'home:config',
+  async () => {
     const response = await http.get('/home');
-    config.value = response.data.config;
-    console.log('reso', response.data.config);
-  } catch (error) {
-    console.log('home load failed', error);
-  }
-}
+    return (response.data.config ?? emptyConfig) as HomeConfig;
+  },
+  { dependsOn: ['patrulje', 'spejder', 'gøgler', 'order', 'payment'] },
+);
+
+const config = computed<HomeConfig>(() => data.value ?? emptyConfig);
+
+watch(error, (err) => {
+  if (!err) return;
+  console.log('home load failed', err);
+  toast.add({ severity: 'error', summary: 'Kunne ikke hente forsiden', life: 5000 });
+});
 </script>
 
 <template>
