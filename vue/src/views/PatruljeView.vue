@@ -1,8 +1,9 @@
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import { FilterMatchMode } from '@primevue/core/api';
 import { http } from '@/plugins/axios';
+import { useLiveResource } from '@/composables/useLiveResource';
 
 const props = defineProps({
     teamId: {type: String, required: false},
@@ -10,22 +11,39 @@ const props = defineProps({
 
 const toast = useToast();
 
-onMounted(() => load())
-
-const patrulje = ref({})
-const spejdere = ref([])
-const orders = ref([])
-const load = async () => {
-  try {
+// Keyed by team, so several patrols can be cached side by side and opening a
+// previously visited one is instant.
+//
+// The team itself is depended on by *instance*, so another patrol's edit does not
+// refetch this page. Its members and orders cannot be: a spejder event names the
+// member id and an order event names the order id, never the team, so there is no
+// instance to key on — and a newly added member has an id this client has never
+// seen. Those are therefore type-level, which does mean any scout or payment change
+// anywhere revalidates an open patrol page. That is one small request on a page an
+// operator has deliberately opened, and the alternative is a member list that
+// silently stops updating.
+const { data, pending, error } = useLiveResource(
+  `patrulje:detail:${props.teamId}`,
+  async () => {
     const response = await http.get('/patrulje/' + props.teamId);
-    console.log("patrulje", response.data)
-    patrulje.value = response.data.team;
-    spejdere.value = response.data.members;
-    orders.value = response.data.orders || [];
-  } catch (error) {
-    console.log('badut list load failed', error);
-  }
-}
+    return {
+      team: response.data.team || {},
+      members: response.data.members || [],
+      orders: response.data.orders || [],
+    };
+  },
+  { dependsOn: [`patrulje:${props.teamId}`, 'spejder', 'order', 'payment'] },
+);
+
+const patrulje = computed(() => data.value?.team ?? {});
+const spejdere = computed(() => data.value?.members ?? []);
+const orders = computed(() => data.value?.orders ?? []);
+
+watch(error, (err) => {
+  if (!err) return;
+  console.log('patrulje load failed', err);
+  toast.add({ severity: 'error', summary: 'Kunne ikke hente patruljen', life: 5000 });
+});
 const filters = ref({
     'global': {value: null, matchMode: FilterMatchMode.CONTAINS},
 });
@@ -83,7 +101,7 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
 
         <Button label="Tilmelding" icon="pi pi-external-link" iconPos="right" @click="linkToSignUp" />
 
-        <DataTable :value="spejdere" sortMode="single" sortField="lok" :sortOrder="1" :stripedRows="true" :filters="filters"
+        <DataTable :value="spejdere" :loading="pending" sortMode="single" sortField="lok" :sortOrder="1" :stripedRows="true" :filters="filters"
             v-model:expandedRows="expandedRows" dataKey="id" @rowExpand="onRowExpand" @rowCollapse="onRowCollapse"
         >
             <Column expander />
