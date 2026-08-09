@@ -9,7 +9,7 @@
 
 ## Description
 
-From PRD 002 (`roadmap/prd/002-order-based-payments.md`). The order read API
+From PRD 002. The order read API
 (`go/nathejk/table/order/querier.go`) currently exposes `GetByID`,
 `FindOpenOrder`, `ListByOwner`, `ReservedQuantity`, and `PaidLineKeys` — but no
 way to list **all orders for a year**, which the Betalinger page needs.

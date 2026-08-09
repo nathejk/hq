@@ -9,7 +9,7 @@
 
 ## Description
 
-From PRD 002 (`roadmap/prd/002-order-based-payments.md`). Convert
+From PRD 002. Convert
 `vue/src/views/PaymentListView.vue` from a raw-payments table to an
 **order-centric** table backed by `GET /api/orders` (task 003).
 

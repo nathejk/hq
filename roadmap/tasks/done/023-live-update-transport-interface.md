@@ -9,7 +9,7 @@
 
 ## Description
 
-First slice of PRD 004 Phase 1 (`roadmap/prd/004-live-updates-spa.md`). Introduce the
+First slice of PRD 004 Phase 1. Introduce the
 seam that every later piece depends on: a transport that tells the client *what
 changed*, with a polling implementation behind it so no backend work is needed yet.
 

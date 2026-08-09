@@ -3,7 +3,9 @@
 **Status:** draft
 **Author:** agent session (recreating legacy feature)
 **Created:** 2026-07-29
-**Last updated:** 2026-08-07
+**Last updated:** 2026-08-09
+**Approved:**
+**Shipped:**
 **Status note:** member lifecycle settled against shared-go
 `v0.0.0-20260807180020-5ac2603c60ba`
 **Target users:** organizer (HQ emergency-phone operators / nødtelefonvagter)
@@ -488,7 +490,7 @@ New frontend surface (all inside the `ui` SPA, `vue/src`):
 
 ### Live updates & perceived speed
 
-**Delivered by PRD 004 — "Live updates for the SPA"** (`roadmap/prd/004-live-updates-spa.md`).
+**Delivered by PRD 004 — "Live updates for the SPA".**
 That capability is deliberately entity-agnostic and platform-wide: one SSE stream
 of `entity.changed` signals, one reusable client cache primitive, and a generic
 consumer decorator so every page — betalinger, patruljer, klaner, poster — becomes

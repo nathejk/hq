@@ -6,7 +6,7 @@
  * path, prevents the pushed and fetched shapes from drifting apart, and means a
  * signal leaks nothing an unauthorised client could not already ask for.
  *
- * See roadmap/prd/004-live-updates-spa.md.
+ * See PRD 004, "Live updates for the SPA" (roadmap/prd/ — folder by status).
  */
 
 /** Signal names. Dispatch on this so new kinds are additive, not a format change. */

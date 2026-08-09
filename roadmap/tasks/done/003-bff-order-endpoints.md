@@ -9,7 +9,7 @@
 
 ## Description
 
-From PRD 002 (`roadmap/prd/002-order-based-payments.md`). Add read endpoints so
+From PRD 002. Add read endpoints so
 the frontend can list and inspect orders.
 
 New file `go/cmd/api/order.go`:

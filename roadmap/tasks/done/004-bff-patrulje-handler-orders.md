@@ -9,7 +9,7 @@
 
 ## Description
 
-From PRD 002 (`roadmap/prd/002-order-based-payments.md`). The Patrulje detail
+From PRD 002. The Patrulje detail
 payload (`showPatruljeHandler` in `go/cmd/api/patrulje.go`) currently returns
 raw `payments` for the team. Add the team's **orders** to the JSON envelope so
 the frontend (task 007) can show orders instead.

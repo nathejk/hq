@@ -9,7 +9,7 @@
 
 ## Description
 
-From PRD 002 (`roadmap/prd/002-order-based-payments.md`). The `order`
+From PRD 002. The `order`
 (`go/nathejk/table/order/`) and `product` (`go/nathejk/table/product/`)
 projections exist but are **not** wired into the API binary.
 

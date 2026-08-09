@@ -1,9 +1,11 @@
 # PRD 002 — Order-based payments in Betalinger & Patrulje views
 
-**Status:** draft
+**Status:** done
 **Author:** agent session
 **Created:** 2026-07-31
-**Last updated:** 2026-07-31
+**Last updated:** 2026-08-09
+**Approved:** not recorded — predates this lifecycle convention
+**Shipped:** 2026-07-31
 **Target users:** organizer (HQ finance/admin)
 
 ---
@@ -114,23 +116,23 @@ status** rather than raw individual payments.
 
 ### Functional
 
-- [ ] Add a **list-all-orders-for-year** query to the order read API (the
+- [x] Add a **list-all-orders-for-year** query to the order read API (the
       existing `Queries` has `GetByID` / `FindOpenOrder` / `ListByOwner` /
       `ReservedQuantity` / `PaidLineKeys` but no year-wide list).
-- [ ] Wire the `order` (and `product`) projections into
+- [x] Wire the `order` (and `product`) projections into
       `go/cmd/api/main.go` (`mux.AddConsumer`, `data.NewModels`).
-- [ ] `GET /api/orders` returns orders for the current year, each with owner,
+- [x] `GET /api/orders` returns orders for the current year, each with owner,
       currency, total, paid amount, due amount, and status. The owner is
       resolved to a human-readable label by a **secondary lookup** against the
       patrulje/klan/personnel read models (grouped by `ownerType`, batched by
       `ownerId`), not a SQL join in the orders query.
-- [ ] `GET /api/order/:id` returns a single order with its line items (reuse the
+- [x] `GET /api/order/:id` returns a single order with its line items (reuse the
       existing `GetByID`, which already hydrates lines + paid/due amounts).
-- [ ] Betalinger page (`PaymentListView.vue`) shows orders (+ status), with an
+- [x] Betalinger page (`PaymentListView.vue`) shows orders (+ status), with an
       expandable detail of lines (and, if desired, the underlying payments).
-- [ ] Patrulje page (`PatruljeView.vue`) "Betalinger" section shows the team's
+- [x] Patrulje page (`PatruljeView.vue`) "Betalinger" section shows the team's
       orders (+ status) instead of raw payments (via `ListByOwner`).
-- [ ] The patrol list `paidAmount` / paid-status computation is corrected to go
+- [x] The patrol list `paidAmount` / paid-status computation is corrected to go
       through orders rather than `payment.orderForeignKey == teamId`.
 
 ### Non-Functional
@@ -263,16 +265,17 @@ status** rather than raw individual payments.
   the Patrulje Betalinger table, and correct the patrol-list `paidAmount`
   computation.
 
-Proposed tasks to create in `roadmap/tasks/open/` (not created yet):
+Tasks created from this breakdown, all completed 2026-07-31 (tasks 001–008 in
+`roadmap/tasks/done/`):
 
-- [ ] Task: BFF — add year-wide order list query to `order.Queries`
-- [ ] Task: BFF — wire `order` + `product` into `main.go` mux & `data.Models`
-- [ ] Task: BFF — `GET /api/orders` & `GET /api/order/:id` (OpenAPI)
-- [ ] Task: BFF — include team orders in `showPatruljeHandler` (+ klan?)
-- [ ] Task: BFF — fix patrulje list `paidAmount` to resolve payments via orders
-- [ ] Task: Frontend — `PaymentListView` order-centric table + detail expansion
-- [ ] Task: Frontend — `PatruljeView` Betalinger shows orders
-- [ ] Task: Confirm shared-go version pin includes the order/payment messages
+- [x] Task: BFF — add year-wide order list query to `order.Queries`
+- [x] Task: BFF — wire `order` + `product` into `main.go` mux & `data.Models`
+- [x] Task: BFF — `GET /api/orders` & `GET /api/order/:id` (OpenAPI)
+- [x] Task: BFF — include team orders in `showPatruljeHandler` (+ klan?)
+- [x] Task: BFF — fix patrulje list `paidAmount` to resolve payments via orders
+- [x] Task: Frontend — `PaymentListView` order-centric table + detail expansion
+- [x] Task: Frontend — `PatruljeView` Betalinger shows orders
+- [x] Task: Confirm shared-go version pin includes the order/payment messages
 
 ## 11. Open Questions
 

@@ -6,7 +6,7 @@
 // serialization path (REST), stops pushed and fetched shapes drifting apart, and
 // means making a new entity live is a wiring change rather than new code here.
 //
-// See roadmap/prd/004-live-updates-spa.md.
+// See PRD 004, "Live updates for the SPA" (roadmap/prd/ — folder by status).
 package live
 
 import (

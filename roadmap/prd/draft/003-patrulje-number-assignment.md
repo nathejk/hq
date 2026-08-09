@@ -3,7 +3,11 @@
 **Status:** draft
 **Author:** agent session
 **Created:** 2026-07-31
-**Last updated:** 2026-07-31
+**Last updated:** 2026-08-09
+**Approved:**
+**Shipped:**
+**Status note:** not implemented — verified 2026-08-09 that nothing in hq publishes
+`patrulje.*.numberassigned`; the projection only *consumes* it, from legacy events
 **Target users:** organizer (HQ) — indirectly benefits patruljer/participants
 
 ---

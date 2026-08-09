@@ -9,7 +9,7 @@
 
 ## Description
 
-From PRD 002 (`roadmap/prd/002-order-based-payments.md`). In
+From PRD 002. In
 `go/nathejk/table/patrulje/query.go`, `GetAll` derives `paidAmount` with a
 subquery that joins `payment.orderForeignKey = p.teamId`. With the order layer,
 `payment.orderForeignKey` now references an **order id**, not a team id, so this

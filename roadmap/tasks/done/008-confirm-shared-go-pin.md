@@ -9,7 +9,7 @@
 
 ## Description
 
-From PRD 002 (`roadmap/prd/002-order-based-payments.md`). The order feature
+From PRD 002. The order feature
 relies on `github.com/nathejk/shared-go/messages` (`order.go`, `payment.go`).
 In dev these resolve via `go.work` from the sibling `../shared-go` checkout, but
 prod/CI build with `GOWORK=off` against the version pinned in `go/go.mod`.

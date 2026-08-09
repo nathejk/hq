@@ -1,9 +1,12 @@
 # PRD 004 — Live updates for the SPA
 
-**Status:** done — shipped 2026-08-09; see §12 for what was deliberately left out
+**Status:** done
 **Author:** agent session
 **Created:** 2026-08-07
 **Last updated:** 2026-08-09
+**Approved:** not recorded — predates this lifecycle convention
+**Shipped:** 2026-08-09
+**Status note:** see §12 for what was deliberately left out
 **Target users:** organizer (every operator using the HQ admin panel)
 
 ---
@@ -487,7 +490,7 @@ Two consequences to carry:
 **The API does not serve requests until its projections are fully caught up.** It
 serves live data or nothing — never the read model as it looked at some arbitrary
 point in history. That gating is specified in **PRD 005 — Boot gate, deployment &
-SPA reload** (`roadmap/prd/005-boot-gate-deployment-spa-reload.md`), not here. This
+SPA reload** (PRD 005), not here. This
 PRD depends on it and is materially simpler because of it:
 
 - No staleness indicator, no "replaying" banner, no partial-data caveats anywhere

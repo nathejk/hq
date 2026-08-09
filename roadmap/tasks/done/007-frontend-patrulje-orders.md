@@ -9,7 +9,7 @@
 
 ## Description
 
-From PRD 002 (`roadmap/prd/002-order-based-payments.md`). In
+From PRD 002. In
 `vue/src/views/PatruljeView.vue`, the "Betalinger" `DataTable` currently binds
 to `:value="payments"`. Switch it to the team's **orders** from the
 `/patrulje/:id` payload (task 004).

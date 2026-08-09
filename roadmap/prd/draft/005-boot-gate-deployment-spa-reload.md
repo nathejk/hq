@@ -1,9 +1,12 @@
 # PRD 005 — Boot gate, deployment & SPA reload
 
-**Status:** draft — skeleton, to be filled in
+**Status:** draft
 **Author:** agent session (captured from the PRD 001/004 design discussion)
 **Created:** 2026-08-07
 **Last updated:** 2026-08-09
+**Approved:**
+**Shipped:**
+**Status note:** skeleton — sections marked TBD are deliberately unfinished
 **Target users:** organizer (indirectly — every operator using the HQ panel), plus
 whoever operates deployments
 
