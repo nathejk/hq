@@ -156,16 +156,23 @@ member transitions onto this PRD's timeline), documented in §8.
 
 ### Functional
 
-- [ ] Create an SOS case with headline + description (`POST /api/sos`).
+- [ ] Create an SOS case with headline + description (`POST /api/sos`). **Both are
+      required.** The server mints the `SosID` and returns the created case; the SPA
+      then replaces `/sos/new` with `/sos/:id`.
 - [ ] Edit a case headline and description (`PATCH /api/sos/:id`).
 - [ ] Close and reopen a case (`PATCH /api/sos/:id`, `status` field).
 - [ ] Delete a case (`DELETE /api/sos/:id`, legacy `sos.deleted`). Deletion is for
       a case created in error — see Open Questions for whether it is soft, and who
       may do it, given the timeline is otherwise append-only.
-- [ ] Add a plain-text comment to a case (`POST /api/sos/:id/comment`).
+- [ ] Add a plain-text comment to a case (`POST /api/sos/:id/comment`). The server
+      mints the `SosCommentID` and returns it, so the comment has a stable target
+      for a later edit.
 - [ ] Edit an existing comment (`PATCH /api/sos/:id/comment/:commentId`, legacy
-      `comment.updated`). The edit is itself a timeline entry; the original text is
-      not silently replaced in the log.
+      `comment.updated`). **The timeline stays append-only:** the edit writes a new
+      `sos_activity` row referencing the original comment id, and the original row is
+      left untouched. The detail view renders the current text with an "redigeret"
+      marker rather than hiding that it changed. Who may edit is an Open Question —
+      with no per-user identity it cannot currently be restricted to the author.
 - [ ] Set priority/severity green|yellow|red (`PATCH /api/sos/:id`).
 - [ ] Assign a case to an organisation **section** (`PATCH /api/sos/:id`). The list
       of assignable sections comes from the sections defined on the Organisation
@@ -174,19 +181,32 @@ member transitions onto this PRD's timeline), documented in §8.
 - [ ] Associate / disassociate a patrol with a case (`PUT` /
       `DELETE /api/sos/:id/team/:teamId`). Only patrols can be associated with a
       case — clans (klaner) cannot.
-- [ ] Show the associated patrol's members (name, contact) for context, from the
-      existing `spejder` read model. **No member actions and no member status** —
-      those arrive with PRD 006.
+- [ ] The team picker is **searchable by team number, name and group**, since a
+      caller reads out their number. It filters the year's patrol list already held
+      in the SPA's live cache (`GET /api/patrulje`, as used by `PatruljeListView`) —
+      no new search endpoint.
+- [ ] Show the associated patrol's identity and contact (team number, name, group,
+      contact phone) plus its members (name, contact) from the existing `spejder`
+      read model. **No member actions and no member status** — those arrive with
+      PRD 006. Whether the member list is worth showing at all before then is an
+      Open Question.
 - [ ] List cases grouped into open / closed with columns: headline, created, last
-      activity, priority, assignee (`GET /api/sos`).
+      activity, priority, assignee (`GET /api/sos`), sorted by **last activity
+      descending** within each group so the case that just moved is at the top.
 - [ ] View a single case with its full activity timeline and associated teams
       (`GET /api/sos/:id`).
-- [ ] Show SOS cases associated with a patrol on that patrol's detail page (query
-      cases by team, as in legacy `data.SosModel.GetByTeam`).
+- [ ] Show SOS cases associated with a patrol on that patrol's detail page. Delivered
+      by **extending `GET /api/patrulje/:id`**, which already assembles members,
+      payments and orders (`go/cmd/api/patrulje.go:85-96`), rather than by a second
+      request — port legacy `data.SosModel.GetByTeam` (`_go/internal/data/sos.go:33`)
+      as the query.
 - [ ] The timeline is **persisted as a SQL projection**, not held in memory, and
       renders every activity type with an icon and a Danish label.
-- [ ] Capture the acting user (`createdByUserId`) on every event, from the
-      authenticated user.
+- [ ] Capture the acting user on every event as `createdByUserId`, resolved from the
+      request context (`requestctx.UserFrom`) and passed to the command by the
+      handler. Note this is **empty in practice** until the planned auth service
+      lands (see Non-Functional → Auth); the field and the plumbing exist so that
+      nothing has to change when it does.
 - [ ] All cases and events are scoped to the current event year.
 - [ ] The case list, the open case and its timeline are **live**, and the case
       timeline tolerates entries produced by events this interface did not publish
@@ -198,10 +218,25 @@ member transitions onto this PRD's timeline), documented in §8.
   projections rebuilt from JetStream on startup; frontend via the `http` module
   (`@/plugins/axios`) and PrimeVue Aura. No Bootstrap, no `vue-good-table`, no
   `b-popover` (all legacy-only).
-- **Auth:** operator-only; behind the existing JWT cookie auth like the rest of
-  `/api`. Note that in practice this means "any logged-in user" — no route in
-  `go/cmd/api/routes.go` gates on `internal/data/permissions.go` today. See Open
-  Questions.
+- **Auth — perimeter today, per-user identity later.** Access is protected at the
+  **perimeter**: HTTP basic auth in front of the service on stage and production
+  (deployment configuration, outside this repo), and **no auth in dev**. The API
+  itself does not authenticate: `app.authenticate`
+  (`go/cmd/api/routes.go:127-193`) has its body commented out and injects
+  `requestctx.User{ID: "", Name: "anonymous"}` on every request, and nothing reads
+  `AUTH_BASEURL` (set at `docker-compose.yml:70`, unused). A proper auth service
+  issuing JWTs for signed-in users is planned but not scheduled.
+  **The consequence this PRD accepts deliberately:** the feature is written *as if*
+  an authenticated user is present — commands take an actor and events carry
+  `createdByUserId` — so nothing needs restructuring when the auth service lands.
+  Until then that id is empty in practice and the timeline is attributable by
+  **time, not by person**. That is a known, recorded limitation rather than a
+  surprise, and it must not be presented in the UI as though it were an audit trail:
+  do not render an "af <bruger>" byline that would always be blank.
+- **Authorisation:** none beyond the perimeter. Every operator who can reach the
+  service can do everything here. Acceptable for an internal HQ tool behind basic
+  auth; revisit when the auth service exists (`internal/data/permissions.go` already
+  models permissions and is unused by routes).
 - **Timeliness / freshness:** an operator's view reflects other operators' changes
   within ~1 second, without refreshing. **The capability already exists** — PRD 004
   shipped 2026-08-09 (SSE via `GET /api/stream`, `go/internal/live/`,
@@ -218,8 +253,12 @@ member transitions onto this PRD's timeline), documented in §8.
     waterfall.
 - **Localization:** Danish UI text and `da-DK` date formatting, matching the rest
   of the SPA.
-- **Auditability:** the activity timeline is append-only. Legacy carried a `UserID`
-  in message bodies but the API did not always populate it; here it is required.
+- **Auditability:** the activity timeline is append-only, and every entry carries a
+  timestamp and the acting user as resolved from the request context. Legacy carried
+  a `UserID` in message bodies but the API did not always populate it; here it is
+  always populated — with the caveat above that its value is empty until the auth
+  service exists, which is why the timeline's *timestamps* are what a handover
+  currently relies on.
 
 ## 7. UX / UI Notes
 
@@ -243,13 +282,16 @@ New frontend surface (all inside the `ui` SPA, `vue/src`):
     Danish label — port the legacy `ActivityLine` component to
     `vue/src/components/SosActivityLine.vue`. The component must render **unknown
     activity types gracefully**, because PRD 006 adds more.
-  - Comment composer (headline required only when creating a new case).
+  - Comment composer. (Both headline and description are required when *creating* a
+    case; a comment needs only its text.)
   - Actions: Luk sag / Genåbn sag, Tilføj kommentar.
   - Right column cards:
-    - **Tilknyttede patruljer:** team picker + per-team member list (names and
-      contact only). PRD 006 extends each member row with status, timestamps and
-      actions, and adds the strength/breach warnings to this card — leave room for
-      it rather than designing around its absence.
+    - **Tilknyttede patruljer:** a team picker searchable by number, name and group
+      over the SPA's cached patrol list, then per team its number/name/group and
+      contact phone, and a member list (names and contact only). PRD 006 extends each
+      member row with status, timestamps and actions, and adds the strength/breach
+      warnings to this card — leave room for it rather than designing around its
+      absence.
     - **Prioritet** select (green/yellow/red) and **Tildelt** select. The
       **Tildelt** options are organisation sections loaded from the backend via the
       existing `GET /api/organisation` — shown by section label, stored by section
@@ -260,9 +302,13 @@ New frontend surface (all inside the `ui` SPA, `vue/src`):
     says updates are paused — as `KlanListView.vue` and `KortView.vue` do. This is
     required, not optional: it is a page holding unsaved state, and the operator is
     typing while on the phone.
+- **Terminology:** the field and its events are `severity`; the UI label is
+  **Prioritet**. Do not let the two drift into a third name.
 - **Patrol detail:** add a "Kontakt med nødtelefon" card to
-  `vue/src/views/PatruljeView.vue` listing the patrol's SOS cases with created
-  date, headline and open/closed badge; clicking navigates to the case.
+  `vue/src/views/PatruljeView.vue` listing the patrol's SOS cases with created date,
+  headline and open/closed badge; clicking navigates to the case. The data arrives in
+  the existing `GET /api/patrulje/:id` payload, so the card is a render change plus
+  one token added to that view's `dependsOn`.
 - **State:** no store. The views compose `useLiveResource` from
   `vue/src/composables/`, with shared bits (if any) in a composable with
   module-level `ref()` like the rest of the SPA. The Pinia-vs-composable question
@@ -301,7 +347,10 @@ phase, and the repo `.rules` now say the same. What that means concretely:
   silently), so they belong in the spec rather than being guessed per view:
   - case list → `['sos']` (type, so newly created cases appear)
   - case detail + timeline → `['sos:{id}', 'sos']`
-  - patrol page's "Kontakt med nødtelefon" card → `['sos']`
+  - patrol page's "Kontakt med nødtelefon" card → the card has **no resource of its
+    own**: cases arrive in `GET /api/patrulje/:id`, so add `'sos'` to
+    `PatruljeView.vue`'s existing `dependsOn`
+    (`['patrulje:{id}', 'spejder', 'order', 'payment']`)
   - PRD 006 will add a member token to the detail view; that is its change to
     make, not a placeholder to add now.
 - The SPA's dev-only dependency validation warns about tokens nothing can emit —
@@ -359,9 +408,14 @@ Decisions for this feature:
   - Respect the dependency-inversion rule documented in
     `shared-go/tables/interfaces.go`: the package declares what it needs from the
     application in its own `interfaces.go`, satisfied structurally by the consuming
-    service, and never imports application code. This matters most for the
-    acting-user context needed for `createdByUserId` — take it as a port, not by
-    reaching into `nathejk.dk/internal/requestctx`.
+    service, and never imports application code.
+  - **The acting user is passed in, not fetched.** Every other local command reaches
+    for `requestctx.UserFrom(ctx)` directly (`table/year/commands.go:28`,
+    `table/checkgroup/commands.go:54`, `table/checkpoint/command.go:31`), which is an
+    import of `nathejk.dk/...` and therefore off-limits here. The simplest resolution
+    needs no port at all: the **handler** resolves the actor and passes it to the
+    command as an explicit argument. Keep it that way when the auth service lands —
+    the actor becomes non-empty, and no package boundary moves.
   - **No imports from `nathejk.dk/...` anywhere in the package.** This is the single
     check that decides whether the lift is a file move or a rewrite, and nothing in
     the build will complain if it rots, so it is worth enforcing in review from the
@@ -391,15 +445,20 @@ Decisions for this feature:
   `updateYearHandler`/`patchKlanHandler`.
 - New aggregate package `go/nathejk/table/sos/` with three projections:
   - **`sos`** (id, year, headline, description, createdAt, createdBy, status,
-    severity, assigneeSectionSlug) for the list/summary and by-team lookup. The
-    assignee is stored as an organisation **section slug** (FK-style reference into
-    the year-scoped `section` table); list/detail queries join `section` to resolve
-    the label for display.
+    severity, assigneeSectionSlug, **lastActivityAt**) for the list/summary and
+    by-team lookup. `lastActivityAt` is maintained by the projection on every event
+    for that case, so the list's "Sidst opdateret" column and its default sort are a
+    single-row read rather than an aggregate over `sos_activity`. The assignee is
+    stored as an organisation **section slug** (FK-style reference into the
+    year-scoped `section` table); list/detail queries join `section` to resolve the
+    label for display.
   - **`sos_team`** association table for team↔case links (legacy `sosassoc`).
-  - **`sos_activity`** (case id, seq/created-at, type, actor user id, value,
-    status, comment text) so `GET /api/sos/:id` can return the full history. New
-    relative to legacy, where the timeline lived only in the in-memory aggregate.
-    Design it so PRD 006 can append member-related entry types without a schema
+  - **`sos_activity`** (case id, activity id, seq/created-at, type, actor user id,
+    value, status, comment text, **refActivityId**) so `GET /api/sos/:id` can return
+    the full history. New relative to legacy, where the timeline lived only in the
+    in-memory aggregate. `refActivityId` is what makes a comment edit append rather
+    than overwrite — it points at the comment being amended. Design the type column
+    and payload so PRD 006 can append member-related entry types without a schema
     change.
 - Assignee source: reuse the existing `section` projection
   (`github.com/nathejk/shared-go/tables/section`, already wired as
@@ -413,9 +472,12 @@ Decisions for this feature:
   channel strings:
   `created, headline.updated, description.updated, commented, comment.updated,
   severity.specified, assigned, deleted, closed, reopened, team.associated,
-  team.disassociated`. Populate `createdByUserId` from the authenticated user on
-  every event, and dirty-check so a patch that changes nothing publishes nothing
-  (and therefore emits no live signal).
+  team.disassociated`. `createdByUserId` comes from the actor the handler passes in
+  (empty until the auth service lands), and commands dirty-check so a patch that
+  changes nothing publishes nothing (and therefore emits no live signal).
+- **Extend the patrulje read path** rather than adding an endpoint: `GET
+  /api/patrulje/:id` gains the team's cases, alongside the members, payments and
+  orders it already assembles (`go/cmd/api/patrulje.go:85-96`).
 - Wire the new projections into the `projections` slice and `data.NewModels(...)` /
   `commands.New(...)` in `go/cmd/api/main.go`. The slice matters: a consumer added
   to the mux outside it is silently not live.
@@ -428,15 +490,18 @@ updates, `PUT`/`DELETE` for sub-resources:
 
 | Method | Path | Purpose |
 |--------|------|---------|
-| GET | `/api/sos` | List cases (open/closed) for current year |
+| GET | `/api/sos` | List cases (open/closed) for current year, ordered by last activity |
 | GET | `/api/sos/:id` | Get one case with timeline + associated teams |
-| POST | `/api/sos` | Create case (headline + description) |
+| POST | `/api/sos` | Create case (headline + description, both required); returns the created case including its id |
 | PATCH | `/api/sos/:id` | Update single fields: `headline`, `description`, `severity`, `assigneeSectionSlug`, `status` (open/closed) |
 | DELETE | `/api/sos/:id` | Delete case (legacy `sos.deleted`) |
 | POST | `/api/sos/:id/comment` | Add a plain-text comment |
 | PATCH | `/api/sos/:id/comment/:commentId` | Edit a comment (legacy `comment.updated`) |
 | PUT | `/api/sos/:id/team/:teamId` | Associate a patrol with the case |
 | DELETE | `/api/sos/:id/team/:teamId` | Disassociate a patrol |
+
+One **existing** endpoint changes: `GET /api/patrulje/:id` gains the patrol's cases,
+which is how the "Kontakt med nødtelefon" card is fed. No new by-team endpoint.
 
 `GET /api/stream` is **not** listed: it exists already (PRD 004) and needs no
 change for this feature.
@@ -457,6 +522,9 @@ Notes on the shape:
   is a fact about *this case*. PRD 006's member actions will live on the member (or
   on `/api/sos/:id/team/:teamId/...` where the action is about the case's handling
   of that team) — that is its decision to make.
+- **No search endpoint for the team picker.** The SPA already holds the year's patrol
+  list live (`GET /api/patrulje`, cached by `PatruljeListView`), so association
+  filters that cache client-side on number, name and group.
 - The legacy `/api/sos/merge`, `/api/sos/split` and `/api/sos/sms` endpoints have
   no counterpart. The first two are replaced by PRD 006; the third is dropped.
 - The legacy read model was delivered over a websocket, so there were **no** legacy
@@ -491,6 +559,11 @@ tooling today, and while the `prd` skill mandates annotations, `.rules` does not
   as a real dependency for PRD 006's counters instead of assuming it here.
 - **Live-update tokens fail silently when wrong** (PRD 004 §12). Mitigated by
   stating them in §8 and by the dev-only validation.
+- **No per-user identity yet** (see §6 Auth): the timeline is attributable by time
+  only until the planned auth service lands, and the perimeter is basic auth on
+  stage/production with nothing in dev. The risk is presentational as much as
+  technical — if the UI implies attribution it does not have, operators will trust
+  the log further than they should.
 - **Backwards compatibility:** none required — this is net-new in the current
   platform; legacy code is reference only.
 
@@ -498,8 +571,10 @@ tooling today, and while the `prd` skill mandates annotations, `.rules` does not
 
 - Operators log ≥ 90% of emergency-phone calls as SOS cases during the event
   (qualitative: paper backup essentially unused).
-- Every case has a complete timeline (create → resolution) with no gaps;
-  a post-event spot-check shows shift handovers were possible from the tool alone.
+- Every case has a complete timeline (create → resolution) with no gaps; a
+  post-event spot-check shows shift handovers were possible from the tool alone.
+  Note this is a claim about **times and content**, not about who did what — there is
+  no per-user identity yet.
 - No operator reports having to reload the screen to see a colleague's change, and
   none reports losing typed text to an incoming update.
 - No incidents caused by the tool during the event (it must be dependable under
@@ -523,14 +598,18 @@ Proposed tasks to create in `roadmap/tasks/open/` (not created yet):
 - [ ] Task: Local — wire SOS projections/commands into `cmd/api/main.go`, including
       the `projections` slice so they are live
 - [ ] Task: Local — SOS REST handlers (`go/cmd/api/sos.go`), stays local permanently
-- [ ] Task: Local — by-team case query for the patrol detail page
+- [ ] Task: Local — extend `GET /api/patrulje/:id` with the patrol's cases (port
+      legacy `data.SosModel.GetByTeam`)
 - [ ] Task: Frontend — `SosListView` + `/sos` route + nav item, on
       `useLiveResource(['sos'])`
 - [ ] Task: Frontend — `SosView` detail with timeline + `SosActivityLine`
       (tolerant of unknown activity types), seeded from the list row, optimistic
       comment/patch writes, dirty-guard on the headline editor and composer
-- [ ] Task: Frontend — team association card (member list read-only, no actions)
-- [ ] Task: Frontend — "Kontakt med nødtelefon" card on patrol detail
+- [ ] Task: Frontend — team association card: searchable picker over the cached
+      patrol list, team contact details, member list read-only with no actions
+- [ ] Task: Frontend — "Kontakt med nødtelefon" card on patrol detail (render only —
+      data comes from the extended patrulje payload; add `'sos'` to that view's
+      `dependsOn`)
 - [ ] Task: Review check — assert the `sos` package imports nothing from
       `nathejk.dk/...` (lift-readiness)
 - [ ] Task: Confirm the severity list with organizers
@@ -554,12 +633,17 @@ Deliberately short: the questions that were holding this document up moved to PR
   the Organisation page?
 - **Case deletion:** hard or soft? The timeline is append-only for audit reasons,
   so a hard delete removes a record we said we would keep. Proposal: soft-delete,
-  hidden from both lists, recoverable by an admin. And may any operator delete, or
-  only the creator?
-- **Authorisation:** is "any logged-in user" acceptable, or should the nødtelefon
-  screen require membership of a particular section (the permissions model in
-  `go/internal/data/permissions.go` exists but is unused by routes)? These cases
-  contain participants' medical-adjacent context.
+  hidden from both lists, recoverable by an admin. Note "only the creator may
+  delete" is not implementable until per-user identity exists.
+- **Comment editing scope:** with no per-user identity, any operator can edit any
+  comment. Acceptable, or should editing be dropped from the first slice and
+  re-added with the auth service? Dropping it is cheap now and awkward later, since
+  legacy had `comment.updated` and the endpoint shapes the `sos_activity` schema.
+- **Do we show members at all before PRD 006?** With no status and no actions, the
+  per-member list may read as a broken feature; what an operator needs mid-call is
+  the team's number, group and a contact phone. Option: ship team identity + contact
+  only, and let PRD 006 introduce the member rows together with their status and
+  actions.
 - **OpenAPI:** the `prd` skill mandates OpenAPI annotations on every endpoint, but
   hq has no OpenAPI tooling, spec or annotations anywhere in `go/`, and `.rules`
   does not require it. Do we introduce the tooling as part of this feature, or drop
@@ -567,3 +651,9 @@ Deliberately short: the questions that were holding this document up moved to PR
 - **Assignee notification:** does assigning a section notify anybody (SMS/mail via
   the existing gateways), or is the assignment purely a label for operators? Legacy
   did not notify; worth confirming that is still wanted.
+
+**Settled, recorded so it is not reopened:** authentication is perimeter-only — basic
+auth on stage/production, none in dev — and a JWT-issuing auth service is planned but
+unscheduled. This feature is written as though an authenticated user is present, so
+the actor plumbing and `createdByUserId` are built now and simply carry an empty value
+until that service exists (§6 Auth).

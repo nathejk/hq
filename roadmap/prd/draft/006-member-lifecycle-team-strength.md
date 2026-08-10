@@ -332,7 +332,9 @@ associated with it:
 
 - [ ] Member statuses and their Danish labels are served **from the backend**, never
       hardcoded in the view.
-- [ ] Capture the acting user on every event this interface publishes.
+- [ ] Capture the acting user on every event this interface publishes, resolved from
+      the request context and passed to the command by the handler — empty in practice
+      until the planned auth service lands, exactly as in PRD 001 §6 (Auth).
 - [ ] All queries and events are scoped to the current event year.
 
 ### Non-Functional
@@ -352,7 +354,12 @@ associated with it:
   is to say the screen cannot reach the server rather than to render a number.
   Treat PRD 005 as a dependency of this PRD, not of PRD 001.
 - **Auditability:** every transition, every breach handling and every override is
-  attributable to a person and a time. This is the record an incident review reads.
+  attributable to a **time**, and to a person once per-user identity exists (today
+  authentication is perimeter-only — basic auth on stage/production, none in dev — so
+  the actor is recorded but empty; see PRD 001 §6). This matters more here than for a
+  textual case log: "who granted this patrol an exception?" is the question an
+  incident review asks, so **an exception's reason text is doing the work the missing
+  identity cannot** and should be required rather than optional.
 - **Localization:** Danish UI text and `da-DK` date formatting.
 
 ## 7. UX / UI Notes
