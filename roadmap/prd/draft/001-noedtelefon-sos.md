@@ -161,9 +161,14 @@ member transitions onto this PRD's timeline), documented in §8.
       then replaces `/sos/new` with `/sos/:id`.
 - [ ] Edit a case headline and description (`PATCH /api/sos/:id`).
 - [ ] Close and reopen a case (`PATCH /api/sos/:id`, `status` field).
-- [ ] Delete a case (`DELETE /api/sos/:id`, legacy `sos.deleted`). Deletion is for
-      a case created in error — see Open Questions for whether it is soft, and who
-      may do it, given the timeline is otherwise append-only.
+- [ ] **Soft-delete** a case (`DELETE /api/sos/:id`, legacy `sos.deleted`), for one
+      created in error. The projection sets `deletedAt` and keeps the row and its
+      timeline; the case disappears from both lists and `GET /api/sos/:id` answers
+      404, so an operator holding it open gets the "sagen er slettet" state from §5.
+      Recovery is possible because nothing is destroyed — the row is still there and
+      the event log is authoritative — but there is **no restore endpoint or UI in the
+      first slice**; an accidental deletion is undone by an operator with database
+      access. **Any operator may delete**, as with every other write here.
 - [ ] Add a plain-text comment to a case (`POST /api/sos/:id/comment`). The server
       mints the `SosCommentID` and returns it, so the comment has a stable target
       for a later edit.
@@ -171,13 +176,21 @@ member transitions onto this PRD's timeline), documented in §8.
       `comment.updated`). **The timeline stays append-only:** the edit writes a new
       `sos_activity` row referencing the original comment id, and the original row is
       left untouched. The detail view renders the current text with an "redigeret"
-      marker rather than hiding that it changed. Who may edit is an Open Question —
-      with no per-user identity it cannot currently be restricted to the author.
-- [ ] Set priority/severity green|yellow|red (`PATCH /api/sos/:id`).
-- [ ] Assign a case to an organisation **section** (`PATCH /api/sos/:id`). The list
-      of assignable sections comes from the sections defined on the Organisation
-      page — possibly a curated subset rather than every section (see Open
-      Questions).
+      marker rather than hiding that it changed. **Any operator may edit any
+      comment** — there is no per-user identity to restrict it to the author, and the
+      append-only trail is what keeps that safe. Revisit when the auth service lands.
+- [ ] Set severity to **`green` | `yellow` | `red`** (`PATCH /api/sos/:id`),
+      confirmed with organizers. Rendered as a coloured badge labelled **Grøn / Gul /
+      Rød**; it does not filter or sort the list in the first slice, which is ordered
+      by last activity.
+- [ ] Assign a case to an organisation **section** (`PATCH /api/sos/:id`). The
+      selectable sections are those flagged **assignable** on the section — a new
+      `assignable` boolean on `shared-go/tables/section`, defaulting to false,
+      toggled per section on the Organisation page and exposed through the existing
+      `GET /api/organisation`. A case keeps the slug it was assigned; if that section
+      is later renamed the new label simply shows, and if it is deleted the case
+      displays the raw slug marked "(slettet sektion)" rather than dropping the
+      assignment.
 - [ ] Associate / disassociate a patrol with a case (`PUT` /
       `DELETE /api/sos/:id/team/:teamId`). Only patrols can be associated with a
       case — clans (klaner) cannot.
@@ -292,16 +305,20 @@ New frontend surface (all inside the `ui` SPA, `vue/src`):
       member row with status, timestamps and actions, and adds the strength/breach
       warnings to this card — leave room for it rather than designing around its
       absence.
-    - **Prioritet** select (green/yellow/red) and **Tildelt** select. The
-      **Tildelt** options are organisation sections loaded from the backend via the
-      existing `GET /api/organisation` — shown by section label, stored by section
-      slug. Do **not** hardcode the legacy assignee list
+    - **Prioritet** select (Grøn/Gul/Rød, coloured badge) and **Tildelt** select. The
+      **Tildelt** options are the **assignable** organisation sections loaded from the
+      backend via the existing `GET /api/organisation` — shown by section label,
+      stored by section slug. Do **not** hardcode the legacy assignee list
       (guide/samarit/rover/…).
   - **Dirty-guard.** While the headline editor is open or the comment composer has
     text, incoming payloads are deferred and applied when the edit ends, and the UI
     says updates are paused — as `KlanListView.vue` and `KortView.vue` do. This is
     required, not optional: it is a page holding unsaved state, and the operator is
     typing while on the phone.
+- **Organisation page:** the section rows gain an **assignable** toggle ("kan tildeles
+nødråb"), which is the only change this feature makes to an existing screen besides
+the patrol card. Off by default, so the assignee list starts empty and is opted into
+deliberately.
 - **Terminology:** the field and its events are `severity`; the UI label is
   **Prioritet**. Do not let the two drift into a third name.
 - **Patrol detail:** add a "Kontakt med nødtelefon" card to
@@ -462,10 +479,14 @@ Decisions for this feature:
     change.
 - Assignee source: reuse the existing `section` projection
   (`github.com/nathejk/shared-go/tables/section`, already wired as
-  `app.models.Section` / `app.commands.Section`). The frontend loads these via the
-  existing `GET /api/organisation`, so no new endpoint is needed, and the `assigned`
-  event carries a section slug rather than the legacy free enum. How the assignable
-  **subset** is determined is an Open Question.
+  `app.models.Section` / `app.commands.Section`), filtered to sections flagged
+  **assignable**. That flag is a **shared-go schema change**: `section` currently has
+  `slug, year, parentSlug, label, sortOrder` and no such column, so it needs the
+  column, a command to toggle it, an event, and exposure in `GET /api/organisation`.
+  Rejected alternative: "all descendants of a designated parent section", which works
+  today via `parentSlug` but couples the assignee list to the shape of the
+  organisation tree — a reorganisation would silently change who can be assigned.
+  The `assigned` event carries the section slug rather than the legacy free enum.
 - Write side: a `commands.Sos` command struct that publishes domain events with
   subjects on the current convention — `NATHEJK.{year}.sos.{sosId}.{event}`, built
   with `github.com/jrgensen/stream/subject`, rather than the legacy `nathejk:sos.*`
@@ -494,7 +515,7 @@ updates, `PUT`/`DELETE` for sub-resources:
 | GET | `/api/sos/:id` | Get one case with timeline + associated teams |
 | POST | `/api/sos` | Create case (headline + description, both required); returns the created case including its id |
 | PATCH | `/api/sos/:id` | Update single fields: `headline`, `description`, `severity`, `assigneeSectionSlug`, `status` (open/closed) |
-| DELETE | `/api/sos/:id` | Delete case (legacy `sos.deleted`) |
+| DELETE | `/api/sos/:id` | Soft-delete a case (legacy `sos.deleted`); no restore endpoint in the first slice |
 | POST | `/api/sos/:id/comment` | Add a plain-text comment |
 | PATCH | `/api/sos/:id/comment/:commentId` | Edit a comment (legacy `comment.updated`) |
 | PUT | `/api/sos/:id/team/:teamId` | Associate a patrol with the case |
@@ -538,9 +559,14 @@ tooling today, and while the `prd` skill mandates annotations, `.rules` does not
 - New tables: `sos`, `sos_team`, `sos_activity` (all `CREATE TABLE IF NOT EXISTS`,
   embedded via `//go:embed`, MariaDB, year-scoped). Rebuilt from JetStream on
   startup like every other projection.
+- `sos` carries `deletedAt` for the soft delete; every read path filters it out, and
+  the row and its timeline are retained.
+- `section` (shared-go) gains an `assignable` boolean.
 - Note `CREATE TABLE IF NOT EXISTS` never alters an existing table, so getting the
   `sos_activity` shape roughly right up front matters more than usual in dev: a
-  column added later silently will not appear where the table already exists.
+  column added later silently will not appear where the table already exists. The
+  same trap applies to `section.assignable`, which lands in a table that already
+  exists everywhere.
 
 ### Dependencies & risks
 
@@ -589,8 +615,10 @@ per PRD 004 §12 the views compose `useLiveResource` from their first commit.
 
 Proposed tasks to create in `roadmap/tasks/open/` (not created yet):
 
-- [ ] Task: shared-go — add `SosCommentID`, severity type and SOS message structs;
-      release + bump `go.mod` here
+- [ ] Task: shared-go — add `SosCommentID`, severity type (`green|yellow|red`) and
+      SOS message structs; release + bump `go.mod` here
+- [ ] Task: shared-go — add the `assignable` flag to `tables/section` (column,
+      toggle command, event, and exposure in the section query); release + bump
 - [ ] Task: Local — `go/nathejk/table/sos/`: `sos` + `sos_team` + `sos_activity`
       projections & schemas, to shared-go guidelines
 - [ ] Task: Local — `sos` write side (commands) + year-scoped JetStream subjects,
@@ -610,35 +638,17 @@ Proposed tasks to create in `roadmap/tasks/open/` (not created yet):
 - [ ] Task: Frontend — "Kontakt med nødtelefon" card on patrol detail (render only —
       data comes from the extended patrulje payload; add `'sos'` to that view's
       `dependsOn`)
+- [ ] Task: Frontend — `assignable` toggle on the Organisation page section rows
 - [ ] Task: Review check — assert the `sos` package imports nothing from
       `nathejk.dk/...` (lift-readiness)
-- [ ] Task: Confirm the severity list with organizers
-- [ ] Task: Decide & implement which organisation sections are assignable to cases
 - [ ] Task: Follow-up (post-stabilisation) — lift `sos` into `shared-go/tables/`
 
 ## 11. Open Questions
 
 Deliberately short: the questions that were holding this document up moved to PRD
-006 with the work they belong to.
+006 with the work they belong to, and four more were answered on 2026-08-10 — see
+Decisions below.
 
-- **Severity list:** confirm `green|yellow|red` and their Danish labels with
-  organizers. Is severity ever used to filter or sort in practice, or is it purely
-  visual?
-- **Assignable sections:** the assignee is an organisation section, but "maybe not
-  all sections" — how do we determine the assignable subset? The `section` table
-  (shared-go `tables/section`) has `slug, year, parentSlug, label, sortOrder` and
-  **no** `assignable` flag, so a flag means a shared-go schema change, whereas "all
-  descendants of a designated parent section" works today via `parentSlug`. Also:
-  what happens to a case's assignee if that section is later renamed or deleted on
-  the Organisation page?
-- **Case deletion:** hard or soft? The timeline is append-only for audit reasons,
-  so a hard delete removes a record we said we would keep. Proposal: soft-delete,
-  hidden from both lists, recoverable by an admin. Note "only the creator may
-  delete" is not implementable until per-user identity exists.
-- **Comment editing scope:** with no per-user identity, any operator can edit any
-  comment. Acceptable, or should editing be dropped from the first slice and
-  re-added with the auth service? Dropping it is cheap now and awkward later, since
-  legacy had `comment.updated` and the endpoint shapes the `sos_activity` schema.
 - **Do we show members at all before PRD 006?** With no status and no actions, the
   per-member list may read as a broken feature; what an operator needs mid-call is
   the team's number, group and a contact phone. Option: ship team identity + contact
@@ -652,8 +662,24 @@ Deliberately short: the questions that were holding this document up moved to PR
   the existing gateways), or is the assignment purely a label for operators? Legacy
   did not notify; worth confirming that is still wanted.
 
-**Settled, recorded so it is not reopened:** authentication is perimeter-only — basic
-auth on stage/production, none in dev — and a JWT-issuing auth service is planned but
-unscheduled. This feature is written as though an authenticated user is present, so
-the actor plumbing and `createdByUserId` are built now and simply carry an empty value
-until that service exists (§6 Auth).
+### Decisions
+
+Recorded so they are not reopened.
+
+- **Authentication (2026-08-10):** perimeter-only — basic auth on stage/production,
+  none in dev — with a JWT-issuing auth service planned but unscheduled. The feature
+  is written as though an authenticated user is present, so the actor plumbing and
+  `createdByUserId` are built now and carry an empty value until that service exists
+  (§6 Auth).
+- **Severity (2026-08-10):** `green` | `yellow` | `red`, labelled Grøn / Gul / Rød.
+  Display only in the first slice — no filtering or sorting by it.
+- **Assignable sections (2026-08-10):** an `assignable` flag on the section, to be
+  added to `shared-go/tables/section` and toggled on the Organisation page. Not
+  derived from the organisation tree's shape, so reorganising the tree cannot
+  silently change who can be assigned.
+- **Case deletion (2026-08-10):** soft. `deletedAt` on the row, hidden from the
+  lists, 404 on the detail, nothing destroyed, no restore UI in the first slice.
+- **Who may write (2026-08-10):** every operator may create, edit, comment, edit
+  anybody's comment, and delete. There is no identity to scope permissions to, and
+  the append-only timeline is what makes that acceptable. Revisit with the auth
+  service.
