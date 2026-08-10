@@ -3,7 +3,7 @@
 **Status:** done
 **Author:** agent session
 **Created:** 2026-08-07
-**Last updated:** 2026-08-09
+**Last updated:** 2026-08-10
 **Approved:** not recorded — predates this lifecycle convention
 **Shipped:** 2026-08-09
 **Status note:** see §12 for what was deliberately left out
@@ -183,7 +183,7 @@ transport problems and are easy to reintroduce:
       cache entry, subscribing to signals for its key, and exposing explicit
       `data` / `pending` / `error` state. No page implements its own cache.
 - [x] A resource declares **what it depends on — entity types and/or specific
-      instances** (`dependsOn: ['sos']`, `dependsOn: ['sos:123', 'sos_activity']`), not
+      instances** (`dependsOn: ['sos']`, `dependsOn: ['sos:123', 'payment']`), not
       just its own key, so lists and derived aggregates revalidate when *any* member of
       a type changes (§8 "Dependencies: ids are not enough"). Without this, new rows
       never appear and computed figures never move.
@@ -340,9 +340,19 @@ So the cache primitive needs **dependency declaration**, not just a key:
 
 ```ts
 useLiveResource('sos:list',   fetchList,  { dependsOn: ['sos'] })
-useLiveResource('care:count', fetchCount, { dependsOn: ['spejderstatus'] })
-useLiveResource(`sos:${id}`,  fetchOne,   { dependsOn: [`sos:${id}`, 'sos_activity'] })
+useLiveResource('care:count', fetchCount, { dependsOn: ['spejder'] })
+useLiveResource(`sos:${id}`,  fetchOne,   { dependsOn: [`sos:${id}`, 'sos'] })
 ```
+
+> **Correction (2026-08-10).** As first written, the second and third examples used
+> `'spejderstatus'` and `'sos_activity'` — **projection table names, which can never
+> appear in a signal**, so both resources would have sat there never updating. Tokens
+> are the *event subject's* entity: a member change is published on the member's
+> subject (`spejder`), and all three SOS projections consume
+> `NATHEJK.{year}.sos.{id}.*`, so they share the single token `sos`. Left corrected
+> rather than as-written because this document is the pattern's reference and the
+> mistake is exactly the silent failure §12 records as the recurring defect — the
+> examples reproduced it before any code did.
 
 A signal invalidates every resource declaring a dependency on that entity **type**
 or that exact **instance**. Consequences worth accepting deliberately:
@@ -359,10 +369,11 @@ the legacy `dims` channel acquired its second read model).
   no per-resource debouncing until something demonstrably hurts — central coalescing
   plus the boot gate (replay reaches no client) removes the obvious burst sources, so
   adding a second timer now would be speculative.
-- The entity names in declarations are the **subject tokens**, not UI names: the
-  betalinger page depends on `payment` and `order`; `gøgler` contains a non-ASCII
-  character; `checkgroups` (plural) appears as a collection-level subject. Cache keys
-  and the `?entities=` filter must handle those exact strings.
+- The entity names in declarations are the **subject tokens**, not UI names **and not
+  projection or table names**: the betalinger page depends on `payment` and `order`;
+  `gøgler` contains a non-ASCII character; `checkgroups` (plural) appears as a
+  collection-level subject. Cache keys and the `?entities=` filter must handle those
+  exact strings.
 
 **Client-side fan-out: reuse the existing bus.** `vue/src/plugins/bus` already exports
 a `mitt` instance (the axios plugin imports it), so one `EventSource` owned by a
@@ -783,7 +794,11 @@ Recorded rather than ticked, because none of it is finished:
   against ~3.5ms endpoints, so `?entities=` was never needed. The *actual* recurring
   defect was mundane: `dependsOn` tokens are bare strings, two of six were wrong, and
   a wrong one fails silently. Cheap safeguards on the boring part beat sophistication
-  on the interesting part.
+  on the interesting part. **And this document was part of the problem:** three of its
+  own `dependsOn` examples named projection tables (`spejderstatus`, `sos_activity`)
+  rather than subject tokens, so the specification demonstrated the defect before any
+  code did. Corrected in §6 and §8 on 2026-08-10; the lesson is that an example in a
+  PRD is copied more often than its prose is read.
 - **A stale value that looks live is the whole enemy**, and it kept reappearing in new
   disguises — buffer overflow, a year-switch race, a slow response from a previous
   generation, a proxy-looking `WriteTimeout`, an editor clobbered by its own
