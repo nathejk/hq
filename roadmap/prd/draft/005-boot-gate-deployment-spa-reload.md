@@ -36,7 +36,7 @@ invisible to operators or disruptive:
 
 - **What problem does this solve?**
   - Serving a partially-replayed read model means answering with numbers that look
-    plausible and are wrong. PRD 001 has the sharpest example: a "how many people
+    plausible and are wrong. PRD 006 has the sharpest example: a "how many people
     are in our care right now" count that is quietly incomplete is worse than no
     count at all.
   - A caught-up boot is not instant, so naive restarts mean downtime proportional
@@ -340,7 +340,7 @@ telling apart:
   `id, year, status, updatedAt`. A fresh database does *not* fix this one — the schema
   itself is incomplete. It is inert today (`Consumes()` returns an empty slice and
   `HandleMessage` is entirely commented out) so nothing writes those fields, but it is
-  dormant scaffolding for the member-reassignment work PRD 001 specifies, and PRD 001
+  dormant scaffolding for the member-lifecycle work PRD 006 specifies, and PRD 006
   will hit it the moment it wires the consumer up.
 
 With a fresh database per build, every deploy creates its schema from scratch, so the
@@ -458,19 +458,19 @@ worse than not having it.
 Cheap, high-signal aggregates rather than full table dumps:
 
 - Row counts per projection table.
-- Domain aggregates that would embarrass us if wrong: open SOS cases, PRD 001's
-  in-our-care count, started patrols, discontinued teams, teams below the 3-member
-  requirement.
+- Domain aggregates that would embarrass us if wrong: open SOS cases (PRD 001),
+  PRD 006's in-our-care count, started patrols, discontinued teams, teams below the
+  3-member requirement.
 - **Money** — payment and order totals. The best canary available: a difference here
   is never acceptable drift.
 - Counts grouped by status (`signupStatus`, `MemberStatus`), which catch a
-  mis-mapped enum — exactly the class of bug PRD 001's legacy status-value
+  mis-mapped enum — exactly the class of bug PRD 006's legacy status-value
   normalisation could introduce.
 
 #### Expected differences must be declarable
 
 The obvious trap: a deploy whose *purpose* is to change a projection will fail its
-own comparison. PRD 001 is precisely such a deploy — reviving `spejderstatus` makes
+own comparison. PRD 006 is precisely such a deploy — reviving `spejderstatus` makes
 counts appear that were previously zero, and normalising legacy status values changes
 how members are grouped.
 
@@ -599,8 +599,9 @@ One database per build on the shared server (see above). Consequences:
 ### Dependencies & risks
 
 - **PRD 004** depends on this gate for its "no staleness UI" simplification. If the
-  gate does not happen, PRD 004 and PRD 001 both need staleness indicators added
-  back.
+  gate does not happen, PRD 004 and PRD 006 both need staleness indicators added
+  back — PRD 006 especially, since its counters are the numbers that must be either
+  right or visibly unavailable.
 - **Replay time is unknown** and is the input to every other decision here.
 - **Per-build databases shift the risk rather than removing it:** the failure mode
   is now disk growth and cleanup correctness (dropping a database still in use)
@@ -671,7 +672,7 @@ rows that matter are ✅.
 | # | Step | When | Manual today | Auto? |
 |---|---|---|---|---|
 | 1 | Confirm the intended image tag/build number is the one published | before | yes | easy — read from CI |
-| 2 | Confirm `shared-go` pin is the intended revision (see PRD 001 — events depend on it) | before | yes | easy — CI assertion |
+| 2 | Confirm `shared-go` pin is the intended revision (see PRD 001 and PRD 006 — events depend on it) | before | yes | easy — CI assertion |
 | 3 | Check JetStream is healthy and reachable; a boot that cannot replay will never become ready | before | yes | easy — pre-flight probe |
 | 4 | Check database server disk headroom for one more build's read model | before | yes | easy once per-build size is known |
 | 5 | Confirm the DB account has `CREATE DATABASE` (first deploy after the change) | before | yes | one-off |
