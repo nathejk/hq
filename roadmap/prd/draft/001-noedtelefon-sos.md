@@ -198,11 +198,12 @@ member transitions onto this PRD's timeline), documented in §8.
       caller reads out their number. It filters the year's patrol list already held
       in the SPA's live cache (`GET /api/patrulje`, as used by `PatruljeListView`) —
       no new search endpoint.
-- [ ] Show the associated patrol's identity and contact (team number, name, group,
-      contact phone) plus its members (name, contact) from the existing `spejder`
-      read model. **No member actions and no member status** — those arrive with
-      PRD 006. Whether the member list is worth showing at all before then is an
-      Open Question.
+- [ ] Show each associated patrol's **identity and contact** — team number, name,
+      group, korps and the contact person's phone — which is what an operator needs
+      mid-call. **No member list, no member status, no member actions.** The member
+      rows are introduced by PRD 006 together with the status and actions that make
+      them useful; a list of names with nothing next to them would read as a broken
+      feature.
 - [ ] List cases grouped into open / closed with columns: headline, created, last
       activity, priority, assignee (`GET /api/sos`), sorted by **last activity
       descending** within each group so the case that just moved is at the top.
@@ -300,11 +301,11 @@ New frontend surface (all inside the `ui` SPA, `vue/src`):
   - Actions: Luk sag / Genåbn sag, Tilføj kommentar.
   - Right column cards:
     - **Tilknyttede patruljer:** a team picker searchable by number, name and group
-      over the SPA's cached patrol list, then per team its number/name/group and
-      contact phone, and a member list (names and contact only). PRD 006 extends each
-      member row with status, timestamps and actions, and adds the strength/breach
-      warnings to this card — leave room for it rather than designing around its
-      absence.
+      over the SPA's cached patrol list, then one row per associated patrol showing
+      its number, name, group, korps and contact phone, with a link to the patrol's
+      own page and a remove action. **No member rows** — PRD 006 adds them, along with
+      each member's status and actions and the team's strength/breach warnings. Leave
+      vertical room for that rather than designing a layout it has to fight.
     - **Prioritet** select (Grøn/Gul/Rød, coloured badge) and **Tildelt** select. The
       **Tildelt** options are the **assignable** organisation sections loaded from the
       backend via the existing `GET /api/organisation` — shown by section label,
@@ -551,8 +552,9 @@ Notes on the shape:
 - The legacy read model was delivered over a websocket, so there were **no** legacy
   `GET /api/sos` endpoints — the two GETs above are new.
 
-Whether these need OpenAPI annotations is an Open Question — hq has no OpenAPI
-tooling today, and while the `prd` skill mandates annotations, `.rules` does not.
+The endpoints above are specified here rather than in an OpenAPI document: hq has no
+OpenAPI tooling, and the mandate to annotate was dropped for this repo (see
+Decisions).
 
 ### Data / storage
 
@@ -634,7 +636,7 @@ Proposed tasks to create in `roadmap/tasks/open/` (not created yet):
       (tolerant of unknown activity types), seeded from the list row, optimistic
       comment/patch writes, dirty-guard on the headline editor and composer
 - [ ] Task: Frontend — team association card: searchable picker over the cached
-      patrol list, team contact details, member list read-only with no actions
+      patrol list plus per-team identity and contact (no member rows — PRD 006)
 - [ ] Task: Frontend — "Kontakt med nødtelefon" card on patrol detail (render only —
       data comes from the extended patrulje payload; add `'sos'` to that view's
       `dependsOn`)
@@ -649,15 +651,6 @@ Deliberately short: the questions that were holding this document up moved to PR
 006 with the work they belong to, and four more were answered on 2026-08-10 — see
 Decisions below.
 
-- **Do we show members at all before PRD 006?** With no status and no actions, the
-  per-member list may read as a broken feature; what an operator needs mid-call is
-  the team's number, group and a contact phone. Option: ship team identity + contact
-  only, and let PRD 006 introduce the member rows together with their status and
-  actions.
-- **OpenAPI:** the `prd` skill mandates OpenAPI annotations on every endpoint, but
-  hq has no OpenAPI tooling, spec or annotations anywhere in `go/`, and `.rules`
-  does not require it. Do we introduce the tooling as part of this feature, or drop
-  the requirement for this repo?
 - **Assignee notification:** does assigning a section notify anybody (SMS/mail via
   the existing gateways), or is the assignment purely a label for operators? Legacy
   did not notify; worth confirming that is still wanted.
@@ -683,3 +676,11 @@ Recorded so they are not reopened.
   anybody's comment, and delete. There is no identity to scope permissions to, and
   the append-only timeline is what makes that acceptable. Revisit with the auth
   service.
+- **Members on the case card (2026-08-10):** not shown before PRD 006. The card lists
+  each associated patrol's identity and contact only; member rows arrive with the
+  status and actions that give them a purpose.
+- **OpenAPI (2026-08-10):** dropped for this repo. hq has no OpenAPI tooling, spec or
+  annotations, and `.rules` does not ask for any; the endpoint table in §8 is the API
+  documentation. Note the `prd` skill still states the mandate
+  (`.agents/skills/prd/SKILL.md`), so it will keep surfacing on future PRDs until
+  somebody relaxes it there — this decision governs hq regardless.

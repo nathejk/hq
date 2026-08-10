@@ -366,7 +366,10 @@ associated with it:
 
 All of this lands **inside PRD 001's surfaces**; this PRD adds no new views.
 
-- **`SosView.vue` → Tilknyttede patruljer card**, extended:
+- **`SosView.vue` → Tilknyttede patruljer card**, extended. PRD 001 ships this card
+  with per-patrol identity and contact only, so this PRD **introduces the member rows**
+  rather than decorating existing ones — they arrive together with the status and
+  actions that make them worth showing:
   - The team's **strength** (racing members) beside its name, an **Under styrke**
     warning when below the required 3, and an **Udgået** badge when discontinued.
   - Each member row shows the current status with its timestamp and, where known,
@@ -639,7 +642,8 @@ Notes on the shape:
   noun once, since it leaks into subjects, live tokens and the eventual lift.
 - Legacy `/api/sos/merge` and `/api/sos/split` are **replaced** by member
   reassignment plus derived discontinuation, and are not ported.
-- OpenAPI: same open question as PRD 001 — hq has no OpenAPI tooling today.
+- OpenAPI: not applicable — the mandate was dropped for this repo (PRD 001
+  Decisions); endpoints are specified in the PRD instead.
 
 ### Data / storage
 
@@ -766,8 +770,9 @@ Proposed tasks to create in `roadmap/tasks/open/` (not created yet):
       decide case correlation for externally-produced transitions
 - [ ] Task: Local — move the 3-member minimum out of `go/cmd/api/patrulje.go:99`
       into configuration
-- [ ] Task: Frontend — member rows in the case team card (status, timestamps,
-      acceptor, `Ønsker at udgå` / `Fortsætter selv`, override, reassign)
+- [ ] Task: Frontend — introduce member rows in the case team card (PRD 001 ships the
+      card without them): status, timestamps, acceptor, `Ønsker at udgå` /
+      `Fortsætter selv`, override, reassign
 - [ ] Task: Frontend — **I vores varetægt** counter + `waiting` alarm on the
       nødtelefon list view
 - [ ] Task: Frontend — breach warning + pre-commit warning on the `waiting` action,
