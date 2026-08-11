@@ -22,6 +22,11 @@ const toast = useToast();
 // anywhere revalidates an open patrol page. That is one small request on a page an
 // operator has deliberately opened, and the alternative is a member list that
 // silently stops updating.
+//
+// 'sos' was added for the "Kontakt med nødtelefon" card (PRD 001): the cases arrive
+// in this same payload, so the card needs no resource of its own — only this token,
+// which is also type-level because a case opened for this patrol has an id this
+// client has never seen.
 const { data, pending, error } = useLiveResource(
   `patrulje:detail:${props.teamId}`,
   async () => {
@@ -30,14 +35,16 @@ const { data, pending, error } = useLiveResource(
       team: response.data.team || {},
       members: response.data.members || [],
       orders: response.data.orders || [],
+      sosCases: response.data.sosCases || [],
     };
   },
-  { dependsOn: [`patrulje:${props.teamId}`, 'spejder', 'order', 'payment'] },
+  { dependsOn: [`patrulje:${props.teamId}`, 'spejder', 'order', 'payment', 'sos'] },
 );
 
 const patrulje = computed(() => data.value?.team ?? {});
 const spejdere = computed(() => data.value?.members ?? []);
 const orders = computed(() => data.value?.orders ?? []);
+const sosCases = computed(() => data.value?.sosCases ?? []);
 
 watch(error, (err) => {
   if (!err) return;
@@ -119,6 +126,28 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
                 </div>
             </template>
         </DataTable>
+
+        <!--
+          Kontakt med nødtelefon (PRD 001). Hidden entirely when the patrol has never
+          called: most never do, and an empty card on every patrol page is noise that
+          trains operators to ignore the place where a real incident would appear.
+        -->
+        <template v-if="sosCases.length">
+            <h1 class="font-nathejk text-2xl mt-5">Kontakt med nødtelefon</h1>
+            <DataTable :value="sosCases" :stripedRows="true" dataKey="id" selectionMode="single"
+                @row-click="$router.push({ name: 'sos', params: { id: $event.data.id } })">
+                <Column field="createdAt" header="Oprettet">
+                    <template #body="{data}">{{ formatDateTime(data.createdAt) }}</template>
+                </Column>
+                <Column field="headline" header="Overskrift" />
+                <Column field="status" header="Status">
+                    <template #body="{data}">
+                        <Tag :value="data.status === 'closed' ? 'Afsluttet' : 'Åben'"
+                             :severity="data.status === 'closed' ? 'secondary' : 'info'" />
+                    </template>
+                </Column>
+            </DataTable>
+        </template>
 
         <h1 class="font-nathejk text-2xl mt-5">Betalinger</h1>
         <DataTable :value="orders" sortMode="single" sortField="createdAt" :sortOrder="-1" :stripedRows="true" >

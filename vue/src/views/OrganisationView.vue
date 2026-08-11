@@ -26,6 +26,10 @@ type OrganisationResponse = {
   sections: Section[]
   crewMembers: CrewMember[]
   availableYearsForCopy: string[]
+  // Which sections may be assigned an SOS case (PRD 001). A list of slugs beside
+  // the sections rather than a field on each one: the section entity belongs to
+  // shared-go and knows nothing about the nødtelefon.
+  sosAssignableSections?: string[]
 }
 
 type TreeNode = {
@@ -184,6 +188,46 @@ function sectionPath(s: Section): string {
 
 // ----- API ------------------------------------------------------------------
 
+// Sections that may be assigned an SOS case (PRD 001 §6).
+//
+// Off by default and opted into per section, so the nødtelefon's assignee list
+// starts empty rather than offering every section in the organisation.
+const sosAssignable = ref<Set<string>>(new Set())
+
+// Takes an optional slug because the tree's node data is loosely typed — cleaner
+// than a non-null assertion at four call sites in the template.
+const isSosAssignable = (slug?: string) => !!slug && sosAssignable.value.has(slug)
+
+async function toggleSosAssignable(slug?: string, label?: string) {
+  if (!slug) return
+  const name = label ?? slug
+  const next = !sosAssignable.value.has(slug)
+  // Optimistic: the toggle is a switch, and a switch that waits for a round trip
+  // before moving feels broken. Reverted below if the write fails.
+  const snapshot = new Set(sosAssignable.value)
+  const updated = new Set(sosAssignable.value)
+  if (next) updated.add(slug)
+  else updated.delete(slug)
+  sosAssignable.value = updated
+
+  try {
+    await http.put(`/section/${slug}/sos-assignable`, { assignable: next })
+    toast.add({
+      severity: 'success',
+      summary: next ? `${name} kan tildeles nødråb` : `${name} kan ikke længere tildeles nødråb`,
+      life: 2500
+    })
+  } catch (err: any) {
+    sosAssignable.value = snapshot
+    toast.add({
+      severity: 'error',
+      summary: 'Kunne ikke ændre nødråb-tildeling',
+      detail: err?.response?.data?.error ?? String(err),
+      life: 5000
+    })
+  }
+}
+
 async function load() {
   loading.value = true
   try {
@@ -192,6 +236,7 @@ async function load() {
     sections.value = res.data.sections ?? []
     crewMembers.value = res.data.crewMembers ?? []
     availableYearsForCopy.value = res.data.availableYearsForCopy ?? []
+    sosAssignable.value = new Set(res.data.sosAssignableSections ?? [])
     if (!selectedCopyYear.value && availableYearsForCopy.value.length > 0) {
       selectedCopyYear.value = availableYearsForCopy.value[0]
     }
@@ -600,6 +645,17 @@ onMounted(load)
               <span class="flex-1">{{ node.label }}</span>
               <template v-if="node.data.type === 'section'">
                 <Badge v-if="node.data.memberCount" :value="node.data.memberCount" severity="secondary" />
+                <!--
+                  Nødråb-tildeling (PRD 001). Shown as a persistent icon when enabled
+                  and only on hover when not: which sections take nødråb is worth
+                  seeing at a glance, but an off state on every row would be clutter.
+                -->
+                <i v-if="isSosAssignable(node.data.slug)" class="pi pi-phone text-primary-500"
+                   v-tooltip.top="'Kan tildeles nødråb'" />
+                <Button class="row-action" :icon="isSosAssignable(node.data.slug) ? 'pi pi-phone-slash' : 'pi pi-phone'"
+                        size="small" severity="secondary" text rounded :disabled="busy"
+                        v-tooltip.top="isSosAssignable(node.data.slug) ? 'Kan ikke tildeles nødråb' : 'Kan tildeles nødråb'"
+                        @click.stop="toggleSosAssignable(node.data.slug, node.label)" />
                 <Button class="row-action" icon="pi pi-pencil" size="small" severity="secondary" text rounded :disabled="busy" @click.stop="openEditDialog(node.data.slug, node.label)" />
                 <Button class="row-action" icon="pi pi-trash" size="small" severity="danger" text rounded :disabled="busy" @click.stop="deleteSection(node.data.slug, node.label)" />
               </template>
