@@ -57,7 +57,7 @@ Two habits worth keeping, both learned the hard way on PRD 004:
 
 | PRD | Status | Notes |
 |---|---|---|
-| 001 Nødtelefon / SOS case management | done | shipped 2026-08-11 (tasks 042–054); live confirmed in two tabs; see its §12 |
+| 001 Nødtelefon / SOS case management | done | shipped 2026-08-11 (tasks 042–054, 056); live confirmed in two tabs; see its §12 |
 | 002 Order-based payments | done | shipped 2026-07-31 (tasks 001–008) |
 | 003 Patrulje number assignment | draft | not implemented — nothing publishes `numberassigned` |
 | 004 Live updates for the SPA | done | shipped 2026-08-09 (tasks 023–040); see its §12 |

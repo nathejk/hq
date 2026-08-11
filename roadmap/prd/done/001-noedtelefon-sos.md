@@ -7,9 +7,8 @@
 **Approved:** 2026-08-11
 **Shipped:** 2026-08-11
 **Status note:** live updates confirmed in two browser tabs by the product owner
-2026-08-11
-**Status note:** split on 2026-08-10 — the member half (withdrawal chain, team
-strength, discontinuation) moved to **PRD 006**, which is sequenced after this one
+2026-08-11. Split on 2026-08-10 — the member half (withdrawal chain, team strength,
+discontinuation) moved to **PRD 006**, which is sequenced after this one
 **Target users:** organizer (HQ emergency-phone operators / nødtelefonvagter)
 
 ---
@@ -761,6 +760,21 @@ Recorded rather than ticked, because none of it is finished:
    auth and one proxy hop fewer than dev, and that is task 041, not this PRD's to close.
    The two-tab confirmation above was on the dev path.
 
+### After closure
+
+**Task 056** refined the detail view on the product owner's feedback, over five rounds on
+the same day: the case moved into a tinted note card sharing one style definition with the
+comment cards, both sitting on a single panel with the timeline and the composer; the
+activity log became a PrimeVue `Timeline` with comments on the same rail as state changes;
+creation and headline/description edits stopped producing timeline entries (a display
+filter — the events and rows are untouched, so the audit trail is intact); the handling
+controls were dimmed and narrowed; and the live-update indicator moved onto the navigation
+bar's moon — yellow when healthy, red while reconnecting, dark grey when offline.
+
+Recorded here rather than folded into the sections above, because the PRD is the record of
+what was agreed and shipped, and this was agreed after it shipped. Nothing in the
+requirements changed.
+
 ### What this PRD got wrong, for the next one
 
 - **The task order had a dependency backwards.** 045 (assignable sections) needed 046
@@ -779,3 +793,8 @@ Recorded rather than ticked, because none of it is finished:
 - **The auth claim in an early draft was simply false** ("behind the existing JWT cookie
   auth"), and it survived several revisions because it was plausible. Reviewing a PRD's
   factual claims against the code is worth as much as reviewing its design.
+- **The UX section was too thin to build from.** §7 described the surfaces but not their
+  hierarchy, so the first implementation gave the case, its history and the handling
+  controls roughly equal weight — and every one of task 056's five rounds was about that
+  hierarchy rather than about behaviour. A sentence naming what an operator reads *most*
+  on each screen would have saved all of it.
