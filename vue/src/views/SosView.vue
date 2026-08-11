@@ -403,10 +403,19 @@ watch(error, (err) => {
         <template #content>
           <Timeline v-if="visibleTimeline.length" :value="visibleTimeline" class="sos-timeline">
             <template #opposite="{ item }">
-              <span class="text-xs text-gray-500">{{ formatTime(item.createdAt) }}</span>
+              <!-- A comment's time is worth reading; a state change's is reference. -->
+              <span class="text-xs"
+                    :class="item.type === 'commented' ? 'text-gray-500' : 'text-gray-400'">
+                {{ formatTime(item.createdAt) }}
+              </span>
             </template>
             <template #marker="{ item }">
-              <span class="flex w-7 h-7 items-center justify-center rounded-full bg-gray-100 text-gray-600">
+              <!-- Comments get a filled marker, state changes a faint one: the rail
+                   should show at a glance where the operator's own words are. -->
+              <span class="flex w-7 h-7 items-center justify-center rounded-full"
+                    :class="item.type === 'commented'
+                      ? 'bg-gray-100 text-gray-700'
+                      : 'text-gray-300'">
                 <i :class="activityIcon(item.type)" />
               </span>
             </template>

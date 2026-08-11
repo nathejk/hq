@@ -50,6 +50,8 @@ request only named the title.
 - [x] No timeline entry for `created`, `headline.updated`, `description.updated`
 - [x] Events and `sos_activity` rows unchanged — audit trail intact
 - [x] Comments rendered in a `Card` on the rail, state changes as plain one-liners
+- [x] Comment card carries a slight tint so it does not dissolve into the white panel
+- [x] State changes dimmed — text, marker and timestamp — so they can be skimmed past
 - [x] Frontend tests pass; eslint clean; no new type errors
 
 ## Progress Log
@@ -90,3 +92,13 @@ request only named the title.
   on) so the hierarchy the owner asked for actually appears. **Not** fixed repo-wide: that
   is a deliberate, separate decision (define the variables, or sweep the classes) and it
   would change the look of pages nobody asked me to touch.
+- 2026-08-11 — Second round of owner feedback, and the two halves of it work together: the
+  comment card is **tinted** (`#f4f6f8`) because the page's own cards are white and a white
+  card inside a white panel dissolves; and the state changes are **dimmed across all three
+  of their parts** — text `gray-400`, detail `gray-500`, marker `gray-300` with no fill,
+  timestamp `gray-400`. Dimming only the text would have left the markers as a column of
+  dark dots pulling the eye down the rail, which is the opposite of the intent.
+- 2026-08-11 — The tint is set in scoped CSS rather than as a `bg-*` class: PrimeVue's own
+  `.p-card` background rule would otherwise win on equal specificity, and which one applied
+  would depend on stylesheet order. A scoped rule carries the extra attribute selector and
+  lands on top deterministically.

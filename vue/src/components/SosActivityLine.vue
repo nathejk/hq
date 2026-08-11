@@ -35,6 +35,10 @@ const emit = defineEmits<{
   'update:draft': [value: string]
 }>()
 
+// The comment text is the only thing on this timeline an operator writes; the rest
+// is the system recording what happened. That difference drives the styling: a
+// comment gets a tinted card, a state change is a dimmed one-liner that can be
+// skimmed past.
 const isComment = computed(() => props.activity.type === 'commented')
 
 // What an entry's value means depends on its type, so it is rendered rather than
@@ -86,9 +90,9 @@ const draftValue = computed({
     </template>
   </Card>
 
-  <div v-else class="text-gray-700">
+  <div v-else class="text-sm text-gray-400">
     <span>{{ activityLabel(activity.type) }}</span>
-    <span v-if="detail" class="font-medium">: {{ detail }}</span>
+    <span v-if="detail" class="text-gray-500">: {{ detail }}</span>
   </div>
 </template>
 
@@ -106,10 +110,15 @@ const draftValue = computed({
 
 /* A card on a timeline rail wants to be a quiet container, not a raised panel:
    tighter than the default padding and flat rather than shadowed, so a run of
-   comments does not become a stack of floating boxes. The border comes from a
-   Tailwind class on the element — the stock palette, because this project maps
-   `surface-*` to CSS variables that are not actually defined. */
+   comments does not become a stack of floating boxes.
+
+   The tint matters more than it looks: the page's own cards are white, so a white
+   comment card would dissolve into the panel behind it. A slightly cool grey makes
+   each comment read as a note laid on the page. Set here rather than with a Tailwind
+   class because PrimeVue's own `.p-card` background would otherwise win — a scoped
+   rule carries the extra attribute selector and lands on top. */
 .sos-comment {
+  background: #f4f6f8;
   box-shadow: none;
 }
 .sos-comment :deep(.p-card-body) {
