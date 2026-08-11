@@ -57,12 +57,12 @@ Two habits worth keeping, both learned the hard way on PRD 004:
 
 | PRD | Status | Notes |
 |---|---|---|
-| 001 Nødtelefon / SOS case management | draft | case management only; member half split out to 006 on 2026-08-10 |
+| 001 Nødtelefon / SOS case management | done | shipped 2026-08-11 (tasks 042–054); see its §12 |
 | 002 Order-based payments | done | shipped 2026-07-31 (tasks 001–008) |
 | 003 Patrulje number assignment | draft | not implemented — nothing publishes `numberassigned` |
 | 004 Live updates for the SPA | done | shipped 2026-08-09 (tasks 023–040); see its §12 |
 | 005 Boot gate, deployment & SPA reload | draft | skeleton; sections marked TBD |
-| 006 Member lifecycle, team strength & discontinuation | draft | split from 001; four blocking open questions; depends on 001 |
+| 006 Member lifecycle, team strength & discontinuation | draft | split from 001; four blocking open questions; 001 has shipped, so it is unblocked |
 
 Kept short on purpose, and easy to forget — the folders are authoritative if this
 table and they disagree.

@@ -1,11 +1,11 @@
 # PRD 001 — Nødtelefon / SOS case management
 
-**Status:** doing
+**Status:** done
 **Author:** agent session (recreating legacy feature)
 **Created:** 2026-07-29
 **Last updated:** 2026-08-11
 **Approved:** 2026-08-11
-**Shipped:**
+**Shipped:** 2026-08-11
 **Status note:** split on 2026-08-10 — the member half (withdrawal chain, team
 strength, discontinuation) moved to **PRD 006**, which is sequenced after this one
 **Target users:** organizer (HQ emergency-phone operators / nødtelefonvagter)
@@ -159,12 +159,12 @@ member transitions onto this PRD's timeline), documented in §8.
 
 ### Functional
 
-- [ ] Create an SOS case with headline + description (`POST /api/sos`). **Both are
+- [x] Create an SOS case with headline + description (`POST /api/sos`). **Both are
       required.** The server mints the `SosID` and returns the created case; the SPA
       then replaces `/sos/new` with `/sos/:id`.
-- [ ] Edit a case headline and description (`PATCH /api/sos/:id`).
-- [ ] Close and reopen a case (`PATCH /api/sos/:id`, `status` field).
-- [ ] **Soft-delete** a case (`DELETE /api/sos/:id`, legacy `sos.deleted`), for one
+- [x] Edit a case headline and description (`PATCH /api/sos/:id`).
+- [x] Close and reopen a case (`PATCH /api/sos/:id`, `status` field).
+- [x] **Soft-delete** a case (`DELETE /api/sos/:id`, legacy `sos.deleted`), for one
       created in error. The projection sets `deletedAt` and keeps the row and its
       timeline; the case disappears from both lists and `GET /api/sos/:id` answers
       404, so an operator holding it open gets the "sagen er slettet" state from §5.
@@ -172,58 +172,58 @@ member transitions onto this PRD's timeline), documented in §8.
       the event log is authoritative — but there is **no restore endpoint or UI in the
       first slice**; an accidental deletion is undone by an operator with database
       access. **Any operator may delete**, as with every other write here.
-- [ ] Add a plain-text comment to a case (`POST /api/sos/:id/comment`). The server
+- [x] Add a plain-text comment to a case (`POST /api/sos/:id/comment`). The server
       mints the `SosCommentID` and returns it, so the comment has a stable target
       for a later edit.
-- [ ] Edit an existing comment (`PATCH /api/sos/:id/comment/:commentId`, legacy
+- [x] Edit an existing comment (`PATCH /api/sos/:id/comment/:commentId`, legacy
       `comment.updated`). **The timeline stays append-only:** the edit writes a new
       `sos_activity` row referencing the original comment id, and the original row is
       left untouched. The detail view renders the current text with an "redigeret"
       marker rather than hiding that it changed. **Any operator may edit any
       comment** — there is no per-user identity to restrict it to the author, and the
       append-only trail is what keeps that safe. Revisit when the auth service lands.
-- [ ] Set severity to **`green` | `yellow` | `red`** (`PATCH /api/sos/:id`), Rendered as a coloured badge labelled **Grøn / Gul /
+- [x] Set severity to **`green` | `yellow` | `red`** (`PATCH /api/sos/:id`), Rendered as a coloured badge labelled **Grøn / Gul /
       Rød**; it does not filter or sort the list in the first slice, which is ordered
       by last activity.
-- [ ] Assign a case to an organisation **section** (`PATCH /api/sos/:id`). The
+- [x] Assign a case to an organisation **section** (`PATCH /api/sos/:id`). The
       selectable sections are those flagged **assignable** for the year — a flag owned
       by this feature (`sos_assignable_section`), toggled per section on the
       Organisation page and exposed through the existing `GET /api/organisation`. A
       case keeps the slug it was assigned; if that section is later renamed the new
       label simply shows, and if it is deleted the case displays the raw slug marked
       "(slettet sektion)" rather than dropping the assignment.
-- [ ] Associate / disassociate a patrol with a case (`PUT` /
+- [x] Associate / disassociate a patrol with a case (`PUT` /
       `DELETE /api/sos/:id/team/:teamId`). Only patrols can be associated with a
       case — clans (klaner) cannot.
-- [ ] The team picker is **searchable by team number, name and group**, since a
+- [x] The team picker is **searchable by team number, name and group**, since a
       caller reads out their number. It filters the year's patrol list already held
       in the SPA's live cache (`GET /api/patrulje`, as used by `PatruljeListView`) —
       no new search endpoint.
-- [ ] Show each associated patrol's **identity and contact** — team number, name,
+- [x] Show each associated patrol's **identity and contact** — team number, name,
       group, korps and the contact person's phone — which is what an operator needs
       mid-call. **No member list, no member status, no member actions.** The member
       rows are introduced by PRD 006 together with the status and actions that make
       them useful; a list of names with nothing next to them would read as a broken
       feature.
-- [ ] List cases grouped into open / closed with columns: headline, created, last
+- [x] List cases grouped into open / closed with columns: headline, created, last
       activity, priority, assignee (`GET /api/sos`), sorted by **last activity
       descending** within each group so the case that just moved is at the top.
-- [ ] View a single case with its full activity timeline and associated teams
+- [x] View a single case with its full activity timeline and associated teams
       (`GET /api/sos/:id`).
-- [ ] Show SOS cases associated with a patrol on that patrol's detail page. Delivered
+- [x] Show SOS cases associated with a patrol on that patrol's detail page. Delivered
       by **extending `GET /api/patrulje/:id`**, which already assembles members,
       payments and orders (`go/cmd/api/patrulje.go:85-96`), rather than by a second
       request — port legacy `data.SosModel.GetByTeam` (`_go/internal/data/sos.go:33`)
       as the query.
-- [ ] The timeline is **persisted as a SQL projection**, not held in memory, and
+- [x] The timeline is **persisted as a SQL projection**, not held in memory, and
       renders every activity type with an icon and a Danish label.
-- [ ] Capture the acting user on every event as `createdByUserId`, resolved from the
+- [x] Capture the acting user on every event as `createdByUserId`, resolved from the
       request context (`requestctx.UserFrom`) and passed to the command by the
       handler. Note this is **empty in practice** until the planned auth service
       lands (see Non-Functional → Auth); the field and the plumbing exist so that
       nothing has to change when it does.
-- [ ] All cases and events are scoped to the current event year.
-- [ ] The case list, the open case and its timeline are **live**, and the case
+- [x] All cases and events are scoped to the current event year.
+- [x] The case list, the open case and its timeline are **live**, and the case
       timeline tolerates entries produced by events this interface did not publish
       (which is what PRD 006 will add).
 
@@ -641,33 +641,34 @@ per PRD 004 §12 the views compose `useLiveResource` from their first commit.
 
 Proposed tasks to create in `roadmap/tasks/open/` (not created yet):
 
-- [ ] Task: Local — SOS domain vocabulary (`SosCommentID`, severity, message structs)
+- [x] Task: Local — SOS domain vocabulary (`SosCommentID`, severity, message structs)
       inside `go/nathejk/table/sos/`, to be lifted with the package
-- [ ] Task: Local — `sos_assignable_section` projection + toggle command, exposed in
+- [x] Task: Local — `sos_assignable_section` projection + toggle command, exposed in
       `GET /api/organisation`
-- [ ] Task: Local — `go/nathejk/table/sos/`: `sos` + `sos_team` + `sos_activity`
+- [x] Task: Local — `go/nathejk/table/sos/`: `sos` + `sos_team` + `sos_activity`
       projections & schemas, to shared-go guidelines
-- [ ] Task: Local — `sos` write side (commands) + year-scoped JetStream subjects,
+- [x] Task: Local — `sos` write side (commands) + year-scoped JetStream subjects,
       with per-field dirty-checking
-- [ ] Task: Local — wire SOS projections/commands into `cmd/api/main.go`, including
+- [x] Task: Local — wire SOS projections/commands into `cmd/api/main.go`, including
       the `projections` slice so they are live
-- [ ] Task: Local — SOS REST handlers (`go/cmd/api/sos.go`), stays local permanently
-- [ ] Task: Local — extend `GET /api/patrulje/:id` with the patrol's cases (port
+- [x] Task: Local — SOS REST handlers (`go/cmd/api/sos.go`), stays local permanently
+- [x] Task: Local — extend `GET /api/patrulje/:id` with the patrol's cases (port
       legacy `data.SosModel.GetByTeam`)
-- [ ] Task: Frontend — `SosListView` + `/sos` route + nav item, on
+- [x] Task: Frontend — `SosListView` + `/sos` route + nav item, on
       `useLiveResource(['sos'])`
-- [ ] Task: Frontend — `SosView` detail with timeline + `SosActivityLine`
+- [x] Task: Frontend — `SosView` detail with timeline + `SosActivityLine`
       (tolerant of unknown activity types), seeded from the list row, optimistic
       comment/patch writes, dirty-guard on the headline editor and composer
-- [ ] Task: Frontend — team association card: searchable picker over the cached
+- [x] Task: Frontend — team association card: searchable picker over the cached
       patrol list plus per-team identity and contact (no member rows — PRD 006)
-- [ ] Task: Frontend — "Kontakt med nødtelefon" card on patrol detail (render only —
+- [x] Task: Frontend — "Kontakt med nødtelefon" card on patrol detail (render only —
       data comes from the extended patrulje payload; add `'sos'` to that view's
       `dependsOn`)
-- [ ] Task: Frontend — `assignable` toggle on the Organisation page section rows
-- [ ] Task: Review check — assert the `sos` package imports nothing from
+- [x] Task: Frontend — `assignable` toggle on the Organisation page section rows
+- [x] Task: Review check — assert the `sos` package imports nothing from
       `nathejk.dk/...` (lift-readiness)
 - [ ] Task: Follow-up (post-stabilisation) — lift `sos` into `shared-go/tables/`
+      — **not done, deliberately**; carried as task 055
 
 ## 11. Open Questions
 
@@ -715,3 +716,60 @@ Recorded so they are not reopened.
   documentation. Note the `prd` skill still states the mandate
   (`.agents/skills/prd/SKILL.md`), so it will keep surfacing on future PRDs until
   somebody relaxes it there — this decision governs hq regardless.
+
+## 12. Closure
+
+**Closed as completed 2026-08-11**, after tasks 042–054.
+
+### What shipped
+
+| Half | Delivered |
+|---|---|
+| BFF (`go/nathejk/table/sos/`) | domain vocabulary (ids, severity, status, twelve event bodies); three projections — `sos`, `sos_team`, `sos_activity` — plus `sos_assignable_section`; commands with per-field dirty-checking on year-scoped subjects; queries for list, single-case-with-timeline, by-team and assignable sections; a lift-readiness test |
+| BFF (`go/cmd/api/`) | nine SOS routes, the section-assignable toggle, `GET /api/patrulje/:id` extended with the patrol's cases, `actor.go` resolving the acting user for the domain, wiring into the `projections` slice so every SOS change is live |
+| Frontend (`vue/src/`) | `SosListView`, `SosView`, `SosActivityLine`, `SosTeamCard`, `composables/sos.ts`, routes and the nødtelefon nav entry; the "Kontakt med nødtelefon" card on the patrol page; the assignable toggle on the Organisation page; `seedLiveResource` added to PRD 004's cache primitive |
+
+Verification: 22 Go tests in the sos package plus the existing suites, `go vet` and
+`gofmt` clean, 60 frontend tests, no new TypeScript errors, and **every endpoint
+exercised against the running dev stack** — create, validation failures, list, timeline
+ordering, patch, assignee rejection, comment, comment edit, association, klan rejection,
+close, close-again idempotency, reopen, delete, 404-after-delete.
+
+### Deliberately not done
+
+Recorded rather than ticked, because none of it is finished:
+
+1. **The two-tab live check.** Every backend half of it is verified — the `sos` token is
+   advertised at `/api/stream`, the consumers are in the `projections` slice, and the
+   views declare `dependsOn` — but "open two browsers and watch a colleague's comment
+   appear" has not been done, because this session had no browser. It is the one
+   verification PRD 004 §12 called the part that mattered, and it is the last thing worth
+   doing before an event.
+2. **Lifting the package to shared-go** — task 055, explicitly post-stabilisation. Its
+   whole purpose is that the schema has stopped changing.
+3. **`OrganisationView` is still not live.** It loads by hand and needs a dirty guard
+   first (PRD 004 §12). This feature added a toggle to it without changing that, so the
+   flag needs a reload to reflect another operator's change. Its own task, not smuggled
+   into a PRD 001 one.
+4. **`KeepAlive` and route-chunk preload** on the case list: not inherited from PRD 004,
+   not needed so far. Revisit only if the list feels slow with a real event's worth of
+   cases.
+
+### What this PRD got wrong, for the next one
+
+- **The task order had a dependency backwards.** 045 (assignable sections) needed 046
+  (wiring) to exist first. Cheap to fix mid-flight, but the lesson is that "wire it up"
+  belongs early, not after the things that call into it.
+- **Asynchronous projections change what a write endpoint may answer**, and the PRD did
+  not say so anywhere. Both `POST` and `PATCH` were written to read the row back, and both
+  were wrong: the read races the projection and loses. `POST` now synthesises the case it
+  just published and `PATCH` answers 202 with an echo, because returning pre-patch values
+  to an optimistic UI makes it flicker backwards — the same "stale value that looks live"
+  trap PRD 004 spent its whole implementation on. Worth stating up front in any PRD that
+  adds write endpoints to this platform.
+- **Verifying against the running stack found things tests did not.** Both of the above,
+  plus a response leaking Go field names. The dev loop is cheap here; use it per endpoint
+  rather than at the end.
+- **The auth claim in an early draft was simply false** ("behind the existing JWT cookie
+  auth"), and it survived several revisions because it was plausible. Reviewing a PRD's
+  factual claims against the code is worth as much as reviewing its design.
