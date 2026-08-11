@@ -6,6 +6,8 @@
 **Last updated:** 2026-08-11
 **Approved:** 2026-08-11
 **Shipped:** 2026-08-11
+**Status note:** live updates confirmed in two browser tabs by the product owner
+2026-08-11
 **Status note:** split on 2026-08-10 — the member half (withdrawal chain, team
 strength, discontinuation) moved to **PRD 006**, which is sequenced after this one
 **Target users:** organizer (HQ emergency-phone operators / nødtelefonvagter)
@@ -735,25 +737,29 @@ exercised against the running dev stack** — create, validation failures, list,
 ordering, patch, assignee rejection, comment, comment edit, association, klan rejection,
 close, close-again idempotency, reopen, delete, 404-after-delete.
 
+And — the part PRD 004 §12 called the one that mattered — **live updates confirmed in two
+browser tabs by the product owner, 2026-08-11**. That closes the loop the agent session
+could not: the backend halves were verifiable (the `sos` token advertised at
+`/api/stream`, the consumers inside the `projections` slice, the views declaring
+`dependsOn`), but whether an operator actually sees a colleague's change appear was not,
+and a wrong `dependsOn` token fails silently rather than loudly.
+
 ### Deliberately not done
 
 Recorded rather than ticked, because none of it is finished:
 
-1. **The two-tab live check.** Every backend half of it is verified — the `sos` token is
-   advertised at `/api/stream`, the consumers are in the `projections` slice, and the
-   views declare `dependsOn` — but "open two browsers and watch a colleague's comment
-   appear" has not been done, because this session had no browser. It is the one
-   verification PRD 004 §12 called the part that mattered, and it is the last thing worth
-   doing before an event.
-2. **Lifting the package to shared-go** — task 055, explicitly post-stabilisation. Its
+1. **Lifting the package to shared-go** — task 055, explicitly post-stabilisation. Its
    whole purpose is that the schema has stopped changing.
-3. **`OrganisationView` is still not live.** It loads by hand and needs a dirty guard
+2. **`OrganisationView` is still not live.** It loads by hand and needs a dirty guard
    first (PRD 004 §12). This feature added a toggle to it without changing that, so the
    flag needs a reload to reflect another operator's change. Its own task, not smuggled
    into a PRD 001 one.
-4. **`KeepAlive` and route-chunk preload** on the case list: not inherited from PRD 004,
+3. **`KeepAlive` and route-chunk preload** on the case list: not inherited from PRD 004,
    not needed so far. Revisit only if the list feels slow with a real event's worth of
    cases.
+4. **SSE on the production path** remains unverified — stage and production have basic
+   auth and one proxy hop fewer than dev, and that is task 041, not this PRD's to close.
+   The two-tab confirmation above was on the dev path.
 
 ### What this PRD got wrong, for the next one
 
