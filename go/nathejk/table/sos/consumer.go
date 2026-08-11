@@ -44,11 +44,35 @@ func (c *consumer) Consumes() []stream.Subject {
 		subject.FromStr("NATHEJK:*.sos.*.deleted"),
 		subject.FromStr("NATHEJK:*.sos.*.team.associated"),
 		subject.FromStr("NATHEJK:*.sos.*.team.disassociated"),
+		subject.FromStr("NATHEJK:*.sos.section.*.assignable"),
 	}
 }
 
 func (c *consumer) HandleMessage(msg stream.Message) error {
 	switch {
+	// Checked before the case-event patterns: the section subject also has "sos"
+	// in third position, and NATHEJK.*.sos.*.assigned would otherwise be a
+	// candidate match for a five-part section subject.
+	case msg.Subject().Match("NATHEJK.*.sos.section.*.assignable"):
+		var body SectionAssignableSet
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		slug := msg.Subject().Parts()[4]
+		if body.Assignable {
+			insert := goqu.Record{
+				"year":        c.year(msg),
+				"sectionSlug": slug,
+				"setAt":       c.at(msg),
+			}
+			return c.exec(goqu.Dialect("mysql").
+				Insert("sos_assignable_section").Rows(insert).
+				OnConflict(goqu.DoNothing()))
+		}
+		return c.exec(goqu.Dialect("mysql").
+			Delete("sos_assignable_section").
+			Where(goqu.C("year").Eq(c.year(msg)), goqu.C("sectionSlug").Eq(slug)))
+
 	case msg.Subject().Match("NATHEJK.*.sos.*.created"):
 		var body Created
 		if err := msg.Body(&body); err != nil {

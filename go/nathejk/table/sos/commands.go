@@ -29,6 +29,7 @@ type Commands interface {
 	Delete(ctx context.Context, actor Actor, id types.SosID) error
 	AssociateTeam(ctx context.Context, actor Actor, id types.SosID, teamID types.TeamID) error
 	DisassociateTeam(ctx context.Context, actor Actor, id types.SosID, teamID types.TeamID) error
+	SetSectionAssignable(ctx context.Context, actor Actor, year types.YearSlug, slug types.Slug, assignable bool) error
 }
 
 // ErrEmptyField is returned when a case is created without the two things that
@@ -237,6 +238,45 @@ func (c commander) DisassociateTeam(ctx context.Context, actor Actor, id types.S
 	}
 	return c.publish(actor, current.YearSlug, id, "team.disassociated",
 		&TeamDisassociated{SosID: id, TeamID: teamID})
+}
+
+// SetSectionAssignable marks an organisation section as able (or no longer able)
+// to be assigned SOS cases.
+//
+// Dirty-checked against the current list, so a toggle that changes nothing
+// publishes nothing — the Organisation page can send the state it wants without
+// first working out whether that is already the case.
+func (c commander) SetSectionAssignable(ctx context.Context, actor Actor, year types.YearSlug, slug types.Slug, assignable bool) error {
+	if !slug.Valid() {
+		return fmt.Errorf("invalid section slug %q", slug)
+	}
+	current, err := c.q.AssignableSections(ctx, year)
+	if err != nil {
+		return err
+	}
+	already := false
+	for _, s := range current {
+		if s == slug {
+			already = true
+			break
+		}
+	}
+	if already == assignable {
+		return nil
+	}
+
+	// Subject is NATHEJK.{year}.sos.section.{slug}.assignable with the new state in
+	// the body, rather than separate .set and .unset subjects: it is one fact with
+	// two values, and a consumer that must match two subjects can handle one and
+	// silently miss the other.
+	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK.%s.sos.section.%s.assignable", year, slug)))
+	if err := msg.SetBody(&SectionAssignableSet{SectionSlug: slug, Assignable: assignable}); err != nil {
+		return err
+	}
+	if err := msg.SetMeta(&messages.Metadata{UserID: actor.UserID}); err != nil {
+		return err
+	}
+	return c.p.Publish(msg)
 }
 
 func (c commander) hasTeam(s *Sos, teamID types.TeamID) bool {

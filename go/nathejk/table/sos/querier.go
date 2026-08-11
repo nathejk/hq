@@ -17,6 +17,7 @@ type Queries interface {
 	GetAll(context.Context, Filter) ([]*Sos, error)
 	GetByID(context.Context, types.SosID) (*Sos, error)
 	GetByTeam(context.Context, types.YearSlug, types.TeamID) ([]*Sos, error)
+	AssignableSections(context.Context, types.YearSlug) ([]types.Slug, error)
 }
 
 type querier struct {
@@ -119,6 +120,32 @@ func (q *querier) GetByTeam(ctx context.Context, year types.YearSlug, teamID typ
 		cases = append(cases, s)
 	}
 	return cases, rows.Err()
+}
+
+// AssignableSections lists the organisation sections a case may be assigned to,
+// for the given year.
+//
+// Empty by default and opted into per section, so a fresh year offers no assignee
+// until somebody says which sections take nødråb. An empty list is not an error:
+// it means nobody has decided yet, and the operator can still log the call.
+func (q *querier) AssignableSections(ctx context.Context, year types.YearSlug) ([]types.Slug, error) {
+	query := `SELECT sectionSlug FROM sos_assignable_section
+		WHERE (year = ? OR ? = '') ORDER BY sectionSlug ASC`
+	rows, err := q.db.QueryContext(ctx, query, year, year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	slugs := []types.Slug{}
+	for rows.Next() {
+		var s types.Slug
+		if err := rows.Scan(&s); err != nil {
+			return nil, err
+		}
+		slugs = append(slugs, s)
+	}
+	return slugs, rows.Err()
 }
 
 func (q *querier) timeline(ctx context.Context, id types.SosID) ([]Activity, error) {

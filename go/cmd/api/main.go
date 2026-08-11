@@ -51,6 +51,7 @@ import (
 	"nathejk.dk/nathejk/table/payment"
 	"nathejk.dk/nathejk/table/personnel"
 	"nathejk.dk/nathejk/table/scan"
+	"nathejk.dk/nathejk/table/sos"
 	"nathejk.dk/nathejk/table/year"
 )
 
@@ -185,6 +186,7 @@ func main() {
 	loktable := lok.New(writer, db.DB())
 	sectiontable := section.New(publisher, writer, db.DB())
 	crewmembertable := crewmember.New(publisher, writer, db.DB())
+	sostable := sos.New(publisher, writer, db.DB())
 	producttable := product.New(writer, db.DB())
 	if err := producttable.Seed(product.Seeds2026()); err != nil {
 		logger.PrintFatal(err, nil)
@@ -235,6 +237,7 @@ func main() {
 		sectiontable,
 		crewmembertable,
 		ordertable,
+		sostable,
 	}
 	for _, consumer := range live.NotifyAll(livehub, projections...) {
 		mux.AddConsumer(consumer)
@@ -254,7 +257,7 @@ func main() {
 		logger.PrintFatal(err, nil)
 	}
 
-	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, ordertable)
+	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, ordertable, sostable)
 	cmds := commands.New(publisher, models)
 	cmds.Year = year
 	cmds.Checkpoint = checkpoint
@@ -262,6 +265,7 @@ func main() {
 	cmds.Checkpersonnel = checkpersonnel
 	cmds.Section = sectiontable
 	cmds.CrewMember = crewmembertable
+	cmds.Sos = sostable
 
 	expvar.NewString("version").Set(version)
 	expvar.NewInt("timestamp").Set(time.Now().Unix())

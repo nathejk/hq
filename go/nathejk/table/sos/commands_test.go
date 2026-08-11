@@ -55,8 +55,9 @@ func (m *mutableMessage) SetTime(t time.Time) error   { m.at = t; return nil }
 // stubQueries returns a fixed case, standing in for the read model the commander
 // dirty-checks against.
 type stubQueries struct {
-	sos *Sos
-	err error
+	sos        *Sos
+	assignable []types.Slug
+	err        error
 }
 
 func (q stubQueries) GetAll(context.Context, Filter) ([]*Sos, error) { return nil, q.err }
@@ -68,6 +69,9 @@ func (q stubQueries) GetByID(context.Context, types.SosID) (*Sos, error) {
 }
 func (q stubQueries) GetByTeam(context.Context, types.YearSlug, types.TeamID) ([]*Sos, error) {
 	return nil, q.err
+}
+func (q stubQueries) AssignableSections(context.Context, types.YearSlug) ([]types.Slug, error) {
+	return q.assignable, q.err
 }
 
 func existingCase() *Sos {

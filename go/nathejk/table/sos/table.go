@@ -96,11 +96,22 @@ func New(p stream.Publisher, w cqrs.Writer, r *sql.DB) *table {
 	if err := w.Consume(t.CreateTableSql()); err != nil {
 		log.Printf("Error creating table %q", err)
 	}
+	if err := w.Consume(assignableSchema); err != nil {
+		log.Printf("Error creating table %q", err)
+	}
 	return t
 }
 
 //go:embed table.sql
 var tableSchema string
+
+// The assignable-section flag lives in its own file rather than in table.sql
+// because it is a different kind of thing: the three tables in table.sql are the
+// case and its history, this one is configuration of which organisation sections
+// the nødtelefon may route to.
+//
+//go:embed assignable.sql
+var assignableSchema string
 
 func (t *table) CreateTableSql() string {
 	return tableSchema
