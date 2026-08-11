@@ -58,6 +58,17 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodGet, "/api/badut", app.showBadutListHandler)
 	router.HandlerFunc(http.MethodGet, "/api/mail/recipients", app.mailRecipientsHandler)
 
+	// Nødtelefon / SOS (PRD 001)
+	router.HandlerFunc(http.MethodGet, "/api/sos", app.listSosHandler)
+	router.HandlerFunc(http.MethodPost, "/api/sos", app.createSosHandler)
+	router.HandlerFunc(http.MethodGet, "/api/sos/:id", app.showSosHandler)
+	router.HandlerFunc(http.MethodPatch, "/api/sos/:id", app.patchSosHandler)
+	router.HandlerFunc(http.MethodDelete, "/api/sos/:id", app.deleteSosHandler)
+	router.HandlerFunc(http.MethodPost, "/api/sos/:id/comment", app.commentSosHandler)
+	router.HandlerFunc(http.MethodPatch, "/api/sos/:id/comment/:commentId", app.updateSosCommentHandler)
+	router.HandlerFunc(http.MethodPut, "/api/sos/:id/team/:teamId", app.associateSosTeamHandler)
+	router.HandlerFunc(http.MethodDelete, "/api/sos/:id/team/:teamId", app.disassociateSosTeamHandler)
+
 	// Organisation (sections + crew members)
 	router.HandlerFunc(http.MethodGet, "/api/organisation", app.showOrganisationHandler)
 	router.HandlerFunc(http.MethodPost, "/api/organisation/copy-from/:sourceYear", app.copySectionsFromYearHandler)

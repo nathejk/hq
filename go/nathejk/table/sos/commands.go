@@ -70,12 +70,15 @@ func (c commander) Create(ctx context.Context, actor Actor, year types.YearSlug,
 // Pointers rather than a map or a set of "changed" flags, matching
 // updateYearHandler and patchKlanHandler, because the distinction between "not
 // mentioned" and "cleared" is the entire point of PATCH.
+//
+// The json tags exist because the handler echoes the accepted patch back to the
+// client; without them the response would carry Go field names.
 type PatchCommand struct {
-	Headline            *string
-	Description         *string
-	Severity            *Severity
-	AssigneeSectionSlug *types.Slug
-	Status              *Status
+	Headline            *string     `json:"headline,omitempty"`
+	Description         *string     `json:"description,omitempty"`
+	Severity            *Severity   `json:"severity,omitempty"`
+	AssigneeSectionSlug *types.Slug `json:"assigneeSectionSlug,omitempty"`
+	Status              *Status     `json:"status,omitempty"`
 }
 
 // Patch publishes one event per field that actually changed.
