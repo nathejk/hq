@@ -76,19 +76,22 @@ type Team struct {
 }
 
 type table struct {
+	commander
 	consumer
 	querier
 }
 
-// New builds the SOS read model.
+// New builds the SOS read model and command surface.
 //
-// The publisher is unused until the write side lands (task 044) but is taken now
-// so the wiring in cmd/api does not have to change again.
+// The publisher is only used by the commander and the writer only by the
+// consumer; they are separate arguments rather than one "db" because the write
+// side never reads through the path the projection writes.
 func New(p stream.Publisher, w cqrs.Writer, r *sql.DB) *table {
 	q := querier{db: r, r: goqu.New("mysql", r)}
 	t := &table{
-		consumer: consumer{w: w},
-		querier:  q,
+		commander: commander{p: p, q: &q},
+		consumer:  consumer{w: w},
+		querier:   q,
 	}
 	if err := w.Consume(t.CreateTableSql()); err != nil {
 		log.Printf("Error creating table %q", err)
