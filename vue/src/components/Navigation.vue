@@ -57,6 +57,11 @@ const items = ref([
     name: 'organisation'
   },
   {
+    label: 'Nødtelefon',
+    icon: 'fas fa-headset',
+    name: 'sos-list'
+  },
+  {
     label: 'Betalinger',
     icon: 'fas fa-dollar',
     name: 'payments'

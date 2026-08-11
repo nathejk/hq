@@ -7,7 +7,7 @@ import {
   setKnownEntities,
   resetKnownEntities,
 } from '@/plugins/live';
-import { useLiveResource, clearLiveCache, liveCacheSize } from '@/composables/useLiveResource';
+import { useLiveResource, clearLiveCache, liveCacheSize, seedLiveResource } from '@/composables/useLiveResource';
 
 /** Let queued promise callbacks run. */
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -238,5 +238,65 @@ describe('useLiveResource dependency validation', () => {
     warn.mockRestore();
     stop();
     resetKnownEntities();
+  });
+});
+
+describe('seedLiveResource', () => {
+  beforeEach(() => {
+    clearLiveCache();
+  });
+
+  it('renders a seeded value without fetching', async () => {
+    // The write-then-navigate case: a case is created and the operator is sent to
+    // its page before the projection has applied. Without a seed the fetch races
+    // the projection, 404s, and the operator is told the thing they just created
+    // does not exist.
+    seedLiveResource('sos:new-1', { headline: 'Forstuvet ankel' });
+
+    const fetcher = vi.fn(async () => ({ headline: 'from server' }));
+    const { result, stop } = inScope(() =>
+      useLiveResource('sos:new-1', fetcher, { dependsOn: ['sos'] }),
+    );
+    await flush();
+
+    expect(result.data.value).toEqual({ headline: 'Forstuvet ankel' });
+    expect(result.pending.value).toBe(false);
+    expect(fetcher).not.toHaveBeenCalled();
+
+    stop();
+  });
+
+  it('is replaced by the projected value when a signal arrives', async () => {
+    seedLiveResource('sos:new-2', { headline: 'seeded' });
+
+    const fetcher = vi.fn(async () => ({ headline: 'projected' }));
+    const { result, stop } = inScope(() =>
+      useLiveResource('sos:new-2', fetcher, { dependsOn: ['sos'] }),
+    );
+    await flush();
+
+    changed('sos', 'new-2', 'created');
+    await flush();
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(result.data.value).toEqual({ headline: 'projected' });
+
+    stop();
+  });
+
+  it('overwrites an existing entry', async () => {
+    const fetcher = vi.fn(async () => ({ headline: 'first' }));
+    const { result, stop } = inScope(() =>
+      useLiveResource('sos:existing', fetcher, { dependsOn: ['sos'] }),
+    );
+    await flush();
+    expect(result.data.value).toEqual({ headline: 'first' });
+
+    seedLiveResource('sos:existing', { headline: 'seeded over' });
+    await flush();
+
+    expect(result.data.value).toEqual({ headline: 'seeded over' });
+
+    stop();
   });
 });

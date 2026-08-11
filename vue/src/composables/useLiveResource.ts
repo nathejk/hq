@@ -89,6 +89,42 @@ export function evictLiveResource(key: string): void {
   entries.delete(key);
 }
 
+/**
+ * Put a known value into another key's cache entry, without fetching.
+ *
+ * For the write-then-navigate case: an operator creates something and is sent
+ * straight to its own page. Because projections apply asynchronously, a fetch on
+ * arrival races the projection and usually loses — the API answers 404 and the
+ * operator is told the thing they just created does not exist. Seeding from the
+ * create response means the destination renders immediately, and the live signal
+ * replaces the seed with the projected row a moment later.
+ *
+ * The entry is created if it does not exist yet, with no dependencies; the view
+ * that mounts on it supplies its own `dependsOn` and fetcher, and skips its initial
+ * fetch precisely because a value is already present.
+ */
+export function seedLiveResource<T>(key: string, value: T): void {
+  const entry = entries.get(key) as Entry<T> | undefined;
+  if (entry) {
+    // Bumped so an in-flight fetch from before the seed cannot land on top of it.
+    entry.gen += 1;
+    entry.inFlight = undefined;
+    entry.data.value = value;
+    entry.error.value = undefined;
+    entry.pending.value = false;
+    return;
+  }
+  entries.set(key, {
+    data: shallowRef<T | typeof EMPTY>(value),
+    pending: ref(false),
+    error: ref<unknown>(undefined),
+    dependsOn: [],
+    fetcher: async () => value,
+    gen: 0,
+    refs: 0,
+  } as Entry);
+}
+
 function isNotFound(error: unknown): boolean {
   const status = (error as { response?: { status?: number }; status?: number } | null)?.response
     ?.status ?? (error as { status?: number } | null)?.status;

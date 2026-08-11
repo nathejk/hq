@@ -55,6 +55,23 @@ const router = createRouter({
       component: () => import('@/views/KortView.vue')
     },
     {
+      path: '/sos',
+      name: 'sos-list',
+      component: () => import('@/views/SosListView.vue')
+    },
+    {
+      // Before /sos/:id, or "new" would be read as a case id.
+      path: '/sos/new',
+      name: 'sos-new',
+      component: () => import('@/views/SosView.vue')
+    },
+    {
+      path: '/sos/:id',
+      name: 'sos',
+      component: () => import('@/views/SosView.vue'),
+      props: true
+    },
+    {
       path: '/betalinger',
       name: 'payments',
       component: () => import('@/views/PaymentListView.vue')

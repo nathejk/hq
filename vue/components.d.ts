@@ -49,6 +49,8 @@ declare module 'vue' {
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
     Select: typeof import('primevue/select')['default']
+    SosActivityLine: typeof import('./src/components/SosActivityLine.vue')['default']
+    SosTeamCard: typeof import('./src/components/SosTeamCard.vue')['default']
     Tag: typeof import('primevue/tag')['default']
     Textarea: typeof import('primevue/textarea')['default']
     TheWelcome: typeof import('./src/components/TheWelcome.vue')['default']
