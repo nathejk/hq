@@ -105,7 +105,20 @@ func (app *application) showPatruljeHandler(w http.ResponseWriter, r *http.Reque
 	}
 	contact, _ := app.models.Teams.GetContact(teamId)
 
-	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"config": config, "team": team, "contact": contact, "members": members, "payments": payments, "orders": orders}, nil)
+	// The patrol's SOS cases, for the "Kontakt med nødtelefon" card (PRD 001).
+	//
+	// Folded into this payload rather than given its own endpoint: this handler
+	// already assembles members, payments and orders, so the card costs no extra
+	// request and the page needs only `'sos'` added to its live dependsOn. A failure
+	// here is logged and the page still renders — the case list is context, and losing
+	// it should not take down a patrol's own page.
+	sosCases, err := app.models.Sos.GetByTeam(r.Context(), app.YearSlug(r), teamId)
+	if err != nil {
+		log.Printf("Sos.GetByTeam %q", err)
+		sosCases = nil
+	}
+
+	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"config": config, "team": team, "contact": contact, "members": members, "payments": payments, "orders": orders, "sosCases": sosCases}, nil)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}
