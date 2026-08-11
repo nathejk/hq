@@ -392,12 +392,19 @@ watch(error, (err) => {
 
         <template #footer>
           <div class="flex flex-wrap gap-2">
+            <!-- Closing is the ordinary end of a case, so it is the primary action.
+                 Reopening is a correction and Slet is a mistake being undone — neither
+                 should look like the thing to do next. Sized to match "Tilføj
+                 kommentar": these are all occasional actions on the same panel. -->
             <Button
               :label="sosCase.status === 'closed' ? 'Genåbn sag' : 'Luk sag'"
               :icon="sosCase.status === 'closed' ? 'pi pi-replay' : 'pi pi-check-circle'"
+              :severity="sosCase.status === 'closed' ? 'secondary' : undefined"
+              size="small"
               @click="toggleStatus"
             />
-            <Button label="Slet sag" icon="pi pi-trash" severity="danger" text @click="deleteCase" />
+            <Button label="Slet sag" icon="pi pi-trash" severity="danger" text size="small"
+                    @click="deleteCase" />
           </div>
         </template>
       </Card>

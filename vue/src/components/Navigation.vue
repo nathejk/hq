@@ -1,9 +1,38 @@
 <script setup>
+import { computed } from 'vue'
 import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { useGlobalState } from '@/composables/globalstate'
+import { useConnectionState } from '@/composables/useConnectionState'
 import UserMenu from '@/components/NavUserMenu.vue'
 
 const { navTitle } = useGlobalState()
+
+// The moon doubles as the live-update indicator.
+//
+// It is the one thing on screen at all times, on every page, so it is where a
+// "nothing is arriving any more" state belongs — PRD 004 requires connection state to
+// be displayed somewhere persistent, and a badge in the header competed with the page
+// for attention while saying nothing most of the time.
+//
+// Yellow is the normal colour, so a healthy app looks exactly as it always has and
+// only a problem changes anything:
+//
+//   live        yellow      signals arriving over SSE
+//   polling     yellow      fallback transport; slower, but updates do arrive
+//   reconnecting  red       the stream dropped and is being retried
+//   offline     dark grey   given up; the screen may be missing changes
+const { state, label, description } = useConnectionState()
+
+const moonClass = computed(() => {
+  switch (state.value) {
+    case 'offline':
+      return 'text-gray-600'
+    case 'reconnecting':
+      return 'text-red-500'
+    default:
+      return 'text-yellow-400'
+  }
+})
 
 //import { fas, far, fal, fass, fasds } from '@awesome.me/kit-KIT_CODE/icons'
 //import { faMoon, faLock, faWarning } from '@fortawesome/free-solid-svg-icons'
@@ -164,7 +193,7 @@ import 'primeicons/primeicons.css'
     <div class="container mx-auto">
       <div class="flex justify-between items-center">
         <!-- Logo and Brand Name -->
-        <a class="font-nathejk text-2xl leading-relaxed pr-5 uppercase" href="/"><FontAwesomeIcon :icon="['fas', 'moon']" flip="vertical" class="align-top text-yellow-400" />{{ navTitle }}</a>
+        <a class="font-nathejk text-2xl leading-relaxed pr-5 uppercase" href="/"><FontAwesomeIcon :icon="['fas', 'moon']" flip="vertical" :class="moonClass" class="align-top transition-colors duration-300" :title="`Live opdatering: ${label}. ${description}`" role="status" :aria-label="`Live opdatering: ${label}. ${description}`" />{{ navTitle }}</a>
 
         <!-- Navigation Icons -->
         <div class="flex">

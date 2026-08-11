@@ -129,3 +129,19 @@ request only named the title.
   original was tuned for one-line comments and read as cramped under the case's 3xl
   headline. One value that suits both, rather than a special case that would defeat the
   point of sharing.
+- 2026-08-11 — Fifth round: the case's own buttons are `size="small"` to match "Tilføj
+  kommentar", and "Genåbn sag" is `secondary` while "Luk sag" stays primary. Closing is the
+  ordinary end of a case; reopening is a correction and should not look like the thing to
+  do next.
+- 2026-08-11 — Moved the live-update indication onto the navigation bar's moon (task
+  answered a question rather than just a request: the badge was **already global**, in
+  `App.vue`, not SOS-specific). The moon is yellow when healthy — which is how it has
+  always looked — red while reconnecting, dark grey when offline, with the state and its
+  explanation in the title/aria label. The labelled badge now appears **only** when nothing
+  is arriving: a colour cannot tell an operator that what they are looking at may be
+  missing changes, and that is the one case worth words.
+- 2026-08-11 — Broke `Navigation.vue` doing it and caught it by asking Vite rather than
+  trusting the linter: my edit left a premature `</script>`, so the file had two, and the
+  SFC compiler returned 500 on every request for it. eslint reported it as an "invalid end
+  tag" 150 lines away, which is why the transform check (`wget` the module from the dev
+  server) is the check worth running — the page would simply have been blank.
