@@ -93,6 +93,9 @@ member transitions onto this PRD's timeline), documented in §8.
 - The car/driver interface and the shelter reception interface. They will be
   specified in their own PRDs, **later and separately**; nothing here anticipates
   them, and PRD 006 owns the seam they will build against.
+- **Notifying the assigned section.** Assignment is a label on the case, not a
+  dispatch mechanism: no SMS, no mail, no push. Operators tell the section by phone or
+  radio, as they do today. If that ever changes it is its own PRD.
 - Public/participant-facing UI. This is an internal HQ tool only.
 - Automated telephony/IVR integration — calls are still answered on a physical
   phone; this only records them.
@@ -647,13 +650,9 @@ Proposed tasks to create in `roadmap/tasks/open/` (not created yet):
 
 ## 11. Open Questions
 
-Deliberately short: the questions that were holding this document up moved to PRD
-006 with the work they belong to, and four more were answered on 2026-08-10 — see
-Decisions below.
-
-- **Assignee notification:** does assigning a section notify anybody (SMS/mail via
-  the existing gateways), or is the assignment purely a label for operators? Legacy
-  did not notify; worth confirming that is still wanted.
+None outstanding. Everything that was open has been decided — see Decisions below.
+The questions that were holding the original document up moved to PRD 006 with the
+work they belong to.
 
 ### Decisions
 
@@ -679,6 +678,12 @@ Recorded so they are not reopened.
 - **Members on the case card (2026-08-10):** not shown before PRD 006. The card lists
   each associated patrol's identity and contact only; member rows arrive with the
   status and actions that give them a purpose.
+- **Assignee notification (2026-08-10):** none. Assigning a case to a section is a
+  **label** that operators see on screen; the tool does not SMS or email the section,
+  and the operator tells them by phone or radio as they do today. Same as legacy.
+  Notification would need its own decisions (SMS or mail, whole section or a lead,
+  what happens on reassignment, what happens at 3am) and belongs in its own PRD if it
+  is ever wanted.
 - **OpenAPI (2026-08-10):** dropped for this repo. hq has no OpenAPI tooling, spec or
   annotations, and `.rules` does not ask for any; the endpoint table in §8 is the API
   documentation. Note the `prd` skill still states the mandate
