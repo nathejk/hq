@@ -61,31 +61,32 @@ const draftValue = computed({
 </script>
 
 <template>
-  <!-- A comment is the operator's own words, so it is set in normal body text with
-       its label above it. Everything else is a state change: the label carries the
-       meaning and the detail is secondary. -->
-  <div v-if="isComment">
-    <div class="text-xs text-surface-500">
-      {{ activityLabel(activity.type) }}
-      <span v-if="edited" class="italic">(redigeret)</span>
-    </div>
-
-    <div v-if="editing" class="flex flex-col gap-1 mt-1">
-      <Textarea v-model="draftValue" rows="2" class="w-full" autofocus />
-      <div class="flex gap-1">
-        <Button label="Gem" size="small" @click="emit('save')" />
-        <Button label="Annuller" size="small" severity="secondary" text @click="emit('cancel')" />
+  <!-- A comment is somebody's own words, so it gets a card: it should read as
+       content on the rail, clearly distinct from the one-line state changes around
+       it. State changes stay plain text — a card each would turn the timeline back
+       into a wall of boxes. -->
+  <Card v-if="isComment" class="sos-comment border border-gray-200">
+    <template #content>
+      <div v-if="editing" class="flex flex-col gap-1">
+        <Textarea v-model="draftValue" rows="2" class="w-full" autofocus />
+        <div class="flex gap-1">
+          <Button label="Gem" size="small" @click="emit('save')" />
+          <Button label="Annuller" size="small" severity="secondary" text @click="emit('cancel')" />
+        </div>
       </div>
-    </div>
 
-    <div v-else class="flex items-start gap-2 group">
-      <span class="whitespace-pre-wrap flex-1">{{ commentText }}</span>
-      <Button class="comment-edit" icon="pi pi-pencil" text rounded size="small"
-              @click="emit('edit')" />
-    </div>
-  </div>
+      <div v-else class="flex items-start gap-2 group">
+        <div class="flex-1">
+          <span class="whitespace-pre-wrap">{{ commentText }}</span>
+          <span v-if="edited" class="ml-2 text-xs italic text-gray-500">(redigeret)</span>
+        </div>
+        <Button class="comment-edit" icon="pi pi-pencil" text rounded size="small"
+                @click="emit('edit')" />
+      </div>
+    </template>
+  </Card>
 
-  <div v-else class="text-surface-700">
+  <div v-else class="text-gray-700">
     <span>{{ activityLabel(activity.type) }}</span>
     <span v-if="detail" class="font-medium">: {{ detail }}</span>
   </div>
@@ -101,5 +102,20 @@ const draftValue = computed({
 .group:hover .comment-edit,
 .group:focus-within .comment-edit {
   opacity: 1;
+}
+
+/* A card on a timeline rail wants to be a quiet container, not a raised panel:
+   tighter than the default padding and flat rather than shadowed, so a run of
+   comments does not become a stack of floating boxes. The border comes from a
+   Tailwind class on the element — the stock palette, because this project maps
+   `surface-*` to CSS variables that are not actually defined. */
+.sos-comment {
+  box-shadow: none;
+}
+.sos-comment :deep(.p-card-body) {
+  padding: 0.6rem 0.75rem;
+}
+.sos-comment :deep(.p-card-content) {
+  padding: 0;
 }
 </style>

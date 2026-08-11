@@ -49,6 +49,7 @@ request only named the title.
       and narrowed from 1/3 to 1/4 of the grid
 - [x] No timeline entry for `created`, `headline.updated`, `description.updated`
 - [x] Events and `sos_activity` rows unchanged — audit trail intact
+- [x] Comments rendered in a `Card` on the rail, state changes as plain one-liners
 - [x] Frontend tests pass; eslint clean; no new type errors
 
 ## Progress Log
@@ -74,3 +75,18 @@ request only named the title.
   up and `components.d.ts` regenerated accordingly.
 - 2026-08-11 — ✅ All criteria met: 60 frontend tests pass, eslint clean on the five SOS
   files, type-error count unchanged at 106, Vite compiled without warnings.
+- 2026-08-11 — Follow-up from the product owner after seeing it: **comments now sit in a
+  `Card` on the rail**, state changes stay plain one-liners. A card each would put the wall
+  of boxes back; a card only for comments is what makes somebody's words look like content
+  rather than another status line. The card is flat and tightly padded — a raised panel per
+  comment reads as a stack of floating boxes on a vertical rail. The "Kommentar" label is
+  gone with it: the marker icon and the card already say what it is, so the label was
+  spending a line to repeat them.
+- 2026-08-11 — **Found while styling that card:** this project's Tailwind config maps
+  `surface-*` to `rgb(var(--surface-N))` (`tailwind.config.js:22-33`), but PrimeVue 4 emits
+  `--p-surface-N`, and nothing defines the unprefixed ones. So every `text-surface-500` in
+  the SPA compiles to an invalid colour and is dropped — the dimming those classes intend
+  has never rendered. My four SOS files now use the stock palette (`text-gray-500` and so
+  on) so the hierarchy the owner asked for actually appears. **Not** fixed repo-wide: that
+  is a deliberate, separate decision (define the variables, or sweep the classes) and it
+  would change the look of pages nobody asked me to touch.

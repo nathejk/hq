@@ -403,10 +403,10 @@ watch(error, (err) => {
         <template #content>
           <Timeline v-if="visibleTimeline.length" :value="visibleTimeline" class="sos-timeline">
             <template #opposite="{ item }">
-              <span class="text-xs text-surface-500">{{ formatTime(item.createdAt) }}</span>
+              <span class="text-xs text-gray-500">{{ formatTime(item.createdAt) }}</span>
             </template>
             <template #marker="{ item }">
-              <span class="flex w-7 h-7 items-center justify-center rounded-full bg-surface-100 text-surface-600">
+              <span class="flex w-7 h-7 items-center justify-center rounded-full bg-gray-100 text-gray-600">
                 <i :class="activityIcon(item.type)" />
               </span>
             </template>
@@ -424,7 +424,7 @@ watch(error, (err) => {
             </template>
           </Timeline>
 
-          <div v-else class="text-sm text-surface-500">
+          <div v-else class="text-sm text-gray-500">
             {{ pending ? 'Henter hændelser...' : 'Endnu ingen hændelser på sagen.' }}
           </div>
 
@@ -445,7 +445,7 @@ watch(error, (err) => {
     -->
     <aside class="sos-aside flex flex-col gap-3 text-sm">
       <div class="card !p-3">
-        <h2 class="text-xs uppercase tracking-wide text-surface-500 mb-2">Prioritet</h2>
+        <h2 class="text-xs uppercase tracking-wide text-gray-500 mb-2">Prioritet</h2>
         <div class="flex gap-1">
           <Button
             v-for="option in severityOptions"
@@ -459,7 +459,7 @@ watch(error, (err) => {
           />
         </div>
 
-        <h2 class="text-xs uppercase tracking-wide text-surface-500 mt-4 mb-2">Tildelt</h2>
+        <h2 class="text-xs uppercase tracking-wide text-gray-500 mt-4 mb-2">Tildelt</h2>
         <Select
           :modelValue="sosCase.assigneeSectionSlug"
           :options="assigneeOptions"
@@ -471,7 +471,7 @@ watch(error, (err) => {
           class="w-full"
           @update:modelValue="setAssignee"
         />
-        <small v-if="assigneeOptions.length === 0" class="block mt-2 text-surface-500">
+        <small v-if="assigneeOptions.length === 0" class="block mt-2 text-gray-500">
           Ingen sektioner kan tildeles nødråb endnu. Slå det til på Organisation-siden.
         </small>
       </div>

@@ -82,13 +82,13 @@ const disassociate = async (teamId: string) => {
   <div class="card">
     <h2 class="font-nathejk text-xl mb-3">Tilknyttede patruljer</h2>
 
-    <div v-for="team in teams" :key="team.teamId" class="border-b border-surface-200 py-2 last:border-0">
+    <div v-for="team in teams" :key="team.teamId" class="border-b border-gray-200 py-2 last:border-0">
       <div class="flex items-start justify-between gap-2">
         <div>
           <router-link :to="{ name: 'patrulje', params: { teamId: team.teamId } }" class="font-semibold">
             <span v-if="team.teamNumber">{{ team.teamNumber }} — </span>{{ team.name || team.teamId }}
           </router-link>
-          <div class="text-sm text-surface-500">
+          <div class="text-sm text-gray-500">
             {{ team.group }}<span v-if="team.korps"> · {{ team.korps }}</span>
           </div>
           <div v-if="team.contactPhone" class="text-sm">
@@ -102,7 +102,7 @@ const disassociate = async (teamId: string) => {
       </div>
     </div>
 
-    <div v-if="teams.length === 0" class="text-sm text-surface-500 mb-2">
+    <div v-if="teams.length === 0" class="text-sm text-gray-500 mb-2">
       Ingen patruljer tilknyttet.
     </div>
 
@@ -112,12 +112,12 @@ const disassociate = async (teamId: string) => {
            class="flex items-center justify-between gap-2 py-1">
         <span class="text-sm">
           <span v-if="candidate.teamNumber">{{ candidate.teamNumber }} — </span>{{ candidate.name }}
-          <span class="text-surface-500">{{ candidate.group }}</span>
+          <span class="text-gray-500">{{ candidate.group }}</span>
         </span>
         <Button label="Tilknyt" size="small" :loading="associating"
                 @click="associate(candidate.teamId)" />
       </div>
-      <small v-if="query.trim().length === 1" class="text-surface-500">Skriv mindst to tegn...</small>
+      <small v-if="query.trim().length === 1" class="text-gray-500">Skriv mindst to tegn...</small>
     </div>
   </div>
 </template>
