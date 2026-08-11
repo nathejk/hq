@@ -1,10 +1,10 @@
 # PRD 001 — Nødtelefon / SOS case management
 
-**Status:** draft
+**Status:** doing
 **Author:** agent session (recreating legacy feature)
 **Created:** 2026-07-29
-**Last updated:** 2026-08-10
-**Approved:**
+**Last updated:** 2026-08-11
+**Approved:** 2026-08-11
 **Shipped:**
 **Status note:** split on 2026-08-10 — the member half (withdrawal chain, team
 strength, discontinuation) moved to **PRD 006**, which is sequenced after this one
@@ -182,18 +182,16 @@ member transitions onto this PRD's timeline), documented in §8.
       marker rather than hiding that it changed. **Any operator may edit any
       comment** — there is no per-user identity to restrict it to the author, and the
       append-only trail is what keeps that safe. Revisit when the auth service lands.
-- [ ] Set severity to **`green` | `yellow` | `red`** (`PATCH /api/sos/:id`),
-      confirmed with organizers. Rendered as a coloured badge labelled **Grøn / Gul /
+- [ ] Set severity to **`green` | `yellow` | `red`** (`PATCH /api/sos/:id`), Rendered as a coloured badge labelled **Grøn / Gul /
       Rød**; it does not filter or sort the list in the first slice, which is ordered
       by last activity.
 - [ ] Assign a case to an organisation **section** (`PATCH /api/sos/:id`). The
-      selectable sections are those flagged **assignable** on the section — a new
-      `assignable` boolean on `shared-go/tables/section`, defaulting to false,
-      toggled per section on the Organisation page and exposed through the existing
-      `GET /api/organisation`. A case keeps the slug it was assigned; if that section
-      is later renamed the new label simply shows, and if it is deleted the case
-      displays the raw slug marked "(slettet sektion)" rather than dropping the
-      assignment.
+      selectable sections are those flagged **assignable** for the year — a flag owned
+      by this feature (`sos_assignable_section`), toggled per section on the
+      Organisation page and exposed through the existing `GET /api/organisation`. A
+      case keeps the slug it was assigned; if that section is later renamed the new
+      label simply shows, and if it is deleted the case displays the raw slug marked
+      "(slettet sektion)" rather than dropping the assignment.
 - [ ] Associate / disassociate a patrol with a case (`PUT` /
       `DELETE /api/sos/:id/team/:teamId`). Only patrols can be associated with a
       case — clans (klaner) cannot.
@@ -454,6 +452,17 @@ Decisions for this feature:
   tagging domain events with a case id is established. `go/go.mod` currently pins
   `github.com/nathejk/shared-go v0.0.0-20260807180020-5ac2603c60ba`.
 
+  **Amended 2026-08-11, at the start of implementation.** The types are defined
+  **inside `go/nathejk/table/sos/`** instead, and lifted to shared-go with the package.
+  Reason: a shared-go type change is only consumable here after commit, push, release
+  and a `go.mod` bump — and the dev container mounts only `./go`, so a `replace`
+  directive does not help either. Putting the vocabulary in shared-go first would have
+  put a cross-repo release cycle in front of every other task, which is exactly what
+  §8's "build locally, lift later" rule exists to avoid. The package still imports
+  nothing from `nathejk.dk/...`, so the lift stays a file move, and the SOS events have
+  no consumer outside hq today — nothing else can be broken by the vocabulary living
+  here for now.
+
 ### BFF (Go)
 
 - New resource handler file `go/cmd/api/sos.go` with one `<verb>SosHandler` per
@@ -484,13 +493,25 @@ Decisions for this feature:
 - Assignee source: reuse the existing `section` projection
   (`github.com/nathejk/shared-go/tables/section`, already wired as
   `app.models.Section` / `app.commands.Section`), filtered to sections flagged
-  **assignable**. That flag is a **shared-go schema change**: `section` currently has
-  `slug, year, parentSlug, label, sortOrder` and no such column, so it needs the
-  column, a command to toggle it, an event, and exposure in `GET /api/organisation`.
+  **assignable**.
+
+  **Amended 2026-08-11:** the flag lives in **hq, owned by the SOS domain**
+  (`sos_assignable_section`, keyed by year + section slug, written by
+  `NATHEJK.{year}.sos.section.{slug}.assignable.set|unset`), not as a column on
+  shared-go's `section` table. Two reasons, one practical and one about modelling:
+  shared-go cannot be released from here mid-implementation (see above); and "can be
+  assigned nødråb" is a fact about **this feature**, not a general property of an
+  organisation section — a section does not become a different thing because the
+  nødtelefon can route to it. Keeping it here means the Organisation page renders the
+  toggle but does not own the concept, and the earlier objection to deriving the list
+  from `parentSlug` still stands: reorganising the tree must not change who can be
+  assigned. `GET /api/organisation` exposes the flag per section by joining this
+  table.
+
   Rejected alternative: "all descendants of a designated parent section", which works
   today via `parentSlug` but couples the assignee list to the shape of the
-  organisation tree — a reorganisation would silently change who can be assigned.
-  The `assigned` event carries the section slug rather than the legacy free enum.
+  organisation tree. The `assigned` event carries the section slug rather than the
+  legacy free enum.
 - Write side: a `commands.Sos` command struct that publishes domain events with
   subjects on the current convention — `NATHEJK.{year}.sos.{sosId}.{event}`, built
   with `github.com/jrgensen/stream/subject`, rather than the legacy `nathejk:sos.*`
@@ -575,10 +596,10 @@ Decisions).
 
 ### Dependencies & risks
 
-- **Shared types on the critical path:** `SosCommentID`, the severity type and the
-  SOS message structs need a shared-go commit, release and `go.mod` bump here.
-  Risk if skipped: events get encoded with locally-defined types and every consumer
-  has to be revisited when they move.
+- **Shared types are no longer on the critical path** (§8 amendment, 2026-08-11): the
+  SOS vocabulary lives in the `sos` package and is lifted with it, so no shared-go
+  release blocks this work. The risk moves to lift discipline instead — if the package
+  acquires a `nathejk.dk/...` import, the lift becomes a rewrite.
 - **PRD 006 sequencing.** This PRD is deliberately independent: it ships and is
   useful with no member functionality at all. The reverse is not true — PRD 006
   needs this PRD's case, timeline and association surfaces to hang its actions off,
@@ -620,10 +641,10 @@ per PRD 004 §12 the views compose `useLiveResource` from their first commit.
 
 Proposed tasks to create in `roadmap/tasks/open/` (not created yet):
 
-- [ ] Task: shared-go — add `SosCommentID`, severity type (`green|yellow|red`) and
-      SOS message structs; release + bump `go.mod` here
-- [ ] Task: shared-go — add the `assignable` flag to `tables/section` (column,
-      toggle command, event, and exposure in the section query); release + bump
+- [ ] Task: Local — SOS domain vocabulary (`SosCommentID`, severity, message structs)
+      inside `go/nathejk/table/sos/`, to be lifted with the package
+- [ ] Task: Local — `sos_assignable_section` projection + toggle command, exposed in
+      `GET /api/organisation`
 - [ ] Task: Local — `go/nathejk/table/sos/`: `sos` + `sos_team` + `sos_activity`
       projections & schemas, to shared-go guidelines
 - [ ] Task: Local — `sos` write side (commands) + year-scoped JetStream subjects,
@@ -665,10 +686,15 @@ Recorded so they are not reopened.
   (§6 Auth).
 - **Severity (2026-08-10):** `green` | `yellow` | `red`, labelled Grøn / Gul / Rød.
   Display only in the first slice — no filtering or sorting by it.
-- **Assignable sections (2026-08-10):** an `assignable` flag on the section, to be
-  added to `shared-go/tables/section` and toggled on the Organisation page. Not
-  derived from the organisation tree's shape, so reorganising the tree cannot
-  silently change who can be assigned.
+- **Assignable sections (2026-08-10):** an `assignable` flag on the section, toggled
+  on the Organisation page. Not derived from the organisation tree's shape, so
+  reorganising the tree cannot silently change who can be assigned. **Amended
+  2026-08-11:** the flag is owned by this feature in hq
+  (`sos_assignable_section`) rather than added as a column to shared-go's `section`
+  — see §8 for why.
+- **Domain vocabulary (2026-08-11):** `SosCommentID`, the severity type and the SOS
+  message structs are defined in `go/nathejk/table/sos/` and lifted with the package,
+  rather than going to shared-go first — see §8.
 - **Case deletion (2026-08-10):** soft. `deletedAt` on the row, hidden from the
   lists, 404 on the detail, nothing destroyed, no restore UI in the first slice.
 - **Who may write (2026-08-10):** every operator may create, edit, comment, edit
