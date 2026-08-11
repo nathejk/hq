@@ -38,7 +38,8 @@ const emit = defineEmits<{
 // The comment text is the only thing on this timeline an operator writes; the rest
 // is the system recording what happened. That difference drives the styling: a
 // comment gets a tinted card, a state change is a dimmed one-liner that can be
-// skimmed past.
+// skimmed past. Only the *text* is dimmed — the marker and timestamp are the rail
+// itself, and fading those makes the timeline harder to follow rather than quieter.
 const isComment = computed(() => props.activity.type === 'commented')
 
 // What an entry's value means depends on its type, so it is rendered rather than

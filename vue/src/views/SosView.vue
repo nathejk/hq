@@ -403,19 +403,10 @@ watch(error, (err) => {
         <template #content>
           <Timeline v-if="visibleTimeline.length" :value="visibleTimeline" class="sos-timeline">
             <template #opposite="{ item }">
-              <!-- A comment's time is worth reading; a state change's is reference. -->
-              <span class="text-xs"
-                    :class="item.type === 'commented' ? 'text-gray-500' : 'text-gray-400'">
-                {{ formatTime(item.createdAt) }}
-              </span>
+              <span class="text-xs text-gray-500">{{ formatTime(item.createdAt) }}</span>
             </template>
             <template #marker="{ item }">
-              <!-- Comments get a filled marker, state changes a faint one: the rail
-                   should show at a glance where the operator's own words are. -->
-              <span class="flex w-7 h-7 items-center justify-center rounded-full"
-                    :class="item.type === 'commented'
-                      ? 'bg-gray-100 text-gray-700'
-                      : 'text-gray-300'">
+              <span class="flex w-7 h-7 items-center justify-center rounded-full bg-gray-100 text-gray-600">
                 <i :class="activityIcon(item.type)" />
               </span>
             </template>
@@ -517,7 +508,15 @@ watch(error, (err) => {
   padding-top: 0.35rem;
   text-align: right;
 }
+
+/* Aura sizes every timeline event at `timeline.event.minHeight: 5rem`, which is the
+   real source of the vertical spacing — the content padding is a rounding error next
+   to it. Halved via the design token rather than by fighting it with padding, so the
+   connector, marker and content all shorten together and stay aligned. */
+#sos-detail .sos-timeline {
+  --p-timeline-event-min-height: 2.5rem;
+}
 #sos-detail .sos-timeline .p-timeline-event-content {
-  padding-bottom: 0.75rem;
+  padding-bottom: 0.375rem;
 }
 </style>

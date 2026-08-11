@@ -51,7 +51,8 @@ request only named the title.
 - [x] Events and `sos_activity` rows unchanged — audit trail intact
 - [x] Comments rendered in a `Card` on the rail, state changes as plain one-liners
 - [x] Comment card carries a slight tint so it does not dissolve into the white panel
-- [x] State changes dimmed — text, marker and timestamp — so they can be skimmed past
+- [x] State-change **text** dimmed; marker and timestamp left as they are
+- [x] Vertical spacing between entries halved via the `timeline.event.minHeight` token
 - [x] Frontend tests pass; eslint clean; no new type errors
 
 ## Progress Log
@@ -102,3 +103,13 @@ request only named the title.
   `.p-card` background rule would otherwise win on equal specificity, and which one applied
   would depend on stylesheet order. A scoped rule carries the extra attribute selector and
   lands on top deterministically.
+- 2026-08-11 — Third round: **only the text of a state change is dimmed.** Reverted the
+  faded markers and timestamps from the previous round — the owner was right, those are the
+  rail itself, and fading them makes the timeline harder to follow rather than quieter.
+- 2026-08-11 — Halved the vertical spacing, and the fix was not where the previous round
+  assumed. Aura sets `timeline.event.minHeight: 5rem`
+  (`@primeuix/themes/aura/timeline`), which is what spaces the entries out; the content
+  padding I had been adjusting is a rounding error beside it. Set
+  `--p-timeline-event-min-height: 2.5rem` on the timeline instead, so the connector, marker
+  and content shorten together and stay aligned — padding-only tweaks would have moved the
+  content off its own marker.
