@@ -65,6 +65,7 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPut, "/api/sections/sorted", app.sortSectionsHandler)
 	router.HandlerFunc(http.MethodPatch, "/api/section/:slug", app.updateSectionHandler)
 	router.HandlerFunc(http.MethodPut, "/api/section/:slug/parent", app.moveSectionHandler)
+	router.HandlerFunc(http.MethodPut, "/api/section/:slug/sos-assignable", app.setSectionSosAssignableHandler)
 	router.HandlerFunc(http.MethodDelete, "/api/section/:slug", app.deleteSectionHandler)
 	router.HandlerFunc(http.MethodPost, "/api/crewmember", app.registerCrewMemberHandler)
 	router.HandlerFunc(http.MethodPut, "/api/crewmember/:userId/section", app.assignCrewMemberSectionHandler)

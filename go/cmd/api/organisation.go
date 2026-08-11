@@ -42,11 +42,22 @@ func (app *application) showOrganisationHandler(w http.ResponseWriter, r *http.R
 		}
 	}
 
+	// Which sections may be assigned an SOS case (PRD 001). Returned as a list of
+	// slugs alongside the sections rather than merged into each section object: the
+	// section belongs to shared-go and knows nothing about the nødtelefon, and
+	// keeping the two apart here is what keeps that true.
+	assignable, err := app.models.Sos.AssignableSections(r.Context(), year)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+
 	envelope := jsonapi.Envelope{
 		"year":                  year,
 		"sections":              sections,
 		"crewMembers":           members,
 		"availableYearsForCopy": otherYears,
+		"sosAssignableSections": assignable,
 	}
 	if err := app.WriteJSON(w, http.StatusOK, envelope, nil); err != nil {
 		app.ServerErrorResponse(w, r, err)
@@ -304,6 +315,47 @@ func (app *application) assignCrewMemberSectionHandler(w http.ResponseWriter, r 
 	envelope := jsonapi.Envelope{
 		"userId":      userID,
 		"sectionSlug": sectionSlug,
+	}
+	if err := app.WriteJSON(w, http.StatusOK, envelope, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
+// setSectionSosAssignableHandler toggles whether a section may be assigned SOS
+// cases (PRD 001 §6).
+//
+// The flag is owned by the SOS domain rather than by the section itself: "can be
+// assigned nødråb" is a fact about the nødtelefon, and a section does not become a
+// different thing because the emergency phone can route to it. The route lives
+// under /api/section/ anyway, because that is the screen an operator sets it from.
+func (app *application) setSectionSosAssignableHandler(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Assignable bool `json:"assignable"`
+	}
+	if err := app.ReadJSON(w, r, &input); err != nil {
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+	year := app.YearSlug(r)
+	slug := types.Slug(app.ReadNamedParam(r, "slug"))
+	if !slug.Valid() {
+		app.BadRequestResponse(w, r, errFromString("invalid section slug"))
+		return
+	}
+	// The section must exist for the year, or a typo would create an assignable
+	// entry for a section nobody can see — invisible in the UI and impossible to
+	// turn off from it.
+	if _, err := app.models.Section.GetBySlug(r.Context(), year, slug); err != nil {
+		app.NotFoundResponse(w, r)
+		return
+	}
+	if err := app.commands.Sos.SetSectionAssignable(r.Context(), app.actor(r), year, slug, input.Assignable); err != nil {
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+	envelope := jsonapi.Envelope{
+		"slug":       slug,
+		"assignable": input.Assignable,
 	}
 	if err := app.WriteJSON(w, http.StatusOK, envelope, nil); err != nil {
 		app.ServerErrorResponse(w, r, err)
