@@ -53,6 +53,8 @@ request only named the title.
 - [x] Comment card carries a slight tint so it does not dissolve into the white panel
 - [x] State-change **text** dimmed; marker and timestamp left as they are
 - [x] Vertical spacing between entries halved via the `timeline.event.minHeight` token
+- [x] Case summary is a note card in the *same* outer panel as the timeline, full width
+- [x] Case card and comment cards share one style definition, so they cannot drift
 - [x] Frontend tests pass; eslint clean; no new type errors
 
 ## Progress Log
@@ -113,3 +115,17 @@ request only named the title.
   `--p-timeline-event-min-height: 2.5rem` on the timeline instead, so the connector, marker
   and content shorten together and stay aligned — padding-only tweaks would have moved the
   content off its own marker.
+- 2026-08-11 — Fourth round: **one outer panel**. The case summary, the timeline and the
+  comment box now sit on a single `.card`, with the case rendered as the same tinted note
+  card as a comment — full width, like the composer beneath it. Two stacked white panels
+  made the case and its history read as separate screens; they are one story.
+- 2026-08-11 — The note surface (`.sos-note`: tint, border, flatness, padding) is defined
+  **once**, in this view's unscoped style block, and used by both the case card and
+  `SosActivityLine`'s comment card. The requirement is that the two look the same, and two
+  copies of those declarations would have drifted the first time either was nudged. The
+  component keeps only its own hover-pencil rule and a comment pointing at where the
+  surface lives.
+- 2026-08-11 — Raised the shared padding from `0.6rem/0.75rem` to `0.75rem/1rem`: the
+  original was tuned for one-line comments and read as cramped under the case's 3xl
+  headline. One value that suits both, rather than a special case that would defeat the
+  point of sharing.

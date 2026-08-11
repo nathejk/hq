@@ -337,9 +337,14 @@ watch(error, (err) => {
       or twice per case, while the headline, the description and the timeline are
       read on every glance and during every handover.
     -->
-    <div class="lg:col-span-3 flex flex-col gap-4">
-      <!-- The case itself: the one thing an operator picking up the phone must read. -->
-      <Card>
+    <!--
+      One panel: the case, then everything that happened to it, then the box for
+      adding to it. Same outer surface for all three, because they are read as one
+      story — and the case itself is a note on that surface exactly like a comment,
+      only full width rather than sitting on the timeline rail.
+    -->
+    <div class="lg:col-span-3 card">
+      <Card class="sos-note">
         <template #title>
           <div class="flex items-start justify-between gap-3">
             <div v-if="editingHeadline" class="flex gap-2 flex-1">
@@ -397,44 +402,40 @@ watch(error, (err) => {
         </template>
       </Card>
 
-      <!-- Everything that happened, in stream order, comments included. -->
-      <Card>
-        <template #title><span class="font-nathejk text-xl">Hændelser</span></template>
-        <template #content>
-          <Timeline v-if="visibleTimeline.length" :value="visibleTimeline" class="sos-timeline">
-            <template #opposite="{ item }">
-              <span class="text-xs text-gray-500">{{ formatTime(item.createdAt) }}</span>
-            </template>
-            <template #marker="{ item }">
-              <span class="flex w-7 h-7 items-center justify-center rounded-full bg-gray-100 text-gray-600">
-                <i :class="activityIcon(item.type)" />
-              </span>
-            </template>
-            <template #content="{ item }">
-              <SosActivityLine
-                :activity="item"
-                :comment-text="item.type === 'commented' ? currentCommentText(item) : item.value"
-                :edited="item.type === 'commented' && isEdited(item)"
-                :editing="editingComment === item.activityId"
-                v-model:draft="commentEditDraft"
-                @edit="startCommentEdit(item)"
-                @save="saveCommentEdit(item)"
-                @cancel="editingComment = null"
-              />
-            </template>
-          </Timeline>
+      <h2 class="text-xs uppercase tracking-wide text-gray-500 mt-5 mb-2">Hændelser</h2>
 
-          <div v-else class="text-sm text-gray-500">
-            {{ pending ? 'Henter hændelser...' : 'Endnu ingen hændelser på sagen.' }}
-          </div>
-
-          <div class="mt-4">
-            <Textarea v-model="commentDraft" rows="2" class="w-full" placeholder="Tilføj kommentar..." />
-            <Button label="Tilføj kommentar" icon="pi pi-comment" size="small" class="mt-2"
-                    :disabled="!commentDraft.trim()" @click="addComment" />
-          </div>
+      <Timeline v-if="visibleTimeline.length" :value="visibleTimeline" class="sos-timeline">
+        <template #opposite="{ item }">
+          <span class="text-xs text-gray-500">{{ formatTime(item.createdAt) }}</span>
         </template>
-      </Card>
+        <template #marker="{ item }">
+          <span class="flex w-7 h-7 items-center justify-center rounded-full bg-gray-100 text-gray-600">
+            <i :class="activityIcon(item.type)" />
+          </span>
+        </template>
+        <template #content="{ item }">
+          <SosActivityLine
+            :activity="item"
+            :comment-text="item.type === 'commented' ? currentCommentText(item) : item.value"
+            :edited="item.type === 'commented' && isEdited(item)"
+            :editing="editingComment === item.activityId"
+            v-model:draft="commentEditDraft"
+            @edit="startCommentEdit(item)"
+            @save="saveCommentEdit(item)"
+            @cancel="editingComment = null"
+          />
+        </template>
+      </Timeline>
+
+      <div v-else class="text-sm text-gray-500">
+        {{ pending ? 'Henter hændelser...' : 'Endnu ingen hændelser på sagen.' }}
+      </div>
+
+      <div class="mt-4">
+        <Textarea v-model="commentDraft" rows="2" class="w-full" placeholder="Tilføj kommentar..." />
+        <Button label="Tilføj kommentar" icon="pi pi-comment" size="small" class="mt-2"
+                :disabled="!commentDraft.trim()" @click="addComment" />
+      </div>
     </div>
 
     <!--
@@ -488,6 +489,31 @@ watch(error, (err) => {
 <style>
 #sos-detail .card {
   padding: 1rem;
+}
+
+/*
+  The "note" surface: a flat, tinted, bordered card used for the case itself and for
+  every comment. Defined here — in the view's unscoped block — rather than inside
+  SosActivityLine, because the requirement is that the two look *the same*, and two
+  copies of these four declarations would drift the first time one was adjusted.
+
+  The page's own panels are white, so the tint is what stops a note dissolving into
+  the panel behind it; flat rather than shadowed, because a run of raised cards down a
+  timeline reads as floating boxes. Specificity beats PrimeVue's own .p-card rules
+  without !important thanks to the id.
+*/
+#sos-detail .sos-note {
+  background: #f4f6f8;
+  border: 1px solid #e5e7eb;
+  box-shadow: none;
+}
+#sos-detail .sos-note .p-card-body {
+  /* Sized for both uses: roomy enough under the case's 3xl headline, still tight
+     enough that a one-line comment does not float in space. */
+  padding: 0.75rem 1rem;
+}
+#sos-detail .sos-note .p-card-content {
+  padding: 0;
 }
 
 /* Quieter than the case itself, but readable without interaction — full opacity on

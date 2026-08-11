@@ -70,7 +70,7 @@ const draftValue = computed({
        content on the rail, clearly distinct from the one-line state changes around
        it. State changes stay plain text — a card each would turn the timeline back
        into a wall of boxes. -->
-  <Card v-if="isComment" class="sos-comment border border-gray-200">
+  <Card v-if="isComment" class="sos-note">
     <template #content>
       <div v-if="editing" class="flex flex-col gap-1">
         <Textarea v-model="draftValue" rows="2" class="w-full" autofocus />
@@ -109,23 +109,8 @@ const draftValue = computed({
   opacity: 1;
 }
 
-/* A card on a timeline rail wants to be a quiet container, not a raised panel:
-   tighter than the default padding and flat rather than shadowed, so a run of
-   comments does not become a stack of floating boxes.
-
-   The tint matters more than it looks: the page's own cards are white, so a white
-   comment card would dissolve into the panel behind it. A slightly cool grey makes
-   each comment read as a note laid on the page. Set here rather than with a Tailwind
-   class because PrimeVue's own `.p-card` background would otherwise win — a scoped
-   rule carries the extra attribute selector and lands on top. */
-.sos-comment {
-  background: #f4f6f8;
-  box-shadow: none;
-}
-.sos-comment :deep(.p-card-body) {
-  padding: 0.6rem 0.75rem;
-}
-.sos-comment :deep(.p-card-content) {
-  padding: 0;
-}
+/* The card's own surface — tint, border, flatness, padding — is the `.sos-note`
+   class, defined in SosView's unscoped style block. It is shared with the case's own
+   card deliberately: the two are required to look identical, and keeping one copy of
+   the rules is the only way that survives the next adjustment. */
 </style>
