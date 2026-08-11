@@ -12,6 +12,8 @@ import {
   severityLabel,
   severityTagSeverity,
   formatDateTime,
+  formatTime,
+  activityIcon,
 } from '@/composables/sos'
 
 const props = defineProps<{ id?: string }>()
@@ -265,10 +267,26 @@ const isEdited = (activity: Activity) =>
     (a) => a.type === 'comment.updated' && a.refActivityId === activity.activityId,
   )
 
-// The rendered timeline hides the amendment entries themselves and shows the
-// amended comment with a "redigeret" marker instead — the record is intact, the
-// screen is readable.
-const visibleTimeline = computed(() => timeline.value.filter((a) => a.type !== 'comment.updated'))
+// The rendered timeline is what *happened to the case*, not what the case is.
+//
+// Creation and headline/description edits are hidden: the card above states the
+// current title and description, so an entry saying they were set is noise on the
+// one surface an operator reads during a handover. They are still recorded as
+// events and rows — the audit trail is intact, only the display is curated.
+//
+// Comment amendments are hidden for a different reason: the comment they amend is
+// shown with its latest text and a "(redigeret)" marker, so a separate entry would
+// say the same thing twice.
+const HIDDEN_TIMELINE_TYPES = new Set([
+  'created',
+  'headline.updated',
+  'description.updated',
+  'comment.updated',
+])
+
+const visibleTimeline = computed(() =>
+  timeline.value.filter((a) => !HIDDEN_TIMELINE_TYPES.has(a.type)),
+)
 
 const deleteCase = async () => {
   if (!confirm('Slet sagen? Den skjules fra listerne.')) return
@@ -312,89 +330,123 @@ watch(error, (err) => {
     <Button label="Tilbage til nødtelefonen" @click="router.push({ name: 'sos-list' })" />
   </div>
 
-  <div v-else-if="sosCase" class="grid grid-cols-1 lg:grid-cols-3 gap-4" id="sos-detail">
-    <!-- Left: the case and its history -->
-    <div class="lg:col-span-2 card">
-      <div class="flex items-start justify-between gap-2">
-        <div class="flex-1">
-          <div v-if="editingHeadline" class="flex gap-2">
-            <InputText v-model="headlineDraft" class="flex-1" @keyup.enter="saveHeadline" />
-            <Button icon="pi pi-check" @click="saveHeadline" />
-            <Button icon="pi pi-times" severity="secondary" text @click="editingHeadline = false" />
+  <div v-else-if="sosCase" class="grid grid-cols-1 lg:grid-cols-4 gap-4" id="sos-detail">
+    <!--
+      Left, and given the room: what the case *is*, then what has happened to it.
+      The handling controls sit in a deliberately quieter column — they are set once
+      or twice per case, while the headline, the description and the timeline are
+      read on every glance and during every handover.
+    -->
+    <div class="lg:col-span-3 flex flex-col gap-4">
+      <!-- The case itself: the one thing an operator picking up the phone must read. -->
+      <Card>
+        <template #title>
+          <div class="flex items-start justify-between gap-3">
+            <div v-if="editingHeadline" class="flex gap-2 flex-1">
+              <InputText v-model="headlineDraft" class="flex-1" autofocus @keyup.enter="saveHeadline" />
+              <Button icon="pi pi-check" @click="saveHeadline" />
+              <Button icon="pi pi-times" severity="secondary" text @click="editingHeadline = false" />
+            </div>
+            <h1 v-else class="font-nathejk text-3xl leading-tight flex-1">
+              {{ sosCase.headline }}
+              <Button class="align-middle" icon="pi pi-pencil" text rounded size="small"
+                      @click="startHeadlineEdit" />
+            </h1>
+            <Tag :value="sosCase.status === 'closed' ? 'Afsluttet' : 'Åben'"
+                 :severity="sosCase.status === 'closed' ? 'secondary' : 'info'" />
           </div>
-          <h1 v-else class="font-nathejk text-2xl">
-            {{ sosCase.headline }}
-            <Button icon="pi pi-pencil" text rounded size="small" @click="startHeadlineEdit" />
-          </h1>
-        </div>
-        <Tag :value="sosCase.status === 'closed' ? 'Afsluttet' : 'Åben'"
-             :severity="sosCase.status === 'closed' ? 'secondary' : 'info'" />
-      </div>
+        </template>
 
-      <div class="text-sm text-surface-500 mt-1">
-        Oprettet {{ formatDateTime(sosCase.createdAt) }}
-      </div>
+        <template #subtitle>
+          <span class="text-sm">Oprettet {{ formatDateTime(sosCase.createdAt) }}</span>
+          <Tag v-if="sosCase.severity" class="ml-2" :value="severityLabel(sosCase.severity)"
+               :severity="severityTagSeverity(sosCase.severity)" />
+        </template>
 
-      <div class="mt-4">
-        <div v-if="editingDescription" class="flex flex-col gap-2">
-          <Textarea v-model="descriptionDraft" rows="4" class="w-full" />
-          <div class="flex gap-2">
-            <Button label="Gem" icon="pi pi-check" size="small" @click="saveDescription" />
-            <Button label="Annuller" severity="secondary" text size="small" @click="editingDescription = false" />
+        <template #content>
+          <div v-if="editingDescription" class="flex flex-col gap-2">
+            <Textarea v-model="descriptionDraft" rows="5" class="w-full" autofocus />
+            <div class="flex gap-2">
+              <Button label="Gem" icon="pi pi-check" size="small" @click="saveDescription" />
+              <Button label="Annuller" severity="secondary" text size="small"
+                      @click="editingDescription = false" />
+            </div>
           </div>
-        </div>
-        <p v-else class="whitespace-pre-wrap">
-          {{ sosCase.description }}
-          <Button icon="pi pi-pencil" text rounded size="small" @click="startDescriptionEdit" />
-        </p>
-      </div>
+          <p v-else class="whitespace-pre-wrap text-base">
+            {{ sosCase.description }}
+            <Button class="align-middle" icon="pi pi-pencil" text rounded size="small"
+                    @click="startDescriptionEdit" />
+          </p>
 
-      <div class="flex flex-wrap gap-2 mt-4">
-        <Button
-          :label="sosCase.status === 'closed' ? 'Genåbn sag' : 'Luk sag'"
-          :icon="sosCase.status === 'closed' ? 'pi pi-replay' : 'pi pi-check-circle'"
-          @click="toggleStatus"
-        />
-        <Button label="Slet sag" icon="pi pi-trash" severity="danger" text @click="deleteCase" />
-      </div>
+          <!-- Updates paused, said on screen: an operator must know why the page is
+               not moving while they type. -->
+          <div v-if="dirty" class="mt-3 text-sm italic text-amber-700">
+            Opdateringer er sat på pause, mens du skriver.
+          </div>
+        </template>
 
-      <!-- Updates paused, said on screen: an operator must know why the page is
-           not moving while they type. -->
-      <div v-if="dirty" class="mt-4 text-sm italic text-amber-700">
-        Opdateringer er sat på pause, mens du skriver.
-      </div>
+        <template #footer>
+          <div class="flex flex-wrap gap-2">
+            <Button
+              :label="sosCase.status === 'closed' ? 'Genåbn sag' : 'Luk sag'"
+              :icon="sosCase.status === 'closed' ? 'pi pi-replay' : 'pi pi-check-circle'"
+              @click="toggleStatus"
+            />
+            <Button label="Slet sag" icon="pi pi-trash" severity="danger" text @click="deleteCase" />
+          </div>
+        </template>
+      </Card>
 
-      <h2 class="font-nathejk text-xl mt-6 mb-2">Hændelser</h2>
-      <div class="flex flex-col gap-1">
-        <SosActivityLine
-          v-for="activity in visibleTimeline"
-          :key="activity.seq"
-          :activity="activity"
-          :comment-text="activity.type === 'commented' ? currentCommentText(activity) : activity.value"
-          :edited="activity.type === 'commented' && isEdited(activity)"
-          :editing="editingComment === activity.activityId"
-          v-model:draft="commentEditDraft"
-          @edit="startCommentEdit(activity)"
-          @save="saveCommentEdit(activity)"
-          @cancel="editingComment = null"
-        />
-        <div v-if="visibleTimeline.length === 0 && pending" class="text-sm text-surface-500">
-          Henter hændelser...
-        </div>
-      </div>
+      <!-- Everything that happened, in stream order, comments included. -->
+      <Card>
+        <template #title><span class="font-nathejk text-xl">Hændelser</span></template>
+        <template #content>
+          <Timeline v-if="visibleTimeline.length" :value="visibleTimeline" class="sos-timeline">
+            <template #opposite="{ item }">
+              <span class="text-xs text-surface-500">{{ formatTime(item.createdAt) }}</span>
+            </template>
+            <template #marker="{ item }">
+              <span class="flex w-7 h-7 items-center justify-center rounded-full bg-surface-100 text-surface-600">
+                <i :class="activityIcon(item.type)" />
+              </span>
+            </template>
+            <template #content="{ item }">
+              <SosActivityLine
+                :activity="item"
+                :comment-text="item.type === 'commented' ? currentCommentText(item) : item.value"
+                :edited="item.type === 'commented' && isEdited(item)"
+                :editing="editingComment === item.activityId"
+                v-model:draft="commentEditDraft"
+                @edit="startCommentEdit(item)"
+                @save="saveCommentEdit(item)"
+                @cancel="editingComment = null"
+              />
+            </template>
+          </Timeline>
 
-      <div class="mt-4">
-        <Textarea v-model="commentDraft" rows="2" class="w-full" placeholder="Tilføj kommentar..." />
-        <Button label="Tilføj kommentar" icon="pi pi-comment" size="small" class="mt-2"
-                :disabled="!commentDraft.trim()" @click="addComment" />
-      </div>
+          <div v-else class="text-sm text-surface-500">
+            {{ pending ? 'Henter hændelser...' : 'Endnu ingen hændelser på sagen.' }}
+          </div>
+
+          <div class="mt-4">
+            <Textarea v-model="commentDraft" rows="2" class="w-full" placeholder="Tilføj kommentar..." />
+            <Button label="Tilføj kommentar" icon="pi pi-comment" size="small" class="mt-2"
+                    :disabled="!commentDraft.trim()" @click="addComment" />
+          </div>
+        </template>
+      </Card>
     </div>
 
-    <!-- Right: handling -->
-    <div class="flex flex-col gap-4">
-      <div class="card">
-        <h2 class="font-nathejk text-xl mb-3">Prioritet</h2>
-        <div class="flex gap-2">
+    <!--
+      Handling: priority, assignee, patrols. Dimmed until hovered and kept narrow,
+      because these are occasional actions sitting beside something read constantly.
+      Dimmed rather than hidden — an operator taking over a shift still needs to see
+      at a glance who the case is assigned to.
+    -->
+    <aside class="sos-aside flex flex-col gap-3 text-sm">
+      <div class="card !p-3">
+        <h2 class="text-xs uppercase tracking-wide text-surface-500 mb-2">Prioritet</h2>
+        <div class="flex gap-1">
           <Button
             v-for="option in severityOptions"
             :key="option.value"
@@ -402,11 +454,12 @@ watch(error, (err) => {
             :severity="severityTagSeverity(option.value)"
             :outlined="sosCase.severity !== option.value"
             size="small"
+            class="flex-1 !py-1"
             @click="setSeverity(option.value)"
           />
         </div>
 
-        <h2 class="font-nathejk text-xl mt-4 mb-2">Tildelt</h2>
+        <h2 class="text-xs uppercase tracking-wide text-surface-500 mt-4 mb-2">Tildelt</h2>
         <Select
           :modelValue="sosCase.assigneeSectionSlug"
           :options="assigneeOptions"
@@ -414,6 +467,7 @@ watch(error, (err) => {
           optionValue="value"
           placeholder="Ingen"
           showClear
+          size="small"
           class="w-full"
           @update:modelValue="setAssignee"
         />
@@ -423,7 +477,7 @@ watch(error, (err) => {
       </div>
 
       <SosTeamCard :sos-id="caseId" :teams="teams" @changed="refresh" />
-    </div>
+    </aside>
   </div>
 
   <div v-else class="card">
@@ -434,5 +488,27 @@ watch(error, (err) => {
 <style>
 #sos-detail .card {
   padding: 1rem;
+}
+
+/* Quieter than the case itself, but readable without interaction — full opacity on
+   hover or while a control inside has focus. */
+#sos-detail .sos-aside {
+  opacity: 0.75;
+  transition: opacity 120ms ease;
+}
+#sos-detail .sos-aside:hover,
+#sos-detail .sos-aside:focus-within {
+  opacity: 1;
+}
+
+/* The time column only needs room for HH:MM; the default split wastes half the
+   width on it. */
+#sos-detail .sos-timeline .p-timeline-event-opposite {
+  flex: 0 0 3.5rem;
+  padding-top: 0.35rem;
+  text-align: right;
+}
+#sos-detail .sos-timeline .p-timeline-event-content {
+  padding-bottom: 0.75rem;
 }
 </style>
