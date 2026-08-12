@@ -12,7 +12,6 @@ import (
 )
 
 type teamQuerier interface {
-	//ConfirmBySecret(string) (*data.Confirm, error)
 	GetKlan(types.TeamID) (*data.Klan, error)
 	RequestedSeniorCount() int
 }
@@ -264,26 +263,3 @@ func (c *team) AssignToLok(teamID types.TeamID, lok string) error {
 	return nil
 	//klan, _ := c.q.GetKlan(teamID)
 }
-
-/*
-func (c *team) ConfirmEmail(secret string) error {
-
-	confirm
-	if body.TeamID == "" {
-		body.TeamID = types.TeamID(uuid.New().String())
-	}
-	if body.Pincode == "" {
-		body.Pincode = "1222"
-	}
-
-	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK:%s.patrulje.%s.signedup", "2024", body.TeamID)))
-	msg.SetBody(body)
-	meta := messages.Metadata{Producer: "tilmelding-api"}
-	msg.SetMeta(&meta)
-
-	if err := c.p.Publish(msg); err != nil {
-		return err
-	}
-	return nil
-}
-*/

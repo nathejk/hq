@@ -211,14 +211,13 @@ func main() {
 	// it is worth being able to see it.
 	//
 	// Everything here is wrapped, including consumers that are arguably not
-	// projections (confirm, and order's saga behaviour). A consumer that writes no
-	// row a client would refetch produces a signal nothing depends on — clients
-	// declare the entities they care about, and coalescing collapses duplicates from
-	// the several projections that handle one event — so curating the list would buy
+	// projections (order's saga behaviour). A consumer that writes no row a client
+	// would refetch produces a signal nothing depends on — clients declare the
+	// entities they care about, and coalescing collapses duplicates from the
+	// several projections that handle one event — so curating the list would buy
 	// nothing and would rot the moment a consumer changed shape.
 	projections := []cqrs.Consumer{
 		signuptable,
-		table.NewConfirm(writer),
 		klantable,
 		seniortable,
 		patruljetable,
@@ -252,12 +251,11 @@ func main() {
 		"exhaustive": fmt.Sprintf("%t", liveEntities.Exhaustive),
 	})
 
-	//mux.AddConsumer(table.NewSpejder(writer), table.NewSpejderStatus(writer))
 	if err := mux.Run(context.Background()); err != nil {
 		logger.PrintFatal(err, nil)
 	}
 
-	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, spejdertable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, ordertable, sostable)
+	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, ordertable, sostable)
 	cmds := commands.New(publisher, models)
 	cmds.Year = year
 	cmds.Checkpoint = checkpoint

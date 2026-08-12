@@ -38,8 +38,6 @@ type Commands struct {
 
 func New(stream stream.Publisher, models data.Models) Commands {
 	return Commands{
-		//Checkgroup: NewCheckgroup(stream, models.Checkgroup),
-		//Checkpoint: models.Checkpoint,
 		Team: NewTeam(stream, models.Teams),
 		Lok:  NewLok(stream, models.Lok),
 	}
