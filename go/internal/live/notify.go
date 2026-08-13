@@ -51,10 +51,14 @@ func Notify(p Publisher, c cqrs.Consumer) cqrs.Consumer {
 	n := notifier{publisher: p, consumer: c}
 	// Preserve the optional catch-up interface. The jetstream Subscribe path
 	// discovers it by asserting on the handler it is given, and that handler is
-	// this decorator — so a consumer that cares about replay (the order Pay saga
-	// waits for the payment projection only once live) would silently never be
-	// told, and would behave as if it were still replaying forever. A decorator
-	// must be transparent about the interfaces it wraps.
+	// this decorator — so a consumer that behaves differently while replaying
+	// would silently never be told it had caught up, and would go on replaying
+	// forever. A decorator must be transparent about the interfaces it wraps.
+	//
+	// Nothing in hq implements it today: the order Pay saga, which does, is owned
+	// by tilmelding (see cmd/api/main.go). The forwarding is here because the
+	// failure is invisible — a dropped optional interface produces no error, just
+	// a consumer quietly stuck in its replay behaviour.
 	//
 	// Only when the inner consumer implements it: adding CaughtUp unconditionally
 	// would advertise every projection as a listener and make the stream track

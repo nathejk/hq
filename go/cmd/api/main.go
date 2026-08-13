@@ -187,23 +187,27 @@ func main() {
 		logger.PrintFatal(err, nil)
 	}
 	ordertable := order.New(publisher, writer, db.DB(), currentYear, producttable)
-	// The Pay saga is what moves an order to paid: it listens for
-	// payment.received and, once the order's payments cover its total, publishes
-	// order.paid — which ordertable then projects. Nothing else performs that
-	// transition, so without it every order stays open forever.
+	// order.NewSaga is deliberately NOT wired here. The Pay saga publishes
+	// order.paid in reaction to payment.received, and tilmelding already runs it.
 	//
-	// settle 0 takes the package default. It reads the payment and order
-	// projections a few times rather than once, because both are independent
-	// consumers that may not yet reflect the payment the saga was just told
-	// about; an unprojected order is retried even during replay, which is what
-	// stops a paid order showing as open for the lifetime of the process. The
-	// waits are otherwise skipped while replaying, which is why the decorator has
-	// to forward CaughtUp (see internal/live/notify.go).
+	// Projectors are safe to mount in several services — each writes only its own
+	// read model. A saga is not: it writes to the shared event log. Subscriptions
+	// here are ephemeral ordered consumers with no queue group, so every process
+	// receives every message rather than sharing them out, and the saga's
+	// "transition only if still open" check is a read-then-publish with no
+	// compare-and-swap. Two instances would therefore both read `open` and both
+	// publish, and nothing sets Nats-Msg-Id, so JetStream's duplicate window would
+	// not collapse them either.
 	//
-	// currentYear scopes it to this season: earlier seasons are closed, and their
-	// pre-order-entity payments name a team rather than an order, so every one of
-	// them would otherwise look like an order the saga cannot find.
-	ordersaga := order.NewSaga(publisher, ordertable, paymenttable, currentYear, 0)
+	// Today that would still converge, because the only subscriber to order.paid
+	// is the order projector and its UPDATE is conditional on status='open'. But
+	// it would impose that same idempotency on every future subscriber — the
+	// patrulje-number assignment in PRD 003 being the next one — for no benefit
+	// beyond redundancy nobody asked for.
+	//
+	// tilmelding owns it because it owns the payment lifecycle: it creates the
+	// payments and takes the provider callback. hq wires no payment provider and
+	// only reads orders and payments, so it has no business transitioning them.
 
 	mux := xstream.NewMux(js)
 
@@ -247,7 +251,6 @@ func main() {
 		sectiontable,
 		crewmembertable,
 		ordertable,
-		ordersaga,
 		sostable,
 	}
 	for _, consumer := range live.NotifyAll(livehub, projections...) {
