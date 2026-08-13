@@ -1,11 +1,11 @@
 # 057 — BFF: patrulje number-assignment saga
 
-**Status:** doing
+**Status:** done
 **Priority:** high
 **Created:** 2026-08-13
 **Picked up by:** zed agent session
 **Started:** 2026-08-13
-**Completed:**
+**Completed:** 2026-08-13
 
 ## Description
 
@@ -55,24 +55,24 @@ emit duplicate assignments on every restart.
 
 ## Acceptance Criteria
 
-- [ ] `go/nathejk/table/patruljenumber/` exists with a constructor taking the
+- [x] `go/nathejk/table/patruljenumber/` exists with a constructor taking the
       publisher, order Queries, product Queries and the year, and returning a
       `cqrs.Consumer`.
-- [ ] Implements `CaughtUp()` so it can be recognised as a
+- [x] Implements `CaughtUp()` so it can be recognised as a
       `stream.CatchupListener`, with a compile-time assertion pinning that.
-- [ ] Publishes nothing before `CaughtUp` — covered by a test that replays a
+- [x] Publishes nothing before `CaughtUp` — covered by a test that replays a
       qualifying `order.paid` and asserts zero published messages.
-- [ ] Publishes `numberassigned` with `maxNumber+1` for a live, unassigned,
+- [x] Publishes `numberassigned` with `maxNumber+1` for a live, unassigned,
       eligible patrulje — asserted on both subject and body.
-- [ ] Already-assigned patrulje produces no event (idempotent), covered for both
+- [x] Already-assigned patrulje produces no event (idempotent), covered for both
       "assigned via replayed event" and "assigned earlier in this process".
-- [ ] Ineligible patrulje (seatCount < 3) produces no event, and does not retry
+- [x] Ineligible patrulje (seatCount < 3) produces no event, and does not retry
       to the full attempt budget.
-- [ ] An order not yet projected as paid is retried, and transitions once the
+- [x] An order not yet projected as paid is retried, and transitions once the
       projection arrives — covered by a fake that misses the first read.
-- [ ] Non-patrulje owners and other years are ignored.
-- [ ] Two eligible patruljer in succession get consecutive distinct numbers.
-- [ ] `go test ./...`, `go vet ./...` and `gofmt -l .` clean; not wired into the
+- [x] Non-patrulje owners and other years are ignored.
+- [x] Two eligible patruljer in succession get consecutive distinct numbers.
+- [x] `go test ./...`, `go vet ./...` and `gofmt -l .` clean; not wired into the
       mux by this task.
 
 ## Progress Log
@@ -86,3 +86,25 @@ emit duplicate assignments on every restart.
   "not projected yet" is retryable while "under three seats" is terminal. Tests
   with hand-written fakes and an injectable sleep, as the order saga does, so the
   retry/wait behaviour is assertable without real time passing.
+- 2026-08-13 17:35 — `saga.go` written. Two decisions worth recording:
+  (a) eligibility is checked *before* the live gate rather than after, so the
+  read path stays exercised during replay and a bug there surfaces on the next
+  restart instead of on the first live payment;
+  (b) `markAssigned` treats a non-numeric `teamNumber` as "assigned" but not as a
+  high-water mark — it is a number somebody meant, so the team must not be
+  renumbered, but it has no integer value to raise the mark with.
+- 2026-08-13 17:40 — Added the retry loop for projection lag. Waits happen during
+  replay too, unlike the order saga's under-paid case: an unprojected order is
+  only fixed by another consumer advancing, and back-to-back reads give it no
+  chance to. Under-seated and non-patrulje are terminal, so the common
+  no-op costs one read.
+- 2026-08-13 17:50 — ✅ All criteria complete. 18 tests pass, `gofmt`, `go vet`
+  and `go test ./...` clean on both resolution paths (`go.work` and `GOWORK=off`).
+  Confirmed nothing under `cmd/` references the package, so it is inert until 059.
+- 2026-08-13 17:52 — Added two tests beyond the criteria: merchandise must not
+  count toward seats (four t-shirts + two seats is still two seats), and
+  `order.Queries`/`product.Queries` must keep satisfying the narrow local reader
+  interfaces — otherwise the wiring in 059 breaks with an error that points at
+  `main.go` rather than at the cause.
+- 2026-08-13 17:55 — Completed. Saga implemented and unit-tested, unwired.
+  Follow-ups unchanged: 058 seeds state from existing `teamNumber`s, 059 wires it.
