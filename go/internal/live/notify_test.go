@@ -175,3 +175,65 @@ func TestNotifyAllWrapsEveryConsumer(t *testing.T) {
 func TestHubSatisfiesPublisher(t *testing.T) {
 	var _ Publisher = NewHub()
 }
+
+// catchupConsumer is a consumer that also listens for catch-up, like the order
+// Pay saga.
+type catchupConsumer struct {
+	fakeConsumer
+	caughtUp int
+}
+
+func (c *catchupConsumer) CaughtUp() { c.caughtUp++ }
+
+// A wrapped consumer is handed to stream.Subscribe in place of the original, and
+// the jetstream path discovers catch-up by asserting on it. If the decorator
+// dropped the interface, a saga that only waits for a lagging projection once
+// live would behave as if it were replaying forever — with no error to say so.
+func TestNotifyForwardsCaughtUp(t *testing.T) {
+	inner := &catchupConsumer{}
+
+	wrapped := Notify(&fakePublisher{}, inner)
+
+	listener, ok := wrapped.(interface{ CaughtUp() })
+	if !ok {
+		t.Fatalf("wrapped consumer no longer advertises CaughtUp")
+	}
+	listener.CaughtUp()
+	if inner.caughtUp != 1 {
+		t.Errorf("inner CaughtUp called %d times, want 1", inner.caughtUp)
+	}
+
+	// Still a working notifier.
+	if err := wrapped.HandleMessage(message("NATHEJK.2026.payment.x-1.received")); err != nil {
+		t.Fatalf("HandleMessage returned %v", err)
+	}
+	if inner.handled != 1 {
+		t.Errorf("inner handled %d messages, want 1", inner.handled)
+	}
+}
+
+// The converse: a plain projection must not be advertised as a listener, or the
+// stream would track catch-up for consumers that do not care.
+func TestNotifyDoesNotInventCaughtUp(t *testing.T) {
+	wrapped := Notify(&fakePublisher{}, &fakeConsumer{})
+
+	if _, ok := wrapped.(interface{ CaughtUp() }); ok {
+		t.Errorf("plain consumer was advertised as a catch-up listener")
+	}
+}
+
+// NotifyAll must preserve it too — that is the call site main.go uses.
+func TestNotifyAllForwardsCaughtUp(t *testing.T) {
+	inner := &catchupConsumer{}
+
+	wrapped := NotifyAll(&fakePublisher{}, &fakeConsumer{}, inner)
+
+	listener, ok := wrapped[1].(interface{ CaughtUp() })
+	if !ok {
+		t.Fatalf("NotifyAll dropped CaughtUp")
+	}
+	listener.CaughtUp()
+	if inner.caughtUp != 1 {
+		t.Errorf("inner CaughtUp called %d times, want 1", inner.caughtUp)
+	}
+}

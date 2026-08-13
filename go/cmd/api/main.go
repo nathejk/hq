@@ -187,6 +187,17 @@ func main() {
 		logger.PrintFatal(err, nil)
 	}
 	ordertable := order.New(publisher, writer, db.DB(), currentYear, producttable)
+	// The Pay saga is what moves an order to paid: it listens for
+	// payment.received and, once the order's payments cover its total, publishes
+	// order.paid — which ordertable then projects. Nothing else performs that
+	// transition, so without it every order stays open forever.
+	//
+	// settle 0 takes the package default. It reads the payment projection a few
+	// times rather than once, because that projection is an independent consumer
+	// and may not yet reflect the payment the saga was just told about; the waits
+	// are skipped during replay, which is why the decorator has to forward
+	// CaughtUp (see internal/live/notify.go).
+	ordersaga := order.NewSaga(publisher, ordertable, paymenttable, 0)
 
 	mux := xstream.NewMux(js)
 
@@ -230,6 +241,7 @@ func main() {
 		sectiontable,
 		crewmembertable,
 		ordertable,
+		ordersaga,
 		sostable,
 	}
 	for _, consumer := range live.NotifyAll(livehub, projections...) {

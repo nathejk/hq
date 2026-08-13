@@ -48,8 +48,38 @@ type Publisher interface {
 // so it would not be a reason to keep deadletter away from notified consumers. But
 // it should be a decision taken knowingly rather than discovered.
 func Notify(p Publisher, c cqrs.Consumer) cqrs.Consumer {
-	return notifier{publisher: p, consumer: c}
+	n := notifier{publisher: p, consumer: c}
+	// Preserve the optional catch-up interface. The jetstream Subscribe path
+	// discovers it by asserting on the handler it is given, and that handler is
+	// this decorator — so a consumer that cares about replay (the order Pay saga
+	// waits for the payment projection only once live) would silently never be
+	// told, and would behave as if it were still replaying forever. A decorator
+	// must be transparent about the interfaces it wraps.
+	//
+	// Only when the inner consumer implements it: adding CaughtUp unconditionally
+	// would advertise every projection as a listener and make the stream track
+	// catch-up for consumers that do not care.
+	if l, ok := c.(catchupListener); ok {
+		return catchupNotifier{notifier: n, listener: l}
+	}
+	return n
 }
+
+// catchupListener mirrors stream.CatchupListener structurally, so this package
+// need not import stream to forward it — the same trick the order saga uses to
+// implement it.
+type catchupListener interface {
+	CaughtUp()
+}
+
+// catchupNotifier is Notify's return for an inner consumer that listens for
+// catch-up: a notifier that also forwards CaughtUp.
+type catchupNotifier struct {
+	notifier
+	listener catchupListener
+}
+
+func (c catchupNotifier) CaughtUp() { c.listener.CaughtUp() }
 
 // NotifyAll wraps several consumers, for the wiring in cmd/api/main.go.
 //
