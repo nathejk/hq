@@ -1,10 +1,10 @@
 # 058 — BFF: seed the number saga from existing teamNumbers
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-08-13
-**Picked up by:**
-**Started:**
+**Picked up by:** zed agent session
+**Started:** 2026-08-13
 **Completed:**
 
 ## Description
@@ -59,3 +59,7 @@ raises `maxNumber`. PRD 003's example: a manual 300 means the next auto number i
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-13 17:05 — Task created from PRD 003 (approved same day).
+- 2026-08-13 18:00 — Picked up. Plan: add a narrow `PatruljeReader` interface
+  (GetAll by year only), fold existing numbers in from `CaughtUp` before flipping
+  `live`, and keep the saga not-live if that read fails — going live with a
+  too-low `maxNumber` would re-issue a number that is already on a patrulje.
