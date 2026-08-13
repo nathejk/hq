@@ -192,12 +192,18 @@ func main() {
 	// order.paid — which ordertable then projects. Nothing else performs that
 	// transition, so without it every order stays open forever.
 	//
-	// settle 0 takes the package default. It reads the payment projection a few
-	// times rather than once, because that projection is an independent consumer
-	// and may not yet reflect the payment the saga was just told about; the waits
-	// are skipped during replay, which is why the decorator has to forward
-	// CaughtUp (see internal/live/notify.go).
-	ordersaga := order.NewSaga(publisher, ordertable, paymenttable, 0)
+	// settle 0 takes the package default. It reads the payment and order
+	// projections a few times rather than once, because both are independent
+	// consumers that may not yet reflect the payment the saga was just told
+	// about; an unprojected order is retried even during replay, which is what
+	// stops a paid order showing as open for the lifetime of the process. The
+	// waits are otherwise skipped while replaying, which is why the decorator has
+	// to forward CaughtUp (see internal/live/notify.go).
+	//
+	// currentYear scopes it to this season: earlier seasons are closed, and their
+	// pre-order-entity payments name a team rather than an order, so every one of
+	// them would otherwise look like an order the saga cannot find.
+	ordersaga := order.NewSaga(publisher, ordertable, paymenttable, currentYear, 0)
 
 	mux := xstream.NewMux(js)
 
