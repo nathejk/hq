@@ -26,6 +26,7 @@ import (
 	"github.com/nathejk/shared-go/tables/crewmember"
 	"github.com/nathejk/shared-go/tables/klan"
 	"github.com/nathejk/shared-go/tables/order"
+	"github.com/nathejk/shared-go/tables/payment"
 	"github.com/nathejk/shared-go/tables/product"
 	"github.com/nathejk/shared-go/tables/section"
 	"github.com/nathejk/shared-go/tables/senior"
@@ -48,7 +49,6 @@ import (
 	"nathejk.dk/nathejk/table/lok"
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/patruljemerged"
-	"nathejk.dk/nathejk/table/payment"
 	"nathejk.dk/nathejk/table/personnel"
 	"nathejk.dk/nathejk/table/scan"
 	"nathejk.dk/nathejk/table/sos"
@@ -169,6 +169,7 @@ func main() {
 
 	reader := db.DB()
 	writer := sqlpersister.New(db.DB())
+	currentYear := types.YearSlug(fmt.Sprintf("%d", time.Now().Year()))
 
 	year := year.New(publisher, writer, reader)
 	signuptable := signup.New(publisher, writer, db.DB())
@@ -177,7 +178,7 @@ func main() {
 	patruljetable := patrulje.New(writer, db.DB())
 	patruljemergedtable := patruljemerged.New(writer, db.DB())
 	personneltable := personnel.New(writer, db.DB())
-	paymenttable := payment.New(writer, db.DB())
+	paymenttable := payment.New(publisher, writer, db.DB(), currentYear)
 	spejdertable := spejder.New(writer, db.DB())
 	checkgroup := checkgroup.New(publisher, writer, reader)
 	checkpoint := checkpoint.New(publisher, writer, reader)
@@ -191,7 +192,6 @@ func main() {
 	if err := producttable.Seed(product.Seeds2026()); err != nil {
 		logger.PrintFatal(err, nil)
 	}
-	currentYear := types.YearSlug(fmt.Sprintf("%d", time.Now().Year()))
 	ordertable := order.New(publisher, writer, db.DB(), currentYear, producttable)
 
 	mux := xstream.NewMux(js)

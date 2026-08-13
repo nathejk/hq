@@ -5,12 +5,12 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/nathejk/shared-go/tables/payment"
 	"github.com/nathejk/shared-go/types"
 	jsonapi "nathejk.dk/cmd/api/app"
 	"nathejk.dk/internal/data"
 	"nathejk.dk/nathejk/commands"
 	"nathejk.dk/nathejk/table/patrulje"
-	"nathejk.dk/nathejk/table/payment"
 	"nathejk.dk/nathejk/table/scan"
 )
 
