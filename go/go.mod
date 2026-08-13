@@ -13,7 +13,7 @@ require (
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/lib/pq v1.10.7
 	github.com/moul/http2curl v1.0.0
-	github.com/nathejk/shared-go v0.0.0-20260807180020-5ac2603c60ba
+	github.com/nathejk/shared-go v0.0.0-20260813055948-ec63681bcc13
 	github.com/tdewolff/minify/v2 v2.23.3
 	github.com/wneessen/go-mail v0.6.2
 	github.com/xuri/excelize/v2 v2.9.1
@@ -24,6 +24,7 @@ require (
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/klauspost/compress v1.18.5 // indirect
+	github.com/matoous/go-nanoid/v2 v2.1.0 // indirect
 	github.com/nats-io/nats.go v1.52.0 // indirect
 	github.com/nats-io/nkeys v0.4.15 // indirect
 	github.com/nats-io/nuid v1.0.1 // indirect

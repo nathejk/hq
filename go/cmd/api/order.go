@@ -5,10 +5,10 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/nathejk/shared-go/tables/order"
 	"github.com/nathejk/shared-go/types"
 	jsonapi "nathejk.dk/cmd/api/app"
 	tables "nathejk.dk/nathejk/table"
-	"nathejk.dk/nathejk/table/order"
 )
 
 // orderView is an order.Order enriched with a human-readable owner label.

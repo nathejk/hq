@@ -7,6 +7,7 @@ import (
 
 	"github.com/nathejk/shared-go/tables/crewmember"
 	"github.com/nathejk/shared-go/tables/klan"
+	"github.com/nathejk/shared-go/tables/order"
 	"github.com/nathejk/shared-go/tables/section"
 	"github.com/nathejk/shared-go/tables/senior"
 	"github.com/nathejk/shared-go/types"
@@ -14,7 +15,6 @@ import (
 	"nathejk.dk/nathejk/table/checkpersonnel"
 	"nathejk.dk/nathejk/table/checkpoint"
 	"nathejk.dk/nathejk/table/lok"
-	"nathejk.dk/nathejk/table/order"
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/payment"
 	"nathejk.dk/nathejk/table/personnel"
