@@ -1,13 +1,14 @@
 # PRD 003 — Automatic patrulje number assignment on acceptance
 
-**Status:** draft
+**Status:** doing
 **Author:** agent session
 **Created:** 2026-07-31
-**Last updated:** 2026-08-09
-**Approved:**
+**Last updated:** 2026-08-13
+**Approved:** 2026-08-13
 **Shipped:**
-**Status note:** not implemented — verified 2026-08-09 that nothing in hq publishes
-`patrulje.*.numberassigned`; the projection only *consumes* it, from legacy events
+**Status note:** approved for implementation — tasks 057–060. The trigger now
+fires: the order Pay saga is live in tilmelding (hq deliberately does not mount
+it — see §8 Ownership), so `order.paid` is emitted.
 **Target users:** organizer (HQ) — indirectly benefits patruljer/participants
 
 ---
@@ -142,6 +143,23 @@ already shown. N/A beyond that.
 
 ## 8. Technical Considerations
 
+### Ownership — exactly one service mounts this saga
+
+hq owns it. A projector may be mounted in several services because each writes
+only its own read model, but a saga publishes to the **shared** event log:
+subscriptions are ephemeral ordered consumers with no queue group, so every
+process receives every message rather than sharing them out. Two mounts would
+both find a patrulje unnumbered and both publish `numberassigned` — and the
+projector's `UPDATE patrulje SET teamNumber=?` is unconditional, so the two
+numbers would fight rather than converge. It is also why this saga cannot be
+scaled horizontally: two replicas of hq would duplicate identically.
+
+hq rather than tilmelding because team numbering is an organizer concern, and hq
+already owns the patrulje read model that the eligibility check and the seeding
+read from. **It must not also be added to tilmelding.** (The mirror-image
+decision was taken for the order Pay saga, which tilmelding owns because it owns
+the payment lifecycle; hq's `cmd/api/main.go` records why it is absent there.)
+
 ### BFF (Go)
 
 - **New saga/consumer** (e.g. `go/nathejk/table/patruljenumber/` or a saga under
@@ -173,14 +191,36 @@ already shown. N/A beyond that.
      subscription will also confirm it on the way back).
 - **Triggering event — `NATHEJK.*.order.*.paid`:** when an order is paid, if its
   owner is a patrulje, compute the patrulje's total paid **seatCount** and
-  compare to 3. Note: `order.paid` is emitted by the order Pay saga, which is
-  **not yet wired** (flagged during PRD 002 / task 002) — this PRD depends on
-  that saga being active (see Dependencies).
+  compare to 3. The event body (`messages.NathejkOrderPaid`) carries only
+  `OrderID`, so the saga must read the order to learn its owner and year.
+- **Projection lag is a first-class case.** `PaidQuantityBySKU` counts lines on
+  orders whose *projected* status is `paid`, and the order projector is an
+  independent consumer, so immediately after `order.paid` the saga can read
+  seatCount 0 for an order that is in fact paid. Nothing would re-trigger it, so
+  the patrulje would never be numbered. The saga must therefore re-read a bounded
+  number of times until the order shows `paid`, exactly as the order saga does
+  for an unprojected order (`shared-go/tables/order/saga.go`, `resultUnprojected`
+  / `waitBeforeRetry`) — including waiting between reads during replay, since
+  back-to-back reads give the other projector no chance to advance.
 - **Eligibility rule — "paid for ≥3 seats":** seats are the participation
-  product the patrulje buys (a patrulje is 3–7 seats). Compute `seatCount` =
-  sum of `quantity` across **paid** seat/participation order lines for the
-  patrulje owner; eligible when `seatCount ≥ 3`. (This is a seat *count*, not a
-  paid-amount threshold and not a distinct-`memberId` count.)
+  product the patrulje buys (a patrulje is 3–7 seats). `seatCount` = sum of
+  `quantity` across **paid** participation lines for the patrulje owner, read via
+  `order.Queries.PaidQuantityBySKU(ctx, year, ownerType, ownerID)`; eligible when
+  `seatCount >= 3`. (A seat *count*, not a paid-amount threshold and not a
+  distinct-`memberId` count.)
+- **Which SKUs are seats:** resolved from the product catalogue rather than
+  hardcoded — `product.Queries.ListEligibleFor(ctx, year, types.TeamTypePatrulje)`
+  filtered to `Kind == product.KindParticipation`. For 2026 that is the single SKU
+  `participation.patrulje`, but reading the catalogue means renaming or splitting
+  the participation product does not silently break acceptance. Merchandise
+  (t-shirts) must not count toward seats.
+- **`CaughtUp()` reaches the saga only because the live decorator forwards it.**
+  Every consumer in hq is wrapped by `live.Notify`, and the jetstream Subscribe
+  path discovers `CatchupListener` by asserting on the handler it is given — the
+  wrapper. `internal/live/notify.go` forwards `CaughtUp` for exactly this reason.
+  Without that, `live` would never flip and the saga would publish nothing, ever.
+  Any test of the live-only gate should exercise the wrapped consumer, not just
+  the bare one.
 - **Wiring:** construct the saga in `cmd/api/main.go`, add it to
   `mux.AddConsumer(...)`. The read/projection side already exists in
   `patrulje/consumer.go` — no change needed there.
@@ -194,9 +234,10 @@ already shown. N/A beyond that.
 
 ### Dependencies & risks
 
-- **Depends on a triggering event that actually fires.** If `order.paid` isn't
-  emitted (Pay saga unwired), nothing triggers. Resolve the trigger before/with
-  this work.
+- **The triggering event now fires.** The order Pay saga emits `order.paid` and
+  is live in tilmelding. hq must not mount it as well — see Ownership above.
+  Should tilmelding's saga ever be removed, this PRD's feature stops triggering
+  silently, since no `order.paid` would be published at all.
 - **Legacy/pre-existing `teamNumber`s.** Some patruljer already have numbers set
   via other paths (e.g. `klan/consumer.go` inserts patrulje rows with
   `teamNumber`). These are handled by seeding `maxNumber` from the existing
@@ -228,23 +269,22 @@ already shown. N/A beyond that.
 - **Phase 3 — Backfill/verification:** confirm existing paid patruljer get
   numbers and legacy numbers don't collide.
 
-Proposed tasks to create in `roadmap/tasks/open/` (not created yet):
+Tasks created in `roadmap/tasks/open/` on approval:
 
-- [ ] Task: Decide/confirm the triggering event (order.paid vs payment.received)
-- [ ] Task: BFF — implement patrulje number-assignment saga (live-only, replay-safe; consumes order.paid + own numberassigned; eligibility = paid seatCount ≥ 3)
-- [ ] Task: BFF — seed `maxNumber`/`assigned` per year from history + existing `patrulje.teamNumber` (respect manual/legacy numbers, e.g. 300 → 301)
-- [ ] Task: BFF — wire the saga into `cmd/api/main.go` mux
-- [ ] Task: Verify restart/replay behaviour (no renumber, no duplicate emits) and no-reuse after cancellation
-- [ ] Task: (dependency) wire the order Pay saga so `order.paid` is emitted, if chosen as the trigger
+- [ ] 057 — BFF: patrulje number-assignment saga (state from replay, eligibility
+      from paid seatCount, live-only publish, lag-tolerant reads). Unwired.
+- [ ] 058 — BFF: seed `assigned`/`maxNumber` at `CaughtUp` from existing
+      `patrulje.teamNumber` per year, so manual/legacy numbers are respected.
+- [ ] 059 — BFF: wire the saga into hq's mux (and only hq's).
+- [ ] 060 — Verify replay/restart behaviour end to end: no renumbering, no
+      duplicate emits, no reuse after cancellation. Then ship this PRD.
+
+Phase 1 (trigger readiness) is already done: tilmelding runs the Pay saga.
 
 ## 11. Open Questions
 
-- **seatCount source:** confirm `seatCount` is the sum of `quantity` on paid
-  seat/participation order lines. Is there a dedicated "seat" product SKU/kind
-  to filter on, or is every non-merchandise line a seat?
-- **Order Pay saga:** `order.paid` is the chosen trigger but the Pay saga that
-  emits it is not yet wired (see Dependencies) — it must be enabled for this to
-  fire.
+None outstanding. Both questions below were resolved from the code on
+2026-08-13, at approval.
 
 ### Resolved (per product decision)
 
@@ -257,3 +297,13 @@ Proposed tasks to create in `roadmap/tasks/open/` (not created yet):
 - Numbers are **never reused**; a later cancellation obsoletes the number.
 - `TeamNumber` stored as a plain decimal string (no prefix/padding — any prefix
   is a display concern, not storage).
+
+### Resolved at approval (2026-08-13, from the code)
+
+- **seatCount source.** There *is* a dedicated seat product: participation
+  products are `Kind == product.KindParticipation`, one per owner type
+  (`participation.patrulje` for 2026, 250 DKK/member). seatCount is the paid
+  quantity across those SKUs, resolved from the catalogue via `ListEligibleFor`
+  rather than hardcoded. Merchandise (`tshirt.adult`) does not count.
+- **Order Pay saga.** Wired and live in tilmelding, so `order.paid` is emitted.
+  hq deliberately does not mount it (Ownership above).
