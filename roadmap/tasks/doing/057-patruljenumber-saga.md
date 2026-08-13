@@ -1,10 +1,10 @@
 # 057 — BFF: patrulje number-assignment saga
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-08-13
-**Picked up by:**
-**Started:**
+**Picked up by:** zed agent session
+**Started:** 2026-08-13
 **Completed:**
 
 ## Description
@@ -80,3 +80,9 @@ emit duplicate assignments on every restart.
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-13 17:05 — Task created from PRD 003 (approved same day).
+- 2026-08-13 17:10 — Picked up. Plan: new package `patruljenumber` with the saga
+  in `saga.go` (state + routing + eligibility) and narrow local interfaces for
+  its three reads, mirroring the order saga's shape — tri-state attempt result so
+  "not projected yet" is retryable while "under three seats" is terminal. Tests
+  with hand-written fakes and an injectable sleep, as the order saga does, so the
+  retry/wait behaviour is assertable without real time passing.
