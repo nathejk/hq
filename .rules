@@ -74,7 +74,6 @@ hq/
 │   │   └── app/                # Shared JSON API helpers (errors, middleware, server)
 │   ├── internal/
 │   │   ├── data/               # Read models: team, member, signup, users, tokens, permissions
-│   │   ├── payment/mobilepay/  # MobilePay/Vipps ePayment REST client
 │   │   ├── sms/                # CPSMS SMS gateway client
 │   │   └── mailer/             # SMTP mailer
 │   ├── nathejk/
@@ -119,7 +118,7 @@ hq/
 - **Excel Export**: `xuri/excelize/v2`
 - **Email**: `wneessen/go-mail` (SMTP)
 - **SMS**: CPSMS REST API (`api.cpsms.dk`)
-- **Payments**: MobilePay/Vipps ePayment REST API
+- **Payments**: MobilePay/Vipps ePayment REST API (in shared-go, behind the payment entity's `Provider` port; hq wires no provider and only reads payments)
 
 ### Frontend (Vue)
 - **Framework**: Vue 3 with `<script setup>` (Composition API)
@@ -311,7 +310,7 @@ that fetches on mount and never updates is a regression, not a starting point.
 | Service | Purpose | Config |
 |---------|---------|--------|
 | NATS JetStream | Event streaming (CQRS event bus) | `JETSTREAM_DSN` |
-| MobilePay/Vipps | Payment processing | `PAYMENT_DSN` |
+| MobilePay/Vipps | Payment processing (shared-go `payment` entity; hq wires no provider) | — |
 | CPSMS | SMS gateway (Danish provider) | `SMS_DSN` |
 | SMTP | Email (verification, notifications) | `SMTP_HOST`, `SMTP_PORT`, etc. |
 | `lukmigind.nathejk.dk` | Authentication service (JWT) | `AUTH_BASEURL` |

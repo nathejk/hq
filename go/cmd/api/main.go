@@ -38,7 +38,6 @@ import (
 	"nathejk.dk/internal/jsonlog"
 	"nathejk.dk/internal/live"
 	"nathejk.dk/internal/mailer"
-	"nathejk.dk/internal/payment/mobilepay"
 	"nathejk.dk/internal/sms"
 	"nathejk.dk/internal/vcs"
 	"nathejk.dk/nathejk/commands"
@@ -68,9 +67,6 @@ type config struct {
 		time   string
 		videos []string
 	}
-	payment struct {
-		dsn string
-	}
 	db struct {
 		dsn          string
 		maxOpenConns int
@@ -96,7 +92,6 @@ type application struct {
 	commands  commands.Commands
 	mailer    mailer.Mailer
 	sms       sms.Sender
-	payment   mobilepay.Client
 	logger    *jsonlog.Logger
 
 	// live fans read-model changes out to connected browsers. Not configuration,
@@ -131,7 +126,6 @@ func main() {
 	flag.StringVar(&cfg.smtp.Sender, "smtp-sender", "Nathejk <kontakt@nathejk.dk>", "SMTP sender")
 
 	flag.StringVar(&cfg.countdown.time, "countdown", getEnv("COUNTDOWN", ""), "Time for countdown")
-	flag.StringVar(&cfg.payment.dsn, "payment-dsn", getEnv("PAYMENT_DSN", ""), "DSN specifing a valid payment provider")
 	cfg.countdown.videos = getEnvAsSlice("COUNTDOWN_VIDEOS", []string{}, "\n")
 
 	flag.Parse()
@@ -274,17 +268,12 @@ func main() {
 		logger.PrintFatal(err, nil)
 	}
 
-	payment, err := mobilepay.New(cfg.payment.dsn)
-	if err != nil {
-		logger.PrintFatal(err, nil)
-	}
 	app := &application{
 		JsonApi: app.JsonApi{
 			Logger: logger,
 		},
 		db:           db,
 		config:       cfg,
-		payment:      payment,
 		models:       models,
 		publisher:    publisher,
 		commands:     cmds,
