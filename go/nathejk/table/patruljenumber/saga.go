@@ -36,6 +36,7 @@ import (
 	"fmt"
 	"log"
 	"strconv"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -45,6 +46,7 @@ import (
 	"github.com/nathejk/shared-go/tables/order"
 	"github.com/nathejk/shared-go/tables/product"
 	"github.com/nathejk/shared-go/types"
+	"nathejk.dk/nathejk/table/patrulje"
 )
 
 // MinSeats is how many paid seats make a patrulje accepted. A patrulje is 3–7
@@ -77,19 +79,30 @@ type ProductReader interface {
 	ListEligibleFor(ctx context.Context, year types.YearSlug, ownerType types.TeamType) ([]product.Product, error)
 }
 
+// PatruljeReader supplies the numbers that already exist in the read model but
+// were never announced as events — assigned by hand, or written directly by
+// another projector (klan/consumer.go inserts patrulje rows carrying a
+// teamNumber). Replaying numberassigned alone would not see them.
+type PatruljeReader interface {
+	GetAll(ctx context.Context, f patrulje.Filter) ([]patrulje.Patrulje, error)
+}
+
 type saga struct {
-	p        cqrs.Publisher
-	orders   OrderReader
-	products ProductReader
-	year     types.YearSlug
+	p         cqrs.Publisher
+	orders    OrderReader
+	products  ProductReader
+	patruljer PatruljeReader
+	year      types.YearSlug
 
 	settle   time.Duration
 	attempts int
 
-	// assigned and maxNumber are the running state, rebuilt from the log on
-	// every start. They are only touched from HandleMessage, which the mux calls
-	// from a single goroutine per consumer — hence no mutex. live is atomic
-	// because CaughtUp arrives from the subscribe path's goroutine.
+	// mu guards assigned and maxNumber. HandleMessage is called from a single
+	// goroutine per consumer, so messages alone would need no lock — but CaughtUp
+	// seeds the same state, and the jetstream subscribe path may call it from its
+	// own goroutine (immediately, when a consumer starts with no backlog).
+	// Contention is nil: one writer plus a one-shot seed.
+	mu        sync.Mutex
 	assigned  map[types.TeamID]bool
 	maxNumber int
 
@@ -104,18 +117,19 @@ type saga struct {
 // year is the season it assigns for; events from other seasons are ignored, since
 // previous years are closed and their numbering is history. settle 0 takes
 // DefaultSettle.
-func New(p cqrs.Publisher, orders OrderReader, products ProductReader, year types.YearSlug, settle time.Duration) *saga {
+func New(p cqrs.Publisher, orders OrderReader, products ProductReader, patruljer PatruljeReader, year types.YearSlug, settle time.Duration) *saga {
 	if settle <= 0 {
 		settle = DefaultSettle
 	}
 	return &saga{
-		p:        p,
-		orders:   orders,
-		products: products,
-		year:     year,
-		settle:   settle,
-		attempts: DefaultAttempts,
-		assigned: map[types.TeamID]bool{},
+		p:         p,
+		orders:    orders,
+		products:  products,
+		patruljer: patruljer,
+		year:      year,
+		settle:    settle,
+		attempts:  DefaultAttempts,
+		assigned:  map[types.TeamID]bool{},
 	}
 }
 
@@ -128,7 +142,54 @@ var (
 
 // CaughtUp marks the saga live: history has been replayed, so subsequent events
 // are new and assignments may be published.
-func (s *saga) CaughtUp() { s.live.Store(true) }
+//
+// Before opening the gate it folds in the numbers that exist in the read model
+// but never appeared as events. If that read fails the gate stays shut and this
+// saga publishes nothing for the rest of the process. That is the deliberately
+// conservative choice: a patrulje left unnumbered is fixed by the next restart,
+// whereas re-issuing a number already held by another patrulje is not — the
+// projector's UPDATE is unconditional, so the two teams would simply share it.
+func (s *saga) CaughtUp() {
+	if err := s.seedFromReadModel(); err != nil {
+		log.Printf("patruljenumber: seeding existing team numbers failed, staying dormant rather than risk re-issuing a number: %v", err)
+		return
+	}
+	s.live.Store(true)
+}
+
+// seedTimeout bounds the one seeding read. Generous: it runs once at startup, and
+// timing out costs the saga the whole process.
+const seedTimeout = 30 * time.Second
+
+// seedFromReadModel folds every existing teamNumber for the year into the running
+// state: the team counts as assigned, and its number raises the high-water mark.
+// PRD 003's example — a manual 300 means the next automatic number is 301, not 1.
+//
+// Timing: this runs at catch-up rather than at construction because hq rebuilds
+// its read model from the stream on every start, so at construction the patrulje
+// table is empty.
+//
+// Catch-up of *this* consumer does not prove the patrulje projector has finished
+// its own replay — they are independent consumers — so the mark seeded here can
+// be too low. Two things keep that from issuing a duplicate: the assigned set is
+// also fed by replayed numberassigned events, and every number this saga issues
+// is observed on the way back, raising the mark again.
+func (s *saga) seedFromReadModel() error {
+	ctx, cancel := context.WithTimeout(context.Background(), seedTimeout)
+	defer cancel()
+
+	patruljer, err := s.patruljer.GetAll(ctx, patrulje.Filter{YearSlug: s.year})
+	if err != nil {
+		return err
+	}
+	for _, p := range patruljer {
+		if p.TeamID == "" || p.TeamNumber == "" {
+			continue
+		}
+		s.markAssigned(p.TeamID, p.TeamNumber)
+	}
+	return nil
+}
 
 func (s *saga) Consumes() []cqrs.Subject {
 	return []cqrs.Subject{
@@ -190,10 +251,23 @@ func (s *saga) observeAssignment(msg cqrs.Message) error {
 // A non-numeric number still marks the team assigned — it is a number somebody
 // meant — but cannot raise a mark it has no value for.
 func (s *saga) markAssigned(teamID types.TeamID, number string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.markAssignedLocked(teamID, number)
+}
+
+func (s *saga) markAssignedLocked(teamID types.TeamID, number string) {
 	s.assigned[teamID] = true
 	if n, err := strconv.Atoi(number); err == nil && n > s.maxNumber {
 		s.maxNumber = n
 	}
+}
+
+// isAssigned reports whether the team already holds a number.
+func (s *saga) isAssigned(teamID types.TeamID) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.assigned[teamID]
 }
 
 // outcome is what one pass at a triggering order found, and so whether reading
@@ -277,7 +351,7 @@ func (s *saga) attempt(orderID string) (outcome, error) {
 	}
 	// Cheap and decisive: a team that already holds a number is never given a
 	// second one, live or not.
-	if s.assigned[teamID] {
+	if s.isAssigned(teamID) {
 		return settled, nil
 	}
 	if o.Status != order.StatusPaid {
@@ -307,11 +381,17 @@ func (s *saga) attempt(orderID string) (outcome, error) {
 	// Publish first, then record locally. The saga's own subscription will
 	// observe the event on the way back, but two patruljer qualifying in quick
 	// succession must get distinct numbers without waiting for that round trip.
+	//
+	// Held under the lock across the publish so the number cannot be handed out
+	// twice. Locking across I/O is normally worth avoiding; here the only other
+	// contender is the one-shot seed, so there is nothing to contend with.
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	number := s.maxNumber + 1
 	if err := s.publish(teamID, number); err != nil {
 		return settled, err
 	}
-	s.markAssigned(teamID, strconv.Itoa(number))
+	s.markAssignedLocked(teamID, strconv.Itoa(number))
 	return settled, nil
 }
 

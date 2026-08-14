@@ -3,6 +3,7 @@ package patruljenumber
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,6 +14,7 @@ import (
 	"github.com/nathejk/shared-go/tables/order"
 	"github.com/nathejk/shared-go/tables/product"
 	"github.com/nathejk/shared-go/types"
+	"nathejk.dk/nathejk/table/patrulje"
 )
 
 // --- fakes ---
@@ -67,6 +69,23 @@ func catalogue() fakeProducts {
 	}}
 }
 
+// fakePatruljer is the patrulje read model: the numbers that exist without ever
+// having been an event.
+type fakePatruljer struct {
+	rows []patrulje.Patrulje
+	err  error
+	year types.YearSlug
+}
+
+func (f *fakePatruljer) GetAll(_ context.Context, filter patrulje.Filter) ([]patrulje.Patrulje, error) {
+	f.year = filter.YearSlug
+	return f.rows, f.err
+}
+
+func numbered(teamID, number string) patrulje.Patrulje {
+	return patrulje.Patrulje{TeamID: types.TeamID(teamID), TeamNumber: number}
+}
+
 // --- builders ---
 
 func paidMsg(t *testing.T, orderID string) cqrs.Message {
@@ -105,12 +124,16 @@ func paidPatruljeOrder(orderID, teamID string) *order.Order {
 	}
 }
 
-// newTestSaga wires a saga with fakes, a recording sleep seam, and (by default)
-// enough paid seats to qualify. It is live unless a test says otherwise.
+// newTestSaga wires a saga with fakes, a recording sleep seam, and an empty
+// patrulje read model. It is live unless a test says otherwise.
 func newTestSaga(orders *fakeOrders) (*saga, *cqrstest.Publisher, *[]time.Duration) {
+	return newTestSagaWith(orders, &fakePatruljer{})
+}
+
+func newTestSagaWith(orders *fakeOrders, patruljer PatruljeReader) (*saga, *cqrstest.Publisher, *[]time.Duration) {
 	pub := &cqrstest.Publisher{}
 	var slept []time.Duration
-	s := New(pub, orders, catalogue(), "2026", 2*time.Second)
+	s := New(pub, orders, catalogue(), patruljer, "2026", 2*time.Second)
 	s.sleep = func(d time.Duration) { slept = append(slept, d) }
 	s.CaughtUp()
 	return s, pub, &slept
@@ -125,7 +148,7 @@ func seats(n int) map[string]int {
 // The live gate turns on this interface being discoverable: the jetstream layer
 // finds it by runtime type assertion, through live.Notify's wrapper.
 func TestImplementsCatchupListener(t *testing.T) {
-	var c cqrs.Consumer = New(&cqrstest.Publisher{}, &fakeOrders{}, catalogue(), "2026", 0)
+	var c cqrs.Consumer = New(&cqrstest.Publisher{}, &fakeOrders{}, catalogue(), &fakePatruljer{}, "2026", 0)
 	if _, ok := c.(interface{ CaughtUp() }); !ok {
 		t.Fatal("saga does not implement CaughtUp; the live gate would never open")
 	}
@@ -133,13 +156,14 @@ func TestImplementsCatchupListener(t *testing.T) {
 
 // order.Queries must keep satisfying the narrow reader this saga declares, or the
 // wiring in main.go stops compiling for a reason that is not obvious there.
-func TestOrderQueriesSatisfiesOrderReader(t *testing.T) {
+func TestReadModelsSatisfyTheReaders(t *testing.T) {
 	var _ OrderReader = order.Queries(nil)
 	var _ ProductReader = product.Queries(nil)
+	var _ PatruljeReader = patrulje.Queries(nil)
 }
 
 func TestConsumesTriggerAndOwnOutput(t *testing.T) {
-	s := New(&cqrstest.Publisher{}, &fakeOrders{}, catalogue(), "2026", 0)
+	s := New(&cqrstest.Publisher{}, &fakeOrders{}, catalogue(), &fakePatruljer{}, "2026", 0)
 
 	var got []string
 	for _, subj := range s.Consumes() {
@@ -163,7 +187,7 @@ func TestPublishesNothingDuringReplay(t *testing.T) {
 	s := New(pub, &fakeOrders{
 		orders: []*order.Order{paidPatruljeOrder("order-1", "team-1")},
 		paid:   seats(4),
-	}, catalogue(), "2026", time.Millisecond)
+	}, catalogue(), &fakePatruljer{}, "2026", time.Millisecond)
 	// Deliberately no CaughtUp.
 
 	if err := s.HandleMessage(paidMsg(t, "order-1")); err != nil {
@@ -435,8 +459,194 @@ func TestHardReadErrorIsReturned(t *testing.T) {
 	}
 }
 
-// A non-numeric number still means "this team has one", even though it cannot
-// raise the high-water mark.
+// --- seeding from the read model (task 058) ---
+
+// The headline case from PRD 003: a manual 300 and no history means the next
+// automatic number is 301, not 1.
+func TestSeedsHighWaterMarkFromExistingTeamNumbers(t *testing.T) {
+	s, pub, _ := newTestSagaWith(
+		&fakeOrders{
+			orders: []*order.Order{paidPatruljeOrder("order-1", "team-2")},
+			paid:   seats(3),
+		},
+		&fakePatruljer{rows: []patrulje.Patrulje{numbered("team-1", "300")}},
+	)
+
+	if err := s.HandleMessage(paidMsg(t, "order-1")); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if len(pub.Messages) != 1 {
+		t.Fatalf("published %d events, want 1: %v", len(pub.Messages), pub.Subjects())
+	}
+	var body messages.NathejkPatrolNumberAssigned
+	if err := pub.Messages[0].Body(&body); err != nil {
+		t.Fatalf("body: %v", err)
+	}
+	if body.TeamNumber != "301" {
+		t.Errorf("TeamNumber = %q, want 301 (existing 300 + 1)", body.TeamNumber)
+	}
+}
+
+// A patrulje numbered by hand has no numberassigned event, so only the read model
+// can say it is spoken for.
+func TestSeedMarksExistingNumberedTeamAsAssigned(t *testing.T) {
+	s, pub, _ := newTestSagaWith(
+		&fakeOrders{
+			orders: []*order.Order{paidPatruljeOrder("order-1", "team-1")},
+			paid:   seats(5),
+		},
+		&fakePatruljer{rows: []patrulje.Patrulje{numbered("team-1", "42")}},
+	)
+
+	if err := s.HandleMessage(paidMsg(t, "order-1")); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if len(pub.Messages) != 0 {
+		t.Errorf("a manually numbered patrulje was numbered again: %v", pub.Subjects())
+	}
+}
+
+func TestSeedSkipsEmptyTeamNumbers(t *testing.T) {
+	s, pub, _ := newTestSagaWith(
+		&fakeOrders{
+			orders: []*order.Order{paidPatruljeOrder("order-1", "team-1")},
+			paid:   seats(3),
+		},
+		&fakePatruljer{rows: []patrulje.Patrulje{
+			numbered("team-1", ""),
+			numbered("team-9", ""),
+		}},
+	)
+
+	if err := s.HandleMessage(paidMsg(t, "order-1")); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if len(pub.Messages) != 1 {
+		t.Fatalf("an unnumbered patrulje must still be assignable: %v", pub.Subjects())
+	}
+	var body messages.NathejkPatrolNumberAssigned
+	if err := pub.Messages[0].Body(&body); err != nil {
+		t.Fatalf("body: %v", err)
+	}
+	if body.TeamNumber != "1" {
+		t.Errorf("TeamNumber = %q, want 1 — empty numbers must not count as 0 or raise the mark", body.TeamNumber)
+	}
+}
+
+func TestSeedSkipsNonNumericTeamNumbersButMarksThemAssigned(t *testing.T) {
+	s, _, _ := newTestSagaWith(
+		&fakeOrders{},
+		&fakePatruljer{rows: []patrulje.Patrulje{numbered("team-1", "A-7")}},
+	)
+
+	if s.maxNumber != 0 {
+		t.Errorf("maxNumber = %d, want 0 (a non-numeric number has no value)", s.maxNumber)
+	}
+	if !s.isAssigned("team-1") {
+		t.Error("a team with a non-numeric number must still count as numbered")
+	}
+}
+
+// The mark is the highest of both sources, whichever side happens to hold it.
+func TestSeedTakesTheHighestOfEventsAndReadModel(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		fromEvent   string
+		inReadModel string
+		want        string
+	}{
+		{"read model higher", "5", "300", "301"},
+		{"event higher", "300", "5", "301"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			s, pub, _ := newTestSagaWith(
+				&fakeOrders{
+					orders: []*order.Order{paidPatruljeOrder("order-1", "team-new")},
+					paid:   seats(3),
+				},
+				&fakePatruljer{rows: []patrulje.Patrulje{numbered("team-2", tc.inReadModel)}},
+			)
+
+			if err := s.HandleMessage(assignedMsg(t, "team-1", tc.fromEvent)); err != nil {
+				t.Fatalf("HandleMessage: %v", err)
+			}
+			if err := s.HandleMessage(paidMsg(t, "order-1")); err != nil {
+				t.Fatalf("HandleMessage: %v", err)
+			}
+			var body messages.NathejkPatrolNumberAssigned
+			if err := pub.Messages[0].Body(&body); err != nil {
+				t.Fatalf("body: %v", err)
+			}
+			if body.TeamNumber != tc.want {
+				t.Errorf("TeamNumber = %q, want %q", body.TeamNumber, tc.want)
+			}
+		})
+	}
+}
+
+// A failed seed must not open the gate: publishing with a too-low mark would hand
+// a patrulje a number another one already has, and the projector's UPDATE is
+// unconditional, so both would keep it.
+func TestFailedSeedLeavesTheSagaDormant(t *testing.T) {
+	s, pub, _ := newTestSagaWith(
+		&fakeOrders{
+			orders: []*order.Order{paidPatruljeOrder("order-1", "team-1")},
+			paid:   seats(4),
+		},
+		&fakePatruljer{err: errors.New("database on fire")},
+	)
+
+	if s.live.Load() {
+		t.Error("saga went live despite a failed seed")
+	}
+	if err := s.HandleMessage(paidMsg(t, "order-1")); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if len(pub.Messages) != 0 {
+		t.Errorf("published while dormant: %v", pub.Subjects())
+	}
+}
+
+// Numbers reset per year, so the seed must not drag another season's numbers in.
+func TestSeedReadsOnlyOurSeason(t *testing.T) {
+	patruljer := &fakePatruljer{}
+	newTestSagaWith(&fakeOrders{}, patruljer)
+
+	if patruljer.year != "2026" {
+		t.Errorf("seeded with YearSlug %q, want 2026", patruljer.year)
+	}
+}
+
+// CaughtUp seeds state, and the jetstream subscribe path may call it from its own
+// goroutine while messages are being delivered. Run with -race.
+func TestSeedingIsSafeAlongsideMessageHandling(t *testing.T) {
+	pub := &cqrstest.Publisher{}
+	s := New(pub,
+		&fakeOrders{
+			orders: []*order.Order{paidPatruljeOrder("order-1", "team-1")},
+			paid:   seats(4),
+		},
+		catalogue(),
+		&fakePatruljer{rows: []patrulje.Patrulje{numbered("team-7", "77")}},
+		"2026", time.Millisecond)
+
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		s.CaughtUp()
+	}()
+	go func() {
+		defer wg.Done()
+		if err := s.HandleMessage(paidMsg(t, "order-1")); err != nil {
+			t.Errorf("HandleMessage: %v", err)
+		}
+	}()
+	wg.Wait()
+}
+
+// A non-numeric number arriving as an event still means "this team has one", even
+// though it cannot raise the high-water mark.
 func TestNonNumericAssignmentStillMarksAssigned(t *testing.T) {
 	s, pub, _ := newTestSaga(&fakeOrders{
 		orders: []*order.Order{paidPatruljeOrder("order-1", "team-1")},
