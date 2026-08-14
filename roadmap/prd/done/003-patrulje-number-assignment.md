@@ -1,14 +1,14 @@
 # PRD 003 — Automatic patrulje number assignment on acceptance
 
-**Status:** doing
+**Status:** done
 **Author:** agent session
 **Created:** 2026-07-31
-**Last updated:** 2026-08-13
+**Last updated:** 2026-08-14
 **Approved:** 2026-08-13
-**Shipped:**
-**Status note:** approved for implementation — tasks 057–060. The trigger now
-fires: the order Pay saga is live in tilmelding (hq deliberately does not mount
-it — see §8 Ownership), so `order.paid` is emitted.
+**Shipped:** 2026-08-14
+**Status note:** shipped — tasks 057–061. Verified on the live stack: all 76
+qualifying patruljer numbered 1–76, one `numberassigned` event each, and a restart
+(a full replay) changes nothing and emits nothing.
 **Target users:** organizer (HQ) — indirectly benefits patruljer/participants
 
 ---
@@ -115,15 +115,15 @@ service restarts and replays history.
 
 ### Functional
 
-- [ ] Detect when a patrulje has **paid for ≥3 seats** (from `order.paid`).
-- [ ] Publish `NATHEJK.{year}.patrulje.{teamId}.numberassigned`
+- [x] Detect when a patrulje has **paid for ≥3 seats** (from `order.paid`).
+- [x] Publish `NATHEJK.{year}.patrulje.{teamId}.numberassigned`
       (`messages.NathejkPatrolNumberAssigned`) with the next number.
-- [ ] Next number = **max assigned number in that year + 1** (including manual /
+- [x] Next number = **max assigned number in that year + 1** (including manual /
       legacy numbers); sequence resets per year.
-- [ ] Never assign a second number to an already-numbered patrulje.
-- [ ] Never reuse a number (cancellation obsoletes it; no recycling).
-- [ ] Only publish in **live mode** (post-catch-up).
-- [ ] Survive restarts without renumbering or duplicate assignment.
+- [x] Never assign a second number to an already-numbered patrulje.
+- [x] Never reuse a number (cancellation obsoletes it; no recycling).
+- [x] Only publish in **live mode** (post-catch-up).
+- [x] Survive restarts without renumbering or duplicate assignment.
 
 ### Non-Functional
 
@@ -250,14 +250,15 @@ the payment lifecycle; hq's `cmd/api/main.go` records why it is absent there.)
 
 ## 9. Success Metrics
 
-- Every patrulje that has paid for ≥3 seats has a non-empty
-  `teamNumber`.
-- Numbers are **unique** per year and never reused; each new auto-assignment is
-  strictly greater than every previously assigned number for that year (gaps are
-  acceptable, e.g. around manual numbers).
-- Restarting the API does not emit new `numberassigned` events for
-  already-numbered teams (verify: event count for a team stays at 1) and does
-  not change any existing `teamNumber`.
+All three verified against the live stack on 2026-08-14, not only in tests.
+
+- [x] Every patrulje that has paid for ≥3 seats has a non-empty `teamNumber`:
+      76 qualifying, 76 numbered.
+- [x] Numbers are **unique** per year and never reused: 76 distinct values in the
+      range 1–76, zero duplicates, and 76 `numberassigned` events — one per team.
+- [x] Restarting the API does not emit new `numberassigned` events for
+      already-numbered teams and does not change any existing `teamNumber`:
+      re-checked after a restart (a full replay) and every count was identical.
 
 ## 10. Rollout / Task Breakdown
 
@@ -271,15 +272,31 @@ the payment lifecycle; hq's `cmd/api/main.go` records why it is absent there.)
 
 Tasks created in `roadmap/tasks/open/` on approval:
 
-- [ ] 057 — BFF: patrulje number-assignment saga (state from replay, eligibility
+- [x] 057 — BFF: patrulje number-assignment saga (state from replay, eligibility
       from paid seatCount, live-only publish, lag-tolerant reads). Unwired.
-- [ ] 058 — BFF: seed `assigned`/`maxNumber` at `CaughtUp` from existing
+- [x] 058 — BFF: seed `assigned`/`maxNumber` at `CaughtUp` from existing
       `patrulje.teamNumber` per year, so manual/legacy numbers are respected.
-- [ ] 059 — BFF: wire the saga into hq's mux (and only hq's).
-- [ ] 060 — Verify replay/restart behaviour end to end: no renumbering, no
+- [x] 059 — BFF: wire the saga into hq's mux (and only hq's).
+- [x] 060 — Verify replay/restart behaviour end to end: no renumbering, no
       duplicate emits, no reuse after cancellation. Then ship this PRD.
+- [x] 061 — BFF: number the patruljer that already qualify (added during 060; see
+      below).
 
-Phase 1 (trigger readiness) is already done: tilmelding runs the Pay saga.
+Phase 1 (trigger readiness) was already done: tilmelding runs the Pay saga.
+
+### Added during implementation: the backfill (061)
+
+Phase 3 assumed "confirm existing paid patruljer get numbers", but nothing in the
+design could do it. Verifying 060 against live data showed why: 76 patruljer
+already had ≥3 paid seats, and every one of their `order.paid` events was history.
+The live-only gate — which is essential, or every restart re-issues every number —
+means replay publishes nothing, so no future event would ever have numbered them,
+and §9's first success metric was unreachable.
+
+Resolved by sweeping once at catch-up, after seeding and after the gate opens: any
+patrulje that qualifies but holds no number gets the next one, earliest payment
+first. That is not publishing during catch-up — history is done — and it is
+idempotent, because the next start's seed reads back the numbers it wrote.
 
 ## 11. Open Questions
 

@@ -1,11 +1,11 @@
 # 060 — Verify number assignment survives replay, then ship PRD 003
 
-**Status:** doing
+**Status:** done
 **Priority:** medium
 **Created:** 2026-08-13
 **Picked up by:** zed agent session
 **Started:** 2026-08-13
-**Completed:**
+**Completed:** 2026-08-14
 
 ## Description
 
@@ -49,8 +49,8 @@ than recycled.
 - [x] Verified against a running stack (`docker compose up`) that a paid patrulje
       receives a number and that restarting the API neither renumbers it nor
       re-emits the event; result recorded in this task's log.
-- [ ] PRD 003 requirement checkboxes (§6) ticked, `Status: done`, `Shipped` set,
-      file moved to `roadmap/prd/done/`. **Blocked on 061** — see log.
+- [x] PRD 003 requirement checkboxes (§6) ticked, `Status: done`, `Shipped` set,
+      file moved to `roadmap/prd/done/`.
 
 ## Progress Log
 
@@ -105,3 +105,11 @@ than recycled.
   into this task: it publishes for real against production data and deserves its
   own review and its own commit. This task stays in `doing/` until 061 lands,
   since shipping the PRD with an unmet success metric would be a lie in the board.
+- 2026-08-14 08:36 — Unblocked: 061 shipped the catch-up sweep, and all 76
+  qualifying patruljer are numbered 1–76 with one event each. PRD 003 §9's three
+  success metrics are now all met and all three were checked against the live
+  stack rather than only in tests.
+- 2026-08-14 08:40 — ✅ Final criterion complete. PRD 003 §6 requirements ticked,
+  Status set to done, Shipped dated, moved to roadmap/prd/done/.
+- 2026-08-14 08:40 — Completed. Automatic patrulje numbering is shipped: saga
+  (057), seeding (058), wiring (059), verification (060), backfill (061).
