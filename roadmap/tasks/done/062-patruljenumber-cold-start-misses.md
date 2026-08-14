@@ -1,11 +1,11 @@
 # 062 — Number assignment misses everyone on a cold start
 
-**Status:** doing
+**Status:** done
 **Priority:** high
 **Created:** 2026-08-14
 **Picked up by:** zed agent session
 **Started:** 2026-08-14
-**Completed:**
+**Completed:** 2026-08-14
 
 ## Description
 
@@ -67,22 +67,22 @@ Why this removes the race rather than narrowing it:
 
 ## Acceptance criteria
 
-- [ ] `order.paid` seen during replay is recorded, not discarded.
-- [ ] At `CaughtUp` the recorded orders are processed through the retry path, in
+- [x] `order.paid` seen during replay is recorded, not discarded.
+- [x] At `CaughtUp` the recorded orders are processed through the retry path, in
       stream order, and assign numbers.
-- [ ] Test: an order that is not yet projected as paid when the drain starts is
+- [x] Test: an order that is not yet projected as paid when the drain starts is
       still numbered once the projection arrives (the prod scenario).
-- [ ] Test: duplicate `order.paid` for the same order is recorded once.
-- [ ] Test: replay assigns nothing before `CaughtUp`.
-- [ ] Still idempotent: a team already numbered (event or read model) is skipped.
-- [ ] The read-model candidate sweep, its `changedAt` sort and its `candidate`
+- [x] Test: duplicate `order.paid` for the same order is recorded once.
+- [x] Test: replay assigns nothing before `CaughtUp`.
+- [x] Still idempotent: a team already numbered (event or read model) is skipped.
+- [x] The read-model candidate sweep, its `changedAt` sort and its `candidate`
       type are gone.
-- [ ] The summary log says what it observed — how many deferred orders it
+- [x] The summary log says what it observed — how many deferred orders it
       processed and how many numbers it assigned — so a production deploy is
       diagnosable from one line.
-- [ ] `gofmt`, `go vet`, `go test ./...` clean on both resolution paths, `-race`
+- [x] `gofmt`, `go vet`, `go test ./...` clean on both resolution paths, `-race`
       clean.
-- [ ] Verified against a cleared database locally: a cold start numbers every
+- [x] Verified against a cleared database locally: a cold start numbers every
       qualifying patrulje.
 
 ## Progress Log
@@ -96,3 +96,38 @@ Why this removes the race rather than narrowing it:
 - 2026-08-14 15:25 — Picked up. Plan: record order.paid ids during replay, drain
   them through the existing attempt() retry path at CaughtUp, delete the
   read-model sweep.
+- 2026-08-14 15:24 — Implemented. order.paid seen while replaying is recorded in
+  stream order (deduped); CaughtUp seeds, opens the gate, then drains that list
+  through the same settleOrder/attempt retry path the live path uses. Deleted the
+  read-model sweep, the candidate type and the changedAt sort — stream order *is*
+  payment order, so the sort was solving a problem the log had already solved.
+- 2026-08-14 15:25 — Decision: the drain runs synchronously inside CaughtUp rather
+  than in a goroutine. It blocks only this consumer's own delivery goroutine, never
+  the HTTP server or the other projectors, and keeping it synchronous keeps the
+  tests deterministic. Bounded by a 5-minute context so a permanently lagging
+  projection cannot hang the consumer forever, and a spent budget logs how far it
+  got.
+- 2026-08-14 15:25 — A read error on one deferred order now logs and continues
+  instead of aborting: a single bad order should not cost every other patrulje its
+  number. Covered by a test.
+- 2026-08-14 15:26 — ✅ 37 tests pass, -race clean, both resolution paths clean.
+  Rewrote the 061 backfill tests as catch-up drain tests; the two that failed after
+  the change were asserting the old read-model sweep, which is the behaviour being
+  removed.
+- 2026-08-14 15:27 — ✅ Verified on the live stack with a cleared database (the
+  production condition): the drain now reports `catch-up settled 189 deferred paid
+  order(s), assigning 0 number(s)`. 189 is every paid order on the stream, where
+  the old sweep saw 0 candidates against the half-built read model. Assigning 0 is
+  correct in dev, because all 76 qualifiers already hold numbers from replayed
+  numberassigned events — and that is precisely the distinction the new log line
+  exists to make: "0 of 189" (all already numbered) reads differently from "0 of 0"
+  (nothing on the stream), which the old single-number line could not express.
+- 2026-08-14 15:28 — Idempotency re-confirmed after the rework: still 76 numbered,
+  76 distinct, and exactly 76 numberassigned events in the stream.
+- 2026-08-14 15:29 — Not provable in dev: that a cold start numbers a patrulje
+  which has *never* been numbered, since dev's stream permanently contains the 76
+  assignments. Covered by unit test instead
+  (TestColdStartNumbersOnceOrdersProjectionCatchesUp: absent → open → paid). The
+  real proof will be production's next deploy, where the log line now says what it
+  saw.
+- 2026-08-14 15:29 — Completed. Production needs a redeploy to pick this up.

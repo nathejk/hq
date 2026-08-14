@@ -20,20 +20,33 @@ import (
 
 // --- fakes ---
 
-// fakeOrders returns orders[call], last entry repeating, so a test can model a
-// projection that lags and then catches up. A nil entry stands for an order the
-// projector has not written yet. byOwner is what ListByOwner reports, keyed by
-// owner id; owned() builds the common single-order case.
+// fakeOrders answers GetByID in one of two ways. byID is a plain lookup, for tests
+// with several distinct orders; orders is a per-call sequence (last entry
+// repeating) for modelling a projection that lags and then catches up, where a nil
+// entry stands for an order the projector has not written yet. errFor fails a
+// specific order, err fails everything. byOwner is what ListByOwner reports.
 type fakeOrders struct {
 	orders  []*order.Order
+	byID    map[string]*order.Order
+	errFor  map[string]error
 	byOwner map[string][]order.Order
 	err     error
 	calls   int
 }
 
-func (f *fakeOrders) GetByID(context.Context, string) (*order.Order, error) {
+func (f *fakeOrders) GetByID(_ context.Context, orderID string) (*order.Order, error) {
 	if f.err != nil {
 		return nil, f.err
+	}
+	if err, ok := f.errFor[orderID]; ok {
+		return nil, err
+	}
+	if f.byID != nil {
+		o, ok := f.byID[orderID]
+		if !ok || o == nil {
+			return nil, tables.ErrRecordNotFound
+		}
+		return o, nil
 	}
 	if len(f.orders) == 0 {
 		return nil, tables.ErrRecordNotFound
@@ -711,28 +724,47 @@ func TestNonNumericAssignmentStillMarksAssigned(t *testing.T) {
 	}
 }
 
-// --- catch-up backfill (task 061) ---
+// --- catch-up drain (task 062) ---
+//
+// Candidates come from the stream, not the read model. Task 061 scanned the
+// patrulje table instead, and on a cold start that scan ran while the orders
+// projection was still filling, so seats read as zero and every qualifying
+// patrulje was skipped as "too small" — permanently. That is why production
+// numbered nobody.
 
-// The gap 060 found: patruljer that qualified before this saga existed have no
-// future event to trigger on, so the sweep at catch-up is the only thing that ever
-// numbers them.
-func TestBackfillNumbersAlreadyQualifyingPatruljer(t *testing.T) {
-	orders := &fakeOrders{byOwner: map[string][]order.Order{
-		"team-late":  {seatOrder("team-late", 4, "2026-07-30 15:00:00")},
-		"team-early": {seatOrder("team-early", 6, "2026-06-01 09:00:00")},
-		"team-mid":   {seatOrder("team-mid", 3, "2026-07-01 12:00:00")},
-	}}
-	// Deliberately not in payment order, to prove the sweep sorts rather than
-	// following whatever the read model returned.
-	rows := []patrulje.Patrulje{
-		numbered("team-mid", ""),
-		numbered("team-late", ""),
-		numbered("team-early", ""),
+// replaying returns a saga that has not caught up yet, plus its publisher.
+func replaying(orders *fakeOrders, rows []patrulje.Patrulje) (*saga, *cqrstest.Publisher) {
+	pub := &cqrstest.Publisher{}
+	s := New(pub, orders, catalogue(), &fakePatruljer{rows: rows}, "2026", time.Millisecond)
+	s.sleep = func(time.Duration) {}
+	return s, pub
+}
+
+// The headline case: paid orders that are all history still get numbered, in the
+// order they were paid, once the gate opens.
+func TestDeferredOrdersAreSettledAtCatchUp(t *testing.T) {
+	orders := &fakeOrders{
+		byID: map[string]*order.Order{
+			"o-early": paidPatruljeOrder("o-early", "team-early"),
+			"o-mid":   paidPatruljeOrder("o-mid", "team-mid"),
+			"o-late":  paidPatruljeOrder("o-late", "team-late"),
+		},
+		byOwner: map[string][]order.Order{anyOwner: {seatOrder(anyOwner, 4, "x")}},
+	}
+	s, pub := replaying(orders, nil)
+
+	// Replay, in payment order.
+	for _, id := range []string{"o-early", "o-mid", "o-late"} {
+		if err := s.HandleMessage(paidMsg(t, id)); err != nil {
+			t.Fatalf("replay %s: %v", id, err)
+		}
+	}
+	if len(pub.Messages) != 0 {
+		t.Fatalf("published during replay: %v", pub.Subjects())
 	}
 
-	_, pub, _ := newTestSagaWith(orders, &fakePatruljer{rows: rows})
+	s.CaughtUp()
 
-	// Earliest payment first, and consecutive from 1.
 	want := []string{
 		"NATHEJK.2026.patrulje.team-early.numberassigned",
 		"NATHEJK.2026.patrulje.team-mid.numberassigned",
@@ -744,128 +776,215 @@ func TestBackfillNumbersAlreadyQualifyingPatruljer(t *testing.T) {
 	}
 	for i := range want {
 		if got[i] != want[i] {
-			t.Fatalf("published %v, want %v", got, want)
+			t.Fatalf("published %v, want %v — stream order is payment order", got, want)
 		}
 	}
-	if numbers := numbersOf(t, pub); numbers != "1,2,3" {
-		t.Errorf("numbers = %s, want 1,2,3", numbers)
+	if n := numbersOf(t, pub); n != "1,2,3" {
+		t.Errorf("numbers = %s, want 1,2,3", n)
 	}
 }
 
-// Ordering must not depend on the order the read model happened to return, or a
-// restart would hand out different numbers.
-func TestBackfillOrderIsStableRegardlessOfInputOrder(t *testing.T) {
-	orders := &fakeOrders{byOwner: map[string][]order.Order{
-		"team-a": {seatOrder("team-a", 3, "2026-06-01 09:00:00")},
-		"team-b": {seatOrder("team-b", 3, "2026-06-02 09:00:00")},
-		"team-c": {seatOrder("team-c", 3, "2026-06-03 09:00:00")},
-	}}
+// The production scenario. On a cold start the orders projection is still filling
+// when the drain begins, so the first reads find the order missing, then present
+// but still open, and only then paid. It must wait rather than conclude the
+// patrulje is too small.
+func TestColdStartNumbersOnceOrdersProjectionCatchesUp(t *testing.T) {
+	open := paidPatruljeOrder("o-1", "team-1")
+	open.Status = order.StatusOpen
+	orders := &fakeOrders{
+		// Absent, then open, then paid — the projector catching up.
+		orders:  []*order.Order{nil, open, paidPatruljeOrder("o-1", "team-1")},
+		byOwner: map[string][]order.Order{anyOwner: {seatOrder(anyOwner, 3, "x")}},
+	}
+	s, pub := replaying(orders, nil)
 
-	first := ""
-	for _, rows := range [][]patrulje.Patrulje{
-		{numbered("team-a", ""), numbered("team-b", ""), numbered("team-c", "")},
-		{numbered("team-c", ""), numbered("team-a", ""), numbered("team-b", "")},
-		{numbered("team-b", ""), numbered("team-c", ""), numbered("team-a", "")},
-	} {
-		_, pub, _ := newTestSagaWith(orders, &fakePatruljer{rows: rows})
-		got := strings.Join(pub.Subjects(), " ")
-		if first == "" {
-			first = got
-			continue
-		}
-		if got != first {
-			t.Fatalf("assignment order depends on input order:\n %s\n %s", first, got)
-		}
+	if err := s.HandleMessage(paidMsg(t, "o-1")); err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+	s.CaughtUp()
+
+	if len(pub.Messages) != 1 {
+		t.Fatalf("published %v, want one assignment once the projection arrived", pub.Subjects())
+	}
+	if n := numbersOf(t, pub); n != "1" {
+		t.Errorf("number = %s, want 1", n)
 	}
 }
 
-// Ties on payment time still have to be total, or the same two patruljer could
-// swap numbers between restarts.
-func TestBackfillBreaksTiesOnTeamID(t *testing.T) {
-	same := "2026-06-01 09:00:00"
-	orders := &fakeOrders{byOwner: map[string][]order.Order{
-		"team-b": {seatOrder("team-b", 3, same)},
-		"team-a": {seatOrder("team-a", 3, same)},
-	}}
-
-	_, pub, _ := newTestSagaWith(orders, &fakePatruljer{rows: []patrulje.Patrulje{
-		numbered("team-b", ""),
-		numbered("team-a", ""),
-	}})
-
-	if got, want := pub.Subjects()[0], "NATHEJK.2026.patrulje.team-a.numberassigned"; got != want {
-		t.Errorf("first assignment = %q, want %q", got, want)
+// An order whose projection never arrives must not be numbered, and must not
+// abandon the orders queued behind it.
+func TestDrainContinuesPastAnUnprojectedOrder(t *testing.T) {
+	orders := &fakeOrders{
+		byID: map[string]*order.Order{
+			// "o-stuck" deliberately absent.
+			"o-ok": paidPatruljeOrder("o-ok", "team-ok"),
+		},
+		byOwner: map[string][]order.Order{anyOwner: {seatOrder(anyOwner, 5, "x")}},
 	}
-}
+	s, pub := replaying(orders, nil)
 
-func TestBackfillSkipsAlreadyNumberedAndIneligible(t *testing.T) {
-	orders := &fakeOrders{byOwner: map[string][]order.Order{
-		"team-numbered": {seatOrder("team-numbered", 5, "2026-06-01 09:00:00")},
-		"team-short":    {seatOrder("team-short", MinSeats-1, "2026-06-02 09:00:00")},
-		"team-ok":       {seatOrder("team-ok", 3, "2026-06-03 09:00:00")},
-		"team-unpaid":   {openOrder("team-unpaid", 7)},
-	}}
+	for _, id := range []string{"o-stuck", "o-ok"} {
+		if err := s.HandleMessage(paidMsg(t, id)); err != nil {
+			t.Fatalf("replay %s: %v", id, err)
+		}
+	}
+	s.CaughtUp()
 
-	_, pub, _ := newTestSagaWith(orders, &fakePatruljer{rows: []patrulje.Patrulje{
-		numbered("team-numbered", "12"),
-		numbered("team-short", ""),
-		numbered("team-unpaid", ""),
-		numbered("team-ok", ""),
-	}})
-
-	if got, want := len(pub.Messages), 1; got != want {
-		t.Fatalf("published %d events, want %d: %v", got, want, pub.Subjects())
+	if len(pub.Messages) != 1 {
+		t.Fatalf("published %v, want only team-ok", pub.Subjects())
 	}
 	if got, want := pub.Subjects()[0], "NATHEJK.2026.patrulje.team-ok.numberassigned"; got != want {
 		t.Errorf("subject = %q, want %q", got, want)
 	}
-	// 12 is taken, so the sweep continues from it rather than restarting at 1.
-	if numbers := numbersOf(t, pub); numbers != "13" {
-		t.Errorf("number = %s, want 13 (continuing past the manual 12)", numbers)
+}
+
+// A read error on one deferred order must not cost the others their number.
+func TestDrainContinuesPastAReadError(t *testing.T) {
+	orders := &fakeOrders{
+		byID:    map[string]*order.Order{"o-ok": paidPatruljeOrder("o-ok", "team-ok")},
+		errFor:  map[string]error{"o-bad": errors.New("read failed")},
+		byOwner: map[string][]order.Order{anyOwner: {seatOrder(anyOwner, 4, "x")}},
+	}
+	s, pub := replaying(orders, nil)
+
+	for _, id := range []string{"o-bad", "o-ok"} {
+		if err := s.HandleMessage(paidMsg(t, id)); err != nil {
+			t.Fatalf("replay %s: %v", id, err)
+		}
+	}
+	s.CaughtUp()
+
+	if len(pub.Messages) != 1 {
+		t.Errorf("published %v, want team-ok despite the failed read", pub.Subjects())
+	}
+	if !s.live.Load() {
+		t.Error("a failed drain must leave the saga live for new payments")
 	}
 }
 
-// A restart replays everything and sweeps again; the second sweep must be a no-op,
-// which is what stops the backfill renumbering on every deploy.
-func TestBackfillIsIdempotentAcrossRestarts(t *testing.T) {
-	orders := &fakeOrders{byOwner: map[string][]order.Order{
-		"team-1": {seatOrder("team-1", 4, "2026-06-01 09:00:00")},
-	}}
+// The same order paid twice on the stream is one candidate, not two.
+func TestDuplicatePaidEventsAreDeferredOnce(t *testing.T) {
+	orders := &fakeOrders{
+		byID:    map[string]*order.Order{"o-1": paidPatruljeOrder("o-1", "team-1")},
+		byOwner: map[string][]order.Order{anyOwner: {seatOrder(anyOwner, 4, "x")}},
+	}
+	s, pub := replaying(orders, nil)
 
-	_, pub, _ := newTestSagaWith(orders, &fakePatruljer{
-		rows: []patrulje.Patrulje{numbered("team-1", "")},
-	})
+	for i := 0; i < 3; i++ {
+		if err := s.HandleMessage(paidMsg(t, "o-1")); err != nil {
+			t.Fatalf("replay: %v", err)
+		}
+	}
+	if got := len(s.deferred); got != 1 {
+		t.Fatalf("deferred %d orders, want 1", got)
+	}
+	s.CaughtUp()
+	if len(pub.Messages) != 1 {
+		t.Errorf("published %v, want one assignment", pub.Subjects())
+	}
+}
+
+// Numbers already in the read model (manual, legacy, or written by a previous run)
+// are respected: the team is skipped and the sequence continues past its number.
+func TestDrainRespectsNumbersFromTheReadModel(t *testing.T) {
+	orders := &fakeOrders{
+		byID: map[string]*order.Order{
+			"o-1": paidPatruljeOrder("o-1", "team-numbered"),
+			"o-2": paidPatruljeOrder("o-2", "team-new"),
+		},
+		byOwner: map[string][]order.Order{anyOwner: {seatOrder(anyOwner, 4, "x")}},
+	}
+	s, pub := replaying(orders, []patrulje.Patrulje{numbered("team-numbered", "300")})
+
+	for _, id := range []string{"o-1", "o-2"} {
+		if err := s.HandleMessage(paidMsg(t, id)); err != nil {
+			t.Fatalf("replay %s: %v", id, err)
+		}
+	}
+	s.CaughtUp()
+
+	if len(pub.Messages) != 1 {
+		t.Fatalf("published %v, want only team-new", pub.Subjects())
+	}
+	if got, want := pub.Subjects()[0], "NATHEJK.2026.patrulje.team-new.numberassigned"; got != want {
+		t.Errorf("subject = %q, want %q", got, want)
+	}
+	if n := numbersOf(t, pub); n != "301" {
+		t.Errorf("number = %s, want 301 (continuing past the existing 300)", n)
+	}
+}
+
+// A restart replays the same history plus the numberassigned events it produced,
+// so the second start must assign nothing.
+func TestDrainIsIdempotentAcrossRestarts(t *testing.T) {
+	newOrders := func() *fakeOrders {
+		return &fakeOrders{
+			byID:    map[string]*order.Order{"o-1": paidPatruljeOrder("o-1", "team-1")},
+			byOwner: map[string][]order.Order{anyOwner: {seatOrder(anyOwner, 4, "x")}},
+		}
+	}
+
+	s, pub := replaying(newOrders(), nil)
+	if err := s.HandleMessage(paidMsg(t, "o-1")); err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+	s.CaughtUp()
 	if len(pub.Messages) != 1 {
 		t.Fatalf("first start: published %v, want one assignment", pub.Subjects())
 	}
-	assignedNumber := numbersOf(t, pub)
+	number := numbersOf(t, pub)
 
-	// Second start: the projector has since written the number, so the read model
-	// now reports it — exactly what the next process would see.
-	_, pub2, _ := newTestSagaWith(orders, &fakePatruljer{
-		rows: []patrulje.Patrulje{numbered("team-1", assignedNumber)},
-	})
+	// Second start: the same paid order replays, and so does the assignment this
+	// saga published, which the projector has since written to the read model.
+	s2, pub2 := replaying(newOrders(), []patrulje.Patrulje{numbered("team-1", number)})
+	for _, msg := range []cqrs.Message{paidMsg(t, "o-1"), assignedMsg(t, "team-1", number)} {
+		if err := s2.HandleMessage(msg); err != nil {
+			t.Fatalf("second start replay: %v", err)
+		}
+	}
+	s2.CaughtUp()
 	if len(pub2.Messages) != 0 {
-		t.Errorf("second start re-numbered: %v", pub2.Subjects())
+		t.Errorf("second start renumbered: %v", pub2.Subjects())
 	}
 }
 
-// A failed sweep must not cost the saga its live gate: unlike a failed seed it
-// cannot cause a duplicate number, so new payments should still be numbered.
-func TestFailedBackfillLeavesTheSagaLive(t *testing.T) {
-	// GetAll succeeds (so the seed is fine) but the order reads fail.
-	orders := &fakeOrders{err: errors.New("orders unavailable")}
+// Under-seated patruljer are still terminal, and a failed seed still shuts the
+// gate — including the drain, since a too-low high-water mark would re-issue a
+// number that another patrulje already holds.
+func TestUnderSeatedDeferredOrderIsNotNumbered(t *testing.T) {
+	orders := &fakeOrders{
+		byID:    map[string]*order.Order{"o-1": paidPatruljeOrder("o-1", "team-1")},
+		byOwner: map[string][]order.Order{anyOwner: {seatOrder(anyOwner, MinSeats-1, "x")}},
+	}
+	s, pub := replaying(orders, nil)
+	if err := s.HandleMessage(paidMsg(t, "o-1")); err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+	s.CaughtUp()
+	if len(pub.Messages) != 0 {
+		t.Errorf("under-seated patrulje was numbered: %v", pub.Subjects())
+	}
+}
+
+func TestFailedSeedSkipsTheDrainEntirely(t *testing.T) {
+	orders := &fakeOrders{
+		byID:    map[string]*order.Order{"o-1": paidPatruljeOrder("o-1", "team-1")},
+		byOwner: map[string][]order.Order{anyOwner: {seatOrder(anyOwner, 4, "x")}},
+	}
 	pub := &cqrstest.Publisher{}
-	s := New(pub, orders, catalogue(),
-		&fakePatruljer{rows: []patrulje.Patrulje{numbered("team-1", "")}},
-		"2026", time.Millisecond)
+	s := New(pub, orders, catalogue(), &fakePatruljer{err: errors.New("database on fire")}, "2026", time.Millisecond)
+	s.sleep = func(time.Duration) {}
+
+	if err := s.HandleMessage(paidMsg(t, "o-1")); err != nil {
+		t.Fatalf("replay: %v", err)
+	}
 	s.CaughtUp()
 
-	if !s.live.Load() {
-		t.Fatal("a failed backfill must not shut the live gate")
+	if s.live.Load() {
+		t.Error("saga went live despite a failed seed")
 	}
 	if len(pub.Messages) != 0 {
-		t.Errorf("published despite failing reads: %v", pub.Subjects())
+		t.Errorf("published with an unseeded high-water mark: %v", pub.Subjects())
 	}
 }
 
@@ -882,11 +1001,4 @@ func numbersOf(t *testing.T, pub *cqrstest.Publisher) string {
 		out = append(out, body.TeamNumber)
 	}
 	return strings.Join(out, ",")
-}
-
-// openOrder is a paid-for-nothing order: seats requested but not paid.
-func openOrder(teamID string, n int) order.Order {
-	o := seatOrder(teamID, n, "2026-06-01 09:00:00")
-	o.Status = order.StatusOpen
-	return o
 }
