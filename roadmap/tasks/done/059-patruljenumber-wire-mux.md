@@ -1,11 +1,11 @@
 # 059 — BFF: wire the number saga into hq's mux
 
-**Status:** doing
+**Status:** done
 **Priority:** high
 **Created:** 2026-08-13
 **Picked up by:** zed agent session
 **Started:** 2026-08-13
-**Completed:**
+**Completed:** 2026-08-13
 
 ## Description
 
@@ -32,15 +32,15 @@ Dependencies to pass: the publisher, `ordertable` (order Queries),
 
 ## Acceptance Criteria
 
-- [ ] Saga constructed in `main.go` and present in the `projections` slice.
-- [ ] A comment at the call site states that hq is the sole owner and must remain
+- [x] Saga constructed in `main.go` and present in the `projections` slice.
+- [x] A comment at the call site states that hq is the sole owner and must remain
       so, and why it must be inside the wrapped slice.
-- [ ] `live.EntitiesFrom` still advertises a sensible token set — the saga
+- [x] `live.EntitiesFrom` still advertises a sensible token set — the saga
       contributes `order` and `patrulje`, both already advertised, so the set is
       unchanged.
-- [ ] Builds and tests clean on both resolution paths: `go build ./...` /
+- [x] Builds and tests clean on both resolution paths: `go build ./...` /
       `go test ./...` and the same with `GOWORK=off`.
-- [ ] `gofmt -l .` and `go vet ./...` clean.
+- [x] `gofmt -l .` and `go vet ./...` clean.
 
 ## Progress Log
 
@@ -51,3 +51,20 @@ Dependencies to pass: the publisher, `ordertable` (order Queries),
   reads), add to the `projections` slice, and put the ownership note next to the
   existing comment explaining why the order Pay saga is absent — the two
   decisions are mirror images and a reader needs both to make sense of either.
+- 2026-08-13 18:45 — Constructed as `patruljenumbers` after `ordertable` (its
+  reader) and added to `projections` next to `patruljetable`, so the slice reads
+  in domain order. Ownership comment written directly below the one explaining the
+  Pay saga's absence, and it spells out the asymmetry: the single-owner rule binds
+  *harder* here, because the patrulje projector's UPDATE is unconditional, so two
+  mounts would overwrite each other rather than converge the way duplicate
+  order.paid events do.
+- 2026-08-13 18:50 — ✅ Entity-token criterion verified rather than assumed: the
+  saga's subjects are `*.order.*.paid` and `*.patrulje.*.numberassigned`, which
+  yield the tokens `order` and `patrulje`; `ordertable` already consumes
+  `*.order.*.paid` and `patruljetable` already consumes
+  `*.patrulje.*.numberassigned`, and `EntitiesFrom` dedupes through a map — so the
+  advertised set is byte-identical.
+- 2026-08-13 18:52 — ✅ Remaining criteria complete: `gofmt`, `go vet` and
+  `go build`/`go test ./...` clean under both `go.work` and `GOWORK=off`.
+- 2026-08-13 18:55 — Completed. The feature is now live-wired end to end; 060
+  verifies the replay/restart properties against a running stack and ships the PRD.

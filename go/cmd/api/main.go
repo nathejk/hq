@@ -48,6 +48,7 @@ import (
 	"nathejk.dk/nathejk/table/lok"
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/patruljemerged"
+	"nathejk.dk/nathejk/table/patruljenumber"
 	"nathejk.dk/nathejk/table/personnel"
 	"nathejk.dk/nathejk/table/scan"
 	"nathejk.dk/nathejk/table/sos"
@@ -209,6 +210,20 @@ func main() {
 	// payments and takes the provider callback. hq wires no payment provider and
 	// only reads orders and payments, so it has no business transitioning them.
 
+	// The patrulje number saga is the mirror image: hq *is* its sole owner (PRD
+	// 003). Numbering is an organizer concern, and hq holds the patrulje read
+	// model the eligibility check and the seeding read from. The single-owner rule
+	// binds harder here than it does for the Pay saga — the patrulje projector's
+	// `UPDATE patrulje SET teamNumber=?` is unconditional, so two mounts would not
+	// converge on one number, they would overwrite each other. It must not be added
+	// to tilmelding, and hq must not run two replicas.
+	//
+	// It goes in the `projections` slice rather than straight onto the mux because
+	// that slice is what live.NotifyAll wraps, and the wrapper is what forwards
+	// CaughtUp. Outside the slice the saga would never learn it was live and would
+	// silently publish nothing at all.
+	patruljenumbers := patruljenumber.New(publisher, ordertable, producttable, patruljetable, currentYear, 0)
+
 	mux := xstream.NewMux(js)
 
 	// Live updates: every projection is wrapped so that applying an event also
@@ -236,6 +251,7 @@ func main() {
 		klantable,
 		seniortable,
 		patruljetable,
+		patruljenumbers,
 		table.NewPatruljeStatus(writer),
 		table.NewSpejderStatus(writer),
 		personneltable,
