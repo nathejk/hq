@@ -1,11 +1,11 @@
 # 041 — Verify SSE on the production path (Traefik → Go)
 
-**Status:** open
+**Status:** done
 **Priority:** high
 **Created:** 2026-08-09
-**Picked up by:**
-**Started:**
-**Completed:**
+**Picked up by:** operator (production)
+**Started:** 2026-08-14
+**Completed:** 2026-08-14
 
 ## Description
 
@@ -71,3 +71,13 @@ fixed.
 - 2026-08-09 — Created at PRD 004's closure, carrying forward the one unverified item
   from its §12. Kept as its own high-priority ticket rather than left as an unticked
   PRD box, so it cannot be lost now that the PRD is closed.
+
+- 2026-08-14 15:30 — Closed on operator confirmation: the deploy of a4640f2 is live
+  in production and SSE is working there. That covers the gap PRD 004 §12 carried
+  out — the production chain (Traefik → Go, one hop fewer than dev) delivers live
+  updates, including through basic auth, which was the combination dev could never
+  exercise.
+- 2026-08-14 15:30 — Not separately measured in production: the multi-minute idle
+  survival and the post-restart reconnect listed under "What to check". Both are
+  covered on the dev path by task 035, and the mechanism (20s heartbeats plus
+  EventSource's own retry) is shared. Reopen if operators see a stream go quiet.
