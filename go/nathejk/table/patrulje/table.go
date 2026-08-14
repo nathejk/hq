@@ -40,7 +40,32 @@ func New(w cqrs.Writer, r *sql.DB) *table {
 	if err := w.Consume(table.CreateTableSql()); err != nil {
 		log.Printf("Error creating table %q", err)
 	}
+	for _, stmt := range widenTextColumns {
+		if err := w.Consume(stmt); err != nil {
+			log.Printf("Error migrating patrulje table %q", err)
+		}
+	}
 	return table
+}
+
+// widenTextColumns brings an existing patrulje table up to the current schema.
+//
+// Needed because CREATE TABLE IF NOT EXISTS is a no-op wherever the table already
+// exists, so widening a column in table.sql alone only takes effect on databases
+// that get cleared before deploy. Without this, dev and any long-lived database
+// keep the old width and keep failing.
+//
+// The failure this fixes was silent in the worst way: a name or group longer than
+// 99 characters made the projection's UPDATE fail with "Error 1406: Data too long
+// for column", so that patrulje's name, group, korps and contact details simply
+// stopped being projected — the row kept whatever it held before. Teams entered as
+// a merger of three groups exceed 99 easily.
+//
+// MODIFY is idempotent: re-running it against a column that is already VARCHAR(999)
+// is accepted and changes nothing.
+var widenTextColumns = []string{
+	`ALTER TABLE patrulje MODIFY COLUMN name VARCHAR(999) NOT NULL DEFAULT ""`,
+	`ALTER TABLE patrulje MODIFY COLUMN groupName VARCHAR(999) NOT NULL DEFAULT ""`,
 }
 
 //go:embed table.sql
