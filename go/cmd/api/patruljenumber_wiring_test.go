@@ -38,8 +38,20 @@ func (f *wiringOrders) GetByID(_ context.Context, orderID string) (*order.Order,
 	return o, nil
 }
 
-func (f *wiringOrders) PaidQuantityBySKU(context.Context, types.YearSlug, types.TeamType, string) (map[string]int, error) {
-	return map[string]int{"participation.patrulje": f.seats}, nil
+// ListByOwner reports one paid order carrying `seats` seats for whichever owner is
+// asked about, which is all these wiring tests need.
+func (f *wiringOrders) ListByOwner(_ context.Context, year types.YearSlug, ownerType types.TeamType, ownerID string) ([]order.Order, error) {
+	return []order.Order{{
+		OrderID:   "o-" + ownerID,
+		Year:      year,
+		OwnerType: ownerType,
+		OwnerID:   ownerID,
+		Status:    order.StatusPaid,
+		ChangedAt: "2026-07-01 10:00:00",
+		Lines: []order.Line{
+			{ProductSKU: "participation.patrulje", Quantity: f.seats},
+		},
+	}}, nil
 }
 
 type wiringProducts struct{}

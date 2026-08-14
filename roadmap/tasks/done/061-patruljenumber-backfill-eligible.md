@@ -1,11 +1,11 @@
 # 061 — BFF: number the patruljer that already qualify
 
-**Status:** doing
+**Status:** done
 **Priority:** high
 **Created:** 2026-08-14
 **Picked up by:** zed agent session
 **Started:** 2026-08-14
-**Completed:**
+**Completed:** 2026-08-14
 
 ## Description
 
@@ -58,20 +58,20 @@ start's sweep finds nothing.
 
 ## Acceptance Criteria
 
-- [ ] After `CaughtUp`, patruljer with ≥3 paid seats and no number are assigned
+- [x] After `CaughtUp`, patruljer with ≥3 paid seats and no number are assigned
       consecutive numbers continuing from the high-water mark.
-- [ ] Deterministic order: earliest qualifying payment first. Covered by a test
+- [x] Deterministic order: earliest qualifying payment first. Covered by a test
       with a shuffled input that asserts a fixed number-to-team mapping.
-- [ ] Already-numbered patruljer (from events *or* from the read model) are
+- [x] Already-numbered patruljer (from events *or* from the read model) are
       skipped.
-- [ ] Ineligible patruljer (<3 seats) are not numbered.
-- [ ] Running the sweep twice publishes nothing the second time (idempotent), so
+- [x] Ineligible patruljer (<3 seats) are not numbered.
+- [x] Running the sweep twice publishes nothing the second time (idempotent), so
       a restart does not renumber.
-- [ ] A failing sweep logs and leaves the saga live for new payments.
-- [ ] The sweep logs a one-line summary including how many it assigned.
-- [ ] `gofmt -l .`, `go vet ./...`, `go test ./...` clean on both resolution
+- [x] A failing sweep logs and leaves the saga live for new payments.
+- [x] The sweep logs a one-line summary including how many it assigned.
+- [x] `gofmt -l .`, `go vet ./...`, `go test ./...` clean on both resolution
       paths.
-- [ ] Verified on the live stack: the qualifying patruljer receive numbers, the
+- [x] Verified on the live stack: the qualifying patruljer receive numbers, the
       numbers are unique, and a subsequent restart neither renumbers nor re-emits.
       Record counts before and after in the log.
 
@@ -84,3 +84,40 @@ start's sweep finds nothing.
 - 2026-08-14 07:45 — Picked up. Plan: sweep at the end of `CaughtUp`, reusing the
   patrulje rows already read for seeding. Decided against adding an aggregate
   query to shared-go for now — see the next entry.
+- 2026-08-14 08:05 — Decision: no shared-go change. The sweep needs "when did this
+  patrulje qualify", which `PaidQuantityBySKU` cannot answer, so rather than add a
+  second aggregate upstream I switched the saga's reader to `ListByOwner` and
+  compute seats from the lines. That collapses two candidate implementations of
+  "paid seats" into one — the live path and the sweep now come through the same
+  `paidSeats`, so they cannot drift into disagreeing about who is accepted, which
+  is exactly the bug the shared payment entity's own history warns about. Cost is a
+  handful of order rows per patrulje instead of one aggregate; the SKU lookup is
+  hoisted out of the sweep's loop.
+- 2026-08-14 08:10 — Extracted `assignNext`, now the single place a number is
+  handed out (live path and sweep both call it). It holds the lock across reading
+  the mark, publishing, and raising it, so the same number cannot go out twice.
+- 2026-08-14 08:15 — Sorting: earliest paid first, tie-broken on teamID. `paidAt`
+  is compared as a string because the column holds Go's `time.Time` text form, all
+  UTC and zero-padded, so lexicographic order is chronological — noted in the code
+  that a format change would need a real parse. Three tests pin it: shuffled input
+  produces identical output, ties resolve on teamID, and the mapping is fixed.
+- 2026-08-14 08:20 — One existing test (`TestSeedSkipsEmptyTeamNumbers`) started
+  failing, correctly: its fixture qualified, so the new sweep numbered it. Rewrote
+  the fixture so the read-model rows have no paid orders, keeping that test about
+  the empty number rather than about the backfill.
+- 2026-08-14 08:25 — ✅ Unit criteria complete. 34 tests in the package, passing
+  under `-race`; clean on both resolution paths.
+- 2026-08-14 08:30 — ✅ Live stack, first run: `patruljenumber: backfill assigned
+  75 number(s) to patruljer that already qualified` — 75 rather than 76 because one
+  had already been numbered during the 060 verification. Result: **76 numbered, 76
+  distinct, range 1–76, 0 duplicates, and 76 `numberassigned` events in the
+  stream**, one per team. Matches the 76 qualifying patruljer exactly.
+- 2026-08-14 08:32 — ✅ Live stack, restart: numbered 76, distinct 76, range 1–76,
+  event count still 76. No renumbering and no re-emission, so the sweep is
+  idempotent against real data across a full replay.
+- 2026-08-14 08:34 — The restart produced *no* backfill log line, because the sweep
+  returned early on finding no candidates. Moved the log so it always reports,
+  including the zero: that zero is the evidence the sweep ran and correctly found
+  nothing, which is what an operator wants to see after a deploy.
+- 2026-08-14 08:35 — Completed. PRD 003 §9's first success metric is now met, which
+  unblocks 060.

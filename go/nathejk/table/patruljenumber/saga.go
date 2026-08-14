@@ -35,6 +35,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sort"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -64,14 +65,21 @@ const DefaultSettle = 2 * time.Second
 const DefaultAttempts = 5
 
 // OrderReader is the slice of the order read API this saga needs: the order the
-// trigger names, and the paid quantity per SKU for its owner.
+// trigger names, and every order belonging to a patrulje.
 //
 // Declared here rather than taking order.Queries wholesale so the saga can be
 // tested without a database, and so it states exactly what it reads.
 // order.Queries satisfies it.
+//
+// ListByOwner rather than the purpose-built PaidQuantityBySKU aggregate: the
+// backfill needs to know *when* a patrulje qualified, not just that it did, and
+// having one way to count seats is worth more than saving a query. Two
+// definitions of "paid seats" would be free to drift, and the drift would be
+// invisible — the live path and the backfill would simply disagree about who is
+// accepted. The cost is a handful of order rows per patrulje.
 type OrderReader interface {
 	GetByID(ctx context.Context, orderID string) (*order.Order, error)
-	PaidQuantityBySKU(ctx context.Context, year types.YearSlug, ownerType types.TeamType, ownerID string) (map[string]int, error)
+	ListByOwner(ctx context.Context, year types.YearSlug, ownerType types.TeamType, ownerID string) ([]order.Order, error)
 }
 
 // ProductReader answers which SKUs count as seats.
@@ -141,7 +149,8 @@ var (
 )
 
 // CaughtUp marks the saga live: history has been replayed, so subsequent events
-// are new and assignments may be published.
+// are new and assignments may be published. It then numbers whatever already
+// qualifies.
 //
 // Before opening the gate it folds in the numbers that exist in the read model
 // but never appeared as events. If that read fails the gate stays shut and this
@@ -150,20 +159,39 @@ var (
 // whereas re-issuing a number already held by another patrulje is not — the
 // projector's UPDATE is unconditional, so the two teams would simply share it.
 func (s *saga) CaughtUp() {
-	if err := s.seedFromReadModel(); err != nil {
-		log.Printf("patruljenumber: seeding existing team numbers failed, staying dormant rather than risk re-issuing a number: %v", err)
+	ctx, cancel := context.WithTimeout(context.Background(), catchupTimeout)
+	defer cancel()
+
+	// Read once and use the rows twice: the seed needs the numbers that exist, the
+	// backfill needs the patruljer that lack one.
+	patruljer, err := s.patruljer.GetAll(ctx, patrulje.Filter{YearSlug: s.year})
+	if err != nil {
+		log.Printf("patruljenumber: reading existing team numbers failed, staying dormant rather than risk re-issuing a number: %v", err)
 		return
 	}
+	s.seed(patruljer)
 	s.live.Store(true)
+
+	// Only now that the gate is open. A patrulje that qualified before this saga
+	// existed has no future event to trigger on — every one of its order.paid
+	// events is history, and replay deliberately publishes nothing — so without
+	// this sweep it would stay unnumbered forever.
+	//
+	// Unlike the seed, a failure here cannot cause a duplicate number: it only
+	// means the backfill did not happen, and the next start tries again. So it logs
+	// and carries on rather than shutting the gate on new payments.
+	if err := s.backfill(ctx, patruljer); err != nil {
+		log.Printf("patruljenumber: backfill incomplete, will retry on the next start: %v", err)
+	}
 }
 
-// seedTimeout bounds the one seeding read. Generous: it runs once at startup, and
-// timing out costs the saga the whole process.
-const seedTimeout = 30 * time.Second
+// catchupTimeout bounds the seed and the sweep together. Generous: it runs once at
+// startup, and the sweep may issue a number per qualifying patrulje.
+const catchupTimeout = 2 * time.Minute
 
-// seedFromReadModel folds every existing teamNumber for the year into the running
-// state: the team counts as assigned, and its number raises the high-water mark.
-// PRD 003's example — a manual 300 means the next automatic number is 301, not 1.
+// seed folds every existing teamNumber for the year into the running state: the
+// team counts as assigned, and its number raises the high-water mark. PRD 003's
+// example — a manual 300 means the next automatic number is 301, not 1.
 //
 // Timing: this runs at catch-up rather than at construction because hq rebuilds
 // its read model from the stream on every start, so at construction the patrulje
@@ -172,22 +200,83 @@ const seedTimeout = 30 * time.Second
 // Catch-up of *this* consumer does not prove the patrulje projector has finished
 // its own replay — they are independent consumers — so the mark seeded here can
 // be too low. Two things keep that from issuing a duplicate: the assigned set is
-// also fed by replayed numberassigned events, and every number this saga issues
-// is observed on the way back, raising the mark again.
-func (s *saga) seedFromReadModel() error {
-	ctx, cancel := context.WithTimeout(context.Background(), seedTimeout)
-	defer cancel()
-
-	patruljer, err := s.patruljer.GetAll(ctx, patrulje.Filter{YearSlug: s.year})
-	if err != nil {
-		return err
-	}
+// also fed by replayed numberassigned events, and every number this saga issues is
+// observed on the way back, raising the mark again.
+func (s *saga) seed(patruljer []patrulje.Patrulje) {
 	for _, p := range patruljer {
 		if p.TeamID == "" || p.TeamNumber == "" {
 			continue
 		}
 		s.markAssigned(p.TeamID, p.TeamNumber)
 	}
+}
+
+// candidate is a patrulje the sweep found eligible, and when it became so.
+type candidate struct {
+	teamID types.TeamID
+	// paidAt is when the earliest of its paid orders was last changed, i.e. when it
+	// was paid. Used only for ordering.
+	paidAt string
+}
+
+// backfill numbers every patrulje that already qualifies but holds no number.
+//
+// Ordering decides who gets which number, so it must be deterministic and
+// defensible: earliest payment first, which is the honest reading of "numbering
+// reflects payment order" (PRD 003 §5). Sorting is essential rather than cosmetic
+// — without it the numbers would follow whatever order the read model returned,
+// and any later switch to iterating a map would hand out different numbers on
+// every start. teamID breaks ties so the result is total.
+//
+// paidAt is compared as a string. The column holds Go's time.Time text form, all
+// UTC and zero-padded, so lexicographic order is chronological order. If that
+// format ever changes this needs a real parse.
+//
+// Idempotent by construction: after a sweep the patruljer it numbered hold
+// numbers, so the next start's seed marks them assigned and the sweep skips them.
+func (s *saga) backfill(ctx context.Context, patruljer []patrulje.Patrulje) error {
+	skus, err := s.participationSKUs(ctx, s.year)
+	if err != nil {
+		return err
+	}
+
+	var candidates []candidate
+	for _, p := range patruljer {
+		if p.TeamID == "" || s.isAssigned(p.TeamID) {
+			continue
+		}
+		seats, paidAt, err := s.paidSeats(ctx, s.year, p.TeamID, skus)
+		if err != nil {
+			return err
+		}
+		if seats < MinSeats {
+			continue
+		}
+		candidates = append(candidates, candidate{teamID: p.TeamID, paidAt: paidAt})
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].paidAt != candidates[j].paidAt {
+			return candidates[i].paidAt < candidates[j].paidAt
+		}
+		return candidates[i].teamID < candidates[j].teamID
+	})
+
+	assigned := 0
+	for _, c := range candidates {
+		done, err := s.assignNext(c.teamID)
+		if err != nil {
+			return err
+		}
+		if done {
+			assigned++
+		}
+	}
+	// Logged unconditionally, including the zero: on the first start after this
+	// shipped it is a burst of one event per already-paid patrulje, and that should
+	// be recognisable in the stream as a backfill rather than a runaway loop — while
+	// on every later start the zero is the evidence that the sweep ran and correctly
+	// found nothing to do.
+	log.Printf("patruljenumber: backfill assigned %d number(s) to patruljer that already qualified", assigned)
 	return nil
 }
 
@@ -360,7 +449,7 @@ func (s *saga) attempt(orderID string) (outcome, error) {
 		return unprojected, nil
 	}
 
-	seats, err := s.seatCount(ctx, o.Year, teamID)
+	seats, _, err := s.paidSeatsFor(ctx, o.Year, teamID)
 	if err != nil {
 		return settled, err
 	}
@@ -378,47 +467,96 @@ func (s *saga) attempt(orderID string) (outcome, error) {
 		return settled, nil
 	}
 
-	// Publish first, then record locally. The saga's own subscription will
-	// observe the event on the way back, but two patruljer qualifying in quick
-	// succession must get distinct numbers without waiting for that round trip.
-	//
-	// Held under the lock across the publish so the number cannot be handed out
-	// twice. Locking across I/O is normally worth avoiding; here the only other
-	// contender is the one-shot seed, so there is nothing to contend with.
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	number := s.maxNumber + 1
-	if err := s.publish(teamID, number); err != nil {
+	if _, err := s.assignNext(teamID); err != nil {
 		return settled, err
 	}
-	s.markAssignedLocked(teamID, strconv.Itoa(number))
 	return settled, nil
 }
 
-// seatCount is the patrulje's paid seats: the quantity it has paid for across the
-// year's participation products.
+// assignNext hands the team the next number and records it, reporting whether it
+// did. false means the team already held one.
 //
-// The SKUs come from the catalogue rather than a constant, so renaming or
-// splitting the participation product does not silently stop acceptance from
-// working. Merchandise is excluded — a patrulje that buys four t-shirts has not
-// thereby paid for four seats.
-func (s *saga) seatCount(ctx context.Context, year types.YearSlug, teamID types.TeamID) (int, error) {
+// The whole decision is under the lock, including the publish: the number comes
+// from the high-water mark, so releasing between reading it and raising it would
+// let the same number go out twice. Locking across I/O is normally worth avoiding,
+// but the only other contender is the catch-up sweep, so there is nothing to
+// contend with.
+//
+// Publishing before the local mark is deliberate: the saga's own subscription will
+// observe the event on the way back, but two patruljer qualifying in quick
+// succession must get distinct numbers without waiting for that round trip.
+func (s *saga) assignNext(teamID types.TeamID) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.assigned[teamID] {
+		return false, nil
+	}
+	number := s.maxNumber + 1
+	if err := s.publish(teamID, number); err != nil {
+		return false, err
+	}
+	s.markAssignedLocked(teamID, strconv.Itoa(number))
+	return true, nil
+}
+
+// participationSKUs is the set of SKUs that count as seats for a patrulje.
+//
+// Read from the catalogue rather than hardcoded, so renaming or splitting the
+// participation product does not silently stop acceptance from working.
+// Merchandise is excluded — a patrulje that buys four t-shirts has not thereby
+// paid for four seats.
+func (s *saga) participationSKUs(ctx context.Context, year types.YearSlug) (map[string]bool, error) {
 	products, err := s.products.ListEligibleFor(ctx, year, types.TeamTypePatrulje)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
-	paid, err := s.orders.PaidQuantityBySKU(ctx, year, types.TeamTypePatrulje, string(teamID))
+	skus := map[string]bool{}
+	for _, p := range products {
+		if p.Kind == product.KindParticipation {
+			skus[p.SKU] = true
+		}
+	}
+	return skus, nil
+}
+
+// paidSeatsFor is paidSeats for a single patrulje, fetching the SKU set itself.
+// Used by the live path, where there is one patrulje to consider; the sweep hoists
+// the SKU lookup out of its loop instead.
+func (s *saga) paidSeatsFor(ctx context.Context, year types.YearSlug, teamID types.TeamID) (int, string, error) {
+	skus, err := s.participationSKUs(ctx, year)
 	if err != nil {
-		return 0, err
+		return 0, "", err
+	}
+	return s.paidSeats(ctx, year, teamID, skus)
+}
+
+// paidSeats counts the seats a patrulje has paid for, and reports when the
+// earliest of those payments landed.
+//
+// Only paid orders count: an open order is an intention, not a payment. This is
+// the single definition of "paid seats" — the live path and the backfill both come
+// through here, so they cannot disagree about who is accepted.
+func (s *saga) paidSeats(ctx context.Context, year types.YearSlug, teamID types.TeamID, skus map[string]bool) (int, string, error) {
+	orders, err := s.orders.ListByOwner(ctx, year, types.TeamTypePatrulje, string(teamID))
+	if err != nil {
+		return 0, "", err
 	}
 	seats := 0
-	for _, p := range products {
-		if p.Kind != product.KindParticipation {
+	firstPaidAt := ""
+	for _, o := range orders {
+		if o.Status != order.StatusPaid {
 			continue
 		}
-		seats += paid[p.SKU]
+		for _, l := range o.Lines {
+			if skus[l.ProductSKU] {
+				seats += l.Quantity
+			}
+		}
+		if firstPaidAt == "" || o.ChangedAt < firstPaidAt {
+			firstPaidAt = o.ChangedAt
+		}
 	}
-	return seats, nil
+	return seats, firstPaidAt, nil
 }
 
 func (s *saga) publish(teamID types.TeamID, number int) error {
