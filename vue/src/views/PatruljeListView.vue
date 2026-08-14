@@ -78,7 +78,13 @@ const getSeverity = (status) => {
 <template>
     <div class="card" id="patruljer">
     <a href="/api/excel/patrulje">Eksport til Excel</a>
-        <DataTable :value="patruljer" :loading="pending" sortMode="single" sortField="lok" :sortOrder="1" :stripedRows="true" :filters="filters"
+        <!-- Sorted by team number by default: it is the identifier organizers use
+             to talk about a patrulje, and it reflects acceptance order. Unnumbered
+             patruljer have teamNumber "", which PrimeVue sorts last in ascending
+             order, so accepted teams come first and the pending ones follow.
+             Numeric strings compare correctly — the comparator is an Intl.Collator
+             with numeric: true — so 9 precedes 10 rather than following it. -->
+        <DataTable :value="patruljer" :loading="pending" sortMode="single" sortField="teamNumber" :sortOrder="1" :stripedRows="true" :filters="filters"
             v-model:expandedRows="expandedRows" dataKey="teamId" @rowExpand="onRowExpand" @rowCollapse="onRowCollapse"
         >
             <template #header>
