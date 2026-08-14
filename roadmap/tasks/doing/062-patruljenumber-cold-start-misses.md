@@ -1,10 +1,10 @@
 # 062 — Number assignment misses everyone on a cold start
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-08-14
-**Picked up by:**
-**Started:**
+**Picked up by:** zed agent session
+**Started:** 2026-08-14
 **Completed:**
 
 ## Description
@@ -93,3 +93,6 @@ Why this removes the race rather than narrowing it:
   the timing measured; see Root cause. Note the current log line cannot confirm
   the diagnosis in production because it prints only the assigned count, so the
   fix must also report what the sweep observed.
+- 2026-08-14 15:25 — Picked up. Plan: record order.paid ids during replay, drain
+  them through the existing attempt() retry path at CaughtUp, delete the
+  read-model sweep.
