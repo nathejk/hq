@@ -1,10 +1,10 @@
 # 059 — BFF: wire the number saga into hq's mux
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-08-13
-**Picked up by:**
-**Started:**
+**Picked up by:** zed agent session
+**Started:** 2026-08-13
 **Completed:**
 
 ## Description
@@ -47,3 +47,7 @@ Dependencies to pass: the publisher, `ordertable` (order Queries),
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-13 17:05 — Task created from PRD 003 (approved same day).
+- 2026-08-13 18:40 — Picked up. Plan: construct after `ordertable` (which it
+  reads), add to the `projections` slice, and put the ownership note next to the
+  existing comment explaining why the order Pay saga is absent — the two
+  decisions are mirror images and a reader needs both to make sense of either.
