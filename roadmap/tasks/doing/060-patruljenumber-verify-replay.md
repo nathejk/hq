@@ -1,10 +1,10 @@
 # 060 — Verify number assignment survives replay, then ship PRD 003
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-08-13
-**Picked up by:**
-**Started:**
+**Picked up by:** zed agent session
+**Started:** 2026-08-13
 **Completed:**
 
 ## Description
@@ -57,3 +57,7 @@ than recycled.
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-13 17:05 — Task created from PRD 003 (approved same day).
+- 2026-08-13 19:00 — Picked up. Plan: the assembled tests belong in
+  `internal/live` rather than the saga package, because what they exercise is the
+  seam between the two — and `nathejk/table/` may not import `internal/`. Write
+  them against a fake catch-up-aware consumer plus the real saga where possible.
