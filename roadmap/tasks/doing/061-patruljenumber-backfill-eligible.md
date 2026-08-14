@@ -1,10 +1,10 @@
 # 061 — BFF: number the patruljer that already qualify
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-08-14
-**Picked up by:**
-**Started:**
+**Picked up by:** zed agent session
+**Started:** 2026-08-14
 **Completed:**
 
 ## Description
@@ -81,3 +81,6 @@ start's sweep finds nothing.
 
 - 2026-08-14 07:35 — Task created from the 060 verification finding: 76 patruljer
   qualify, 0 numbered, and the live-only gate means no future event will fix it.
+- 2026-08-14 07:45 — Picked up. Plan: sweep at the end of `CaughtUp`, reusing the
+  patrulje rows already read for seeding. Decided against adding an aggregate
+  query to shared-go for now — see the next entry.
