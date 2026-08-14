@@ -16,6 +16,7 @@ type Queries interface {
 	GetByID(context.Context, types.TeamID) (*Patrulje, error)
 	GetStartedTeamIDs(context.Context, Filter) ([]types.TeamID, error)
 	GetDiscontinuedTeamIDs(context.Context, Filter) ([]types.TeamID, error)
+	AssignedNumbers(context.Context, types.YearSlug) (map[types.TeamID]string, error)
 }
 
 type querier struct {
@@ -149,3 +150,47 @@ func (q *querier) GetContact(teamID types.TeamID) (*Contact, error) {
 	}
 	return &c, nil
 }*/
+
+// AssignedNumbers returns the team numbers already held by patruljer in the given
+// year, keyed by team.
+//
+// Deliberately narrow, and deliberately not GetAll. The number-assignment saga
+// needs exactly these two columns to know who is already numbered and how high the
+// numbering has reached, and it needs them during replay, while the projections are
+// still being rebuilt and the database is at its busiest.
+//
+// GetAll cannot serve that: it carries a hardcoded 3-second timeout that overrides
+// whatever budget the caller set, and it computes three correlated subqueries per
+// row — two counts over spejder and a payment sum containing a nested IN over
+// orders. Under replay load in production that exceeded three seconds, the saga
+// treated it as "cannot read existing numbers", stayed dormant to avoid re-issuing
+// a number, and nothing was ever numbered. This query touches one table and reads
+// two varchar columns.
+//
+// Rows with an empty teamNumber are skipped rather than returned as blanks: every
+// caller only cares about numbers that exist.
+func (q *querier) AssignedNumbers(ctx context.Context, year types.YearSlug) (map[types.TeamID]string, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT teamId, teamNumber FROM patrulje WHERE year = ? AND teamNumber <> ''`,
+		string(year))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	numbers := map[types.TeamID]string{}
+	for rows.Next() {
+		var (
+			teamID types.TeamID
+			number string
+		)
+		if err := rows.Scan(&teamID, &number); err != nil {
+			return nil, err
+		}
+		numbers[teamID] = number
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return numbers, nil
+}

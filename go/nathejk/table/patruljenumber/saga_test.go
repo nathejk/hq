@@ -125,14 +125,31 @@ func catalogue() fakeProducts {
 // fakePatruljer is the patrulje read model: the numbers that exist without ever
 // having been an event.
 type fakePatruljer struct {
-	rows []patrulje.Patrulje
-	err  error
-	year types.YearSlug
+	rows  []patrulje.Patrulje
+	err   error
+	year  types.YearSlug
+	calls int
+	// failFirst makes the first n reads fail, to exercise the seed retry.
+	failFirst int
 }
 
-func (f *fakePatruljer) GetAll(_ context.Context, filter patrulje.Filter) ([]patrulje.Patrulje, error) {
-	f.year = filter.YearSlug
-	return f.rows, f.err
+func (f *fakePatruljer) AssignedNumbers(_ context.Context, year types.YearSlug) (map[types.TeamID]string, error) {
+	f.year = year
+	f.calls++
+	if f.calls <= f.failFirst {
+		return nil, context.DeadlineExceeded
+	}
+	if f.err != nil {
+		return nil, f.err
+	}
+	numbers := map[types.TeamID]string{}
+	for _, p := range f.rows {
+		if p.TeamID == "" || p.TeamNumber == "" {
+			continue
+		}
+		numbers[p.TeamID] = p.TeamNumber
+	}
+	return numbers, nil
 }
 
 func numbered(teamID, number string) patrulje.Patrulje {
@@ -1001,4 +1018,73 @@ func numbersOf(t *testing.T, pub *cqrstest.Publisher) string {
 		out = append(out, body.TeamNumber)
 	}
 	return strings.Join(out, ",")
+}
+
+// --- seeding read robustness (production incident, 2026-08-14) ---
+//
+// The seed gates everything: fail it and no patrulje is numbered for the lifetime
+// of the process. In production the read timed out — it was going through the
+// patrulje *list* query, which carries its own 3-second deadline and three
+// correlated subqueries per row, during replay when the database is busiest — and
+// the saga stayed dormant. The read is now narrow, and retried.
+
+// patrulje.Queries must keep satisfying the reader, or the wiring in main.go breaks
+// with an error that points at the composition root rather than at the cause.
+func TestPatruljeQueriesSatisfiesPatruljeReader(t *testing.T) {
+	var _ PatruljeReader = patrulje.Queries(nil)
+}
+
+func TestSeedRetriesATimedOutRead(t *testing.T) {
+	orders := &fakeOrders{
+		byID:    map[string]*order.Order{"o-1": paidPatruljeOrder("o-1", "team-1")},
+		byOwner: map[string][]order.Order{anyOwner: {seatOrder(anyOwner, 4, "x")}},
+	}
+	// The first two reads time out, as they did in production; the third succeeds.
+	patruljer := &fakePatruljer{failFirst: 2, rows: []patrulje.Patrulje{numbered("team-9", "40")}}
+
+	pub := &cqrstest.Publisher{}
+	s := New(pub, orders, catalogue(), patruljer, "2026", time.Millisecond)
+	s.sleep = func(time.Duration) {}
+
+	if err := s.HandleMessage(paidMsg(t, "o-1")); err != nil {
+		t.Fatalf("replay: %v", err)
+	}
+	s.CaughtUp()
+
+	if !s.live.Load() {
+		t.Fatal("saga stayed dormant despite the read eventually succeeding")
+	}
+	if patruljer.calls != 3 {
+		t.Errorf("read %d times, want 3 (two failures then a success)", patruljer.calls)
+	}
+	// The number that only the read model knew about must still have been folded in.
+	if n := numbersOf(t, pub); n != "41" {
+		t.Errorf("number = %s, want 41 — the seeded 40 must survive the retry", n)
+	}
+}
+
+func TestSeedGivesUpAfterItsAttempts(t *testing.T) {
+	patruljer := &fakePatruljer{failFirst: seedAttempts + 1}
+	pub := &cqrstest.Publisher{}
+	s := New(pub, &fakeOrders{}, catalogue(), patruljer, "2026", time.Millisecond)
+	s.sleep = func(time.Duration) {}
+
+	s.CaughtUp()
+
+	if s.live.Load() {
+		t.Error("saga went live without knowing which numbers are taken")
+	}
+	if patruljer.calls != seedAttempts {
+		t.Errorf("read %d times, want %d", patruljer.calls, seedAttempts)
+	}
+}
+
+// Numbers reset per year, so the seed must ask for this season only.
+func TestSeedAsksForOurSeason(t *testing.T) {
+	patruljer := &fakePatruljer{}
+	newTestSagaWith(&fakeOrders{}, patruljer)
+
+	if patruljer.year != "2026" {
+		t.Errorf("seeded with year %q, want 2026", patruljer.year)
+	}
 }

@@ -62,8 +62,14 @@ func (wiringProducts) ListEligibleFor(context.Context, types.YearSlug, types.Tea
 
 type wiringPatruljer struct{ rows []patrulje.Patrulje }
 
-func (f wiringPatruljer) GetAll(context.Context, patrulje.Filter) ([]patrulje.Patrulje, error) {
-	return f.rows, nil
+func (f wiringPatruljer) AssignedNumbers(context.Context, types.YearSlug) (map[types.TeamID]string, error) {
+	numbers := map[types.TeamID]string{}
+	for _, p := range f.rows {
+		if p.TeamNumber != "" {
+			numbers[p.TeamID] = p.TeamNumber
+		}
+	}
+	return numbers, nil
 }
 
 // --- helpers ---

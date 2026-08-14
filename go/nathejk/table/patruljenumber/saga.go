@@ -46,7 +46,6 @@ import (
 	"github.com/nathejk/shared-go/tables/order"
 	"github.com/nathejk/shared-go/tables/product"
 	"github.com/nathejk/shared-go/types"
-	"nathejk.dk/nathejk/table/patrulje"
 )
 
 // MinSeats is how many paid seats make a patrulje accepted. A patrulje is 3–7
@@ -86,12 +85,17 @@ type ProductReader interface {
 	ListEligibleFor(ctx context.Context, year types.YearSlug, ownerType types.TeamType) ([]product.Product, error)
 }
 
-// PatruljeReader supplies the numbers that already exist in the read model but
-// were never announced as events — assigned by hand, or written directly by
-// another projector (klan/consumer.go inserts patrulje rows carrying a
-// teamNumber). Replaying numberassigned alone would not see them.
+// PatruljeReader supplies the numbers that already exist in the read model but were
+// never announced as events — assigned by hand, or written directly by another
+// projector (klan/consumer.go inserts patrulje rows carrying a teamNumber).
+// Replaying numberassigned alone would not see them.
+//
+// AssignedNumbers rather than the patrulje list query: this read happens during
+// replay, when the database is at its busiest, and it needs two columns. The list
+// query carries its own 3-second timeout and three correlated subqueries per row,
+// which is what made this fail in production.
 type PatruljeReader interface {
-	GetAll(ctx context.Context, f patrulje.Filter) ([]patrulje.Patrulje, error)
+	AssignedNumbers(ctx context.Context, year types.YearSlug) (map[types.TeamID]string, error)
 }
 
 type saga struct {
@@ -171,12 +175,12 @@ func (s *saga) CaughtUp() {
 	ctx, cancel := context.WithTimeout(context.Background(), catchupTimeout)
 	defer cancel()
 
-	patruljer, err := s.patruljer.GetAll(ctx, patrulje.Filter{YearSlug: s.year})
+	numbers, err := s.readAssignedNumbers(ctx)
 	if err != nil {
 		log.Printf("patruljenumber: reading existing team numbers failed, staying dormant rather than risk re-issuing a number: %v", err)
 		return
 	}
-	s.seed(patruljer)
+	s.seed(numbers)
 	s.live.Store(true)
 
 	// Now settle the orders whose paid events were history. Nothing else will ever
@@ -185,29 +189,56 @@ func (s *saga) CaughtUp() {
 	s.drainDeferred(ctx)
 }
 
+// seedAttempts is how many times the seeding read is tried before the saga gives
+// up and stays dormant.
+//
+// Retried because this one read gates everything: a single failure means no
+// patrulje is numbered until the next restart. It runs while the projections are
+// replaying, which is exactly when the database is most likely to be slow, so a
+// transient timeout is a realistic outcome rather than a sign of real trouble.
+const seedAttempts = 3
+
+// readAssignedNumbers reads the existing numbers, retrying a slow or failing read
+// before giving up.
+func (s *saga) readAssignedNumbers(ctx context.Context) (map[types.TeamID]string, error) {
+	var err error
+	for i := 0; i < seedAttempts; i++ {
+		if i > 0 {
+			s.nap(s.settle)
+		}
+		var numbers map[types.TeamID]string
+		numbers, err = s.patruljer.AssignedNumbers(ctx, s.year)
+		if err == nil {
+			return numbers, nil
+		}
+		log.Printf("patruljenumber: reading existing team numbers failed (attempt %d of %d): %v", i+1, seedAttempts, err)
+	}
+	return nil, err
+}
+
 // catchupTimeout bounds the seed and the drain together. Generous: it runs once at
 // startup, and the drain waits on a projection that may still be replaying.
 const catchupTimeout = 5 * time.Minute
 
-// seed folds every existing teamNumber for the year into the running state: the
-// team counts as assigned, and its number raises the high-water mark. PRD 003's
-// example — a manual 300 means the next automatic number is 301, not 1.
+// seed folds the existing numbers into the running state: each team counts as
+// assigned, and its number raises the high-water mark. PRD 003's example — a manual
+// 300 means the next automatic number is 301, not 1.
 //
-// Timing: this runs at catch-up rather than at construction because hq rebuilds
-// its read model from the stream on every start, so at construction the patrulje
-// table is empty.
+// Timing: this runs at catch-up rather than at construction because hq rebuilds its
+// read model from the stream on every start, so at construction the patrulje table
+// is empty.
 //
 // Catch-up of *this* consumer does not prove the patrulje projector has finished
-// its own replay — they are independent consumers — so the mark seeded here can
-// be too low. Two things keep that from issuing a duplicate: the assigned set is
-// also fed by replayed numberassigned events, which is every number this saga has
-// ever issued, and every number it issues now is observed on the way back.
-func (s *saga) seed(patruljer []patrulje.Patrulje) {
-	for _, p := range patruljer {
-		if p.TeamID == "" || p.TeamNumber == "" {
+// its own replay — they are independent consumers — so the mark seeded here can be
+// too low. Two things keep that from issuing a duplicate: the assigned set is also
+// fed by replayed numberassigned events, which is every number this saga has ever
+// issued, and every number it issues now is observed on the way back.
+func (s *saga) seed(numbers map[types.TeamID]string) {
+	for teamID, number := range numbers {
+		if teamID == "" || number == "" {
 			continue
 		}
-		s.markAssigned(p.TeamID, p.TeamNumber)
+		s.markAssigned(teamID, number)
 	}
 }
 
