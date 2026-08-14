@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"strings"
 
 	"github.com/nathejk/shared-go/types"
@@ -91,9 +90,7 @@ func (q *querier) GetAll(ctx context.Context, f Filter) ([]*Person, error) {
 }
 
 func (q *querier) GetByID(ctx context.Context, staffID types.UserID) (*Person, error) {
-	log.Printf("Inside GetByID( %q )", staffID)
 	if len(staffID) == 0 {
-		log.Printf("not id found %q", staffID)
 		return nil, tables.ErrRecordNotFound
 	}
 
