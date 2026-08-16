@@ -133,7 +133,7 @@ const statusSeverity = (statusLabel) => (statusLabel === 'Betalt' ? 'success' : 
       v-model:filters="filters"
       filterDisplay="row"
       sortMode="single"
-      sortField="createdAt"
+      sortField="changedAt"
       :sortOrder="-1"
       :stripedRows="true"
       v-model:expandedRows="expandedRows"
@@ -144,9 +144,12 @@ const statusSeverity = (statusLabel) => (statusLabel === 'Betalt' ? 'success' : 
       <template #loading>Henter ordrer - vent... </template>
       <template #empty>Ingen ordrer fundet</template>
       <Column expander />
-      <Column field="createdAt" header="Tid" sortable>
+      <!-- Last changed, not created: what an operator scans this list for is the
+           most recent activity, and an order created weeks ago and paid today is
+           today's news. -->
+      <Column field="changedAt" header="Tid" sortable>
         <template #body="{ data }">
-          {{ formatDateTime(data.createdAt) }}
+          {{ formatDateTime(data.changedAt) }}
         </template>
       </Column>
       <Column field="ownerName" header="Ejer" sortable></Column>
@@ -199,6 +202,39 @@ const statusSeverity = (statusLabel) => (statusLabel === 'Betalt' ? 'success' : 
       </Column>
       <template #expansion="{ data }">
         <div class="p-3">
+          <dl class="mb-4 grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-sm">
+            <dt class="text-gray-500">Oprettet</dt>
+            <dd>{{ formatDateTime(data.createdAt) || '—' }}</dd>
+            <dt class="text-gray-500">Opdateret</dt>
+            <dd>{{ formatDateTime(data.changedAt) || '—' }}</dd>
+            <template v-if="(data.payments || []).length">
+              <template v-for="p in data.payments" :key="p.reference">
+                <dt class="text-gray-500">Betalingsudbyder</dt>
+                <dd>
+                  {{ p.provider || '—' }}
+                  <span class="text-gray-500">
+                    ({{ formatAmount(p.amount, data.currency) }}, {{ formatDateTime(p.changedAt) }})
+                  </span>
+                  <!-- A payment from before the order entity names the team, not the
+                       order, so it cannot say which of the team's orders it paid.
+                       Saying so is the difference between a reference an operator
+                       can act on and one that merely looks exact. -->
+                  <span v-if="p.linkedBy === 'owner'" class="text-amber-600">
+                    — registreret på holdet, ikke på ordren
+                  </span>
+                </dd>
+                <dt class="text-gray-500">Reference</dt>
+                <dd class="font-mono">{{ p.reference }}</dd>
+              </template>
+            </template>
+            <template v-else>
+              <dt class="text-gray-500">Betalingsudbyder</dt>
+              <dd class="text-gray-500 italic">
+                {{ data.paidAmount ? 'Betaling ikke fundet' : 'Ingen gennemført betaling' }}
+              </dd>
+            </template>
+          </dl>
+
           <h3 class="font-semibold mb-2">Ordrelinjer</h3>
           <DataTable :value="data.lines || []">
             <template #empty>Ingen linjer</template>
