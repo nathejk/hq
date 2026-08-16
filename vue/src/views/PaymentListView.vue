@@ -4,6 +4,7 @@ import { useToast } from 'primevue/usetoast'
 import { FilterMatchMode } from '@primevue/core/api'
 import { http } from '@/plugins/axios'
 import { useLiveResource } from '@/composables/useLiveResource'
+import { daymonthhhmm } from '@/composables/datefilters'
 
 const toast = useToast()
 
@@ -105,14 +106,9 @@ const formatAmount = (value, currency) => {
   return (value / 100).toLocaleString('da-DK', { style: 'currency', currency: currency || 'DKK' })
 }
 
-const formatDateTime = (value) => {
-  if (!value) return ''
-  const date = new Date(value)
-  const day = date.getDate()
-  const month = date.toLocaleString('da-DK', { month: 'short' })
-  const time = date.toLocaleString('da-DK', { hour: '2-digit', minute: '2-digit', hour12: false })
-  return `${day}. ${month} ${time}`
-}
+// Shared rather than parsed here: payment.createdAt arrives as Go's time.Time text
+// form, which Safari refuses to parse. See parseApiDate.
+const formatDateTime = (value) => daymonthhhmm(value)
 
 const statusSeverity = (statusLabel) => (statusLabel === 'Betalt' ? 'success' : 'warn')
 </script>
