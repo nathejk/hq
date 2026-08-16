@@ -1,6 +1,6 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import bus from '@/plugins/bus';
-import { createSseTransport, type EventSourceLike } from '@/plugins/live/sse';
+import { createSseTransport, type EventSourceLike, type SseTransportOptions } from '@/plugins/live/sse';
 import {
   SIGNAL_ENTITIES,
   SIGNAL_ENTITY_CHANGED,
@@ -67,11 +67,15 @@ function collect() {
   };
 }
 
-const newTransport = (entities?: string[]) =>
-  createSseTransport({
-    entities,
+// Accepts either the entity list (the common case) or full options, so the retry
+// tests can set a short delay without every other call site growing an argument.
+const newTransport = (arg?: string[] | Partial<SseTransportOptions>) => {
+  const options: Partial<SseTransportOptions> = Array.isArray(arg) ? { entities: arg } : (arg ?? {})
+  return createSseTransport({
+    ...options,
     create: (url) => new FakeEventSource(url),
   });
+};
 
 beforeEach(() => {
   FakeEventSource.last = undefined;
@@ -194,6 +198,114 @@ describe('createSseTransport', () => {
 
     FakeEventSource.last!.fail(2); // CLOSED — it has stopped
     expect(t.state.value).toBe('offline');
+  });
+
+  // EventSource only retries recoverable failures. A non-2xx response leaves it
+  // CLOSED for good, which used to mean the operator had to reload the page to get
+  // updates back — so the transport now retries that case itself.
+  describe('after EventSource gives up', () => {
+    it('opens a fresh connection a few seconds later', () => {
+      vi.useFakeTimers();
+      try {
+        const t = newTransport({ retryDelay: 5000 });
+        t.start('2026');
+        const first = FakeEventSource.last!;
+        first.open();
+
+        first.fail(2); // CLOSED
+        expect(t.state.value).toBe('offline');
+
+        vi.advanceTimersByTime(4999);
+        expect(FakeEventSource.last).toBe(first); // not yet
+
+        vi.advanceTimersByTime(1);
+        expect(FakeEventSource.last).not.toBe(first);
+        expect(first.closed).toBe(true); // the dead one is not left dangling
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('keeps saying "no connection" while the attempts keep failing', () => {
+      vi.useFakeTimers();
+      try {
+        const t = newTransport({ retryDelay: 1000 });
+        t.start('2026');
+        FakeEventSource.last!.open();
+        FakeEventSource.last!.fail(2);
+
+        for (let i = 0; i < 3; i++) {
+          vi.advanceTimersByTime(1000);
+          // Mid-attempt it must not flip to "connecting": the operator has been
+          // told there is no connection and a flicker every second is noise.
+          expect(t.state.value).toBe('offline');
+          FakeEventSource.last!.fail(2);
+          expect(t.state.value).toBe('offline');
+        }
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('recovers, and reports the reconnect so callers resync', () => {
+      vi.useFakeTimers();
+      const { received, stop } = collect();
+      try {
+        const t = newTransport({ retryDelay: 1000 });
+        t.start('2026');
+        FakeEventSource.last!.open();
+        received.length = 0;
+
+        FakeEventSource.last!.fail(2);
+        vi.advanceTimersByTime(1000);
+        FakeEventSource.last!.open();
+
+        expect(t.state.value).toBe('live');
+        expect(received).toEqual([{ type: SIGNAL_RESYNC, reason: 'reconnect' }]);
+      } finally {
+        stop();
+        vi.useRealTimers();
+      }
+    });
+
+    it('schedules one retry however many errors arrive', () => {
+      vi.useFakeTimers();
+      try {
+        const t = newTransport({ retryDelay: 1000 });
+        t.start('2026');
+        const first = FakeEventSource.last!;
+        first.open();
+
+        first.fail(2);
+        first.fail(2);
+        first.fail(2);
+
+        vi.advanceTimersByTime(1000);
+        const second = FakeEventSource.last;
+        vi.advanceTimersByTime(5000); // no further attempts were queued
+        expect(FakeEventSource.last).toBe(second);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('stop cancels a pending retry', () => {
+      vi.useFakeTimers();
+      try {
+        const t = newTransport({ retryDelay: 1000 });
+        t.start('2026');
+        FakeEventSource.last!.open();
+        FakeEventSource.last!.fail(2);
+
+        t.stop();
+        const afterStop = FakeEventSource.last;
+        vi.advanceTimersByTime(10_000);
+
+        expect(FakeEventSource.last).toBe(afterStop);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it('starting twice does not open a second connection', () => {

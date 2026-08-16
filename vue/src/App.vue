@@ -4,28 +4,15 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 import HelloWorld from './components/HelloWorld.vue'
 import Navigation from '@/components/Navigation.vue'
 import Foooter from '@/components/Footer.vue'
-import ConnectionIndicator from '@/components/ConnectionIndicator.vue'
-import { useConnectionState } from '@/composables/useConnectionState'
 import { useToast } from 'primevue/usetoast'
 
 const toast = useToast()
 const route = useRoute()
 const isFullbleed = computed(() => route.path === '/kort')
-
-// The moon in the navigation bar is the everyday live-update indicator (see
-// Navigation.vue). The labelled badge is kept for the case that actually needs
-// words: when nothing is arriving, a colour alone does not tell an operator that
-// what they are looking at may be missing changes.
-const { isDisconnected } = useConnectionState()
 </script>
 
 <template>
   <navigation title="Nathejk 2019" class="dark" />
-  <header>
-    <div v-if="isDisconnected" class="connection-bar">
-      <ConnectionIndicator />
-    </div>
-  </header>
   <main v-if="isFullbleed" role="main" class="fullbleed">
     <RouterView />
   </main>
@@ -39,12 +26,6 @@ const { isDisconnected } = useConnectionState()
 </template>
 
 <style scoped>
-.connection-bar {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0.25rem 0.75rem 0;
-}
-
 .lightgrey {
   color: #d5d5d5;
 }

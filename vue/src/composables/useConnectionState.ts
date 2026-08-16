@@ -27,7 +27,7 @@ const DESCRIPTIONS: Record<ConnectionState, string> = {
   live: 'Ændringer vises med det samme.',
   reconnecting: 'Forbindelsen blev afbrudt. Prøver at genoprette.',
   polling: 'Henter ændringer med få sekunders mellemrum.',
-  offline: 'Kan ikke nå serveren. Viste data kan mangle nye ændringer.',
+  offline: 'Kan ikke nå serveren. Viste data kan mangle nye ændringer. Prøver igen hvert par sekunder.',
 };
 
 export function useConnectionState() {

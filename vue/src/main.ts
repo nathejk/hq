@@ -3,6 +3,7 @@ import './assets/main.css'
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import PrimeVue from 'primevue/config'
+import Tooltip from 'primevue/tooltip'
 import Aura from '@primevue/themes/aura'
 import ToastService from 'primevue/toastservice'
 
@@ -41,6 +42,10 @@ app.use(PrimeVue, {
   }
 })
 app.use(ToastService)
+// Registered for the live-update moon in the navigation bar, which explains itself
+// on hover. The native title attribute would do it, but with a delay long enough
+// that an operator checking why nothing is updating gives up first.
+app.directive('tooltip', Tooltip)
 app.use(createPinia())
 app.use(router)
 app.component('FontAwesomeIcon', FontAwesomeIcon)

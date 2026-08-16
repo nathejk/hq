@@ -16,7 +16,6 @@ declare module 'vue' {
     Button: typeof import('primevue/button')['default']
     Card: typeof import('primevue/card')['default']
     Column: typeof import('primevue/column')['default']
-    ConnectionIndicator: typeof import('./src/components/ConnectionIndicator.vue')['default']
     DataTable: typeof import('primevue/datatable')['default']
     DatePicker: typeof import('primevue/datepicker')['default']
     DayTimePicker: typeof import('./src/components/DayTimePicker.vue')['default']

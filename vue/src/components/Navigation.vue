@@ -7,32 +7,33 @@ import UserMenu from '@/components/NavUserMenu.vue'
 
 const { navTitle } = useGlobalState()
 
-// The moon doubles as the live-update indicator.
-//
-// It is the one thing on screen at all times, on every page, so it is where a
-// "nothing is arriving any more" state belongs — PRD 004 requires connection state to
-// be displayed somewhere persistent, and a badge in the header competed with the page
-// for attention while saying nothing most of the time.
+// The moon is the live-update indicator, and the only one: it is the one thing on
+// screen at all times, on every page, so it is where a "nothing is arriving any
+// more" state belongs. A labelled badge in the header used to carry the wording,
+// but it competed with the page for attention while saying nothing most of the
+// time; the wording now appears on hover instead.
 //
 // Yellow is the normal colour, so a healthy app looks exactly as it always has and
 // only a problem changes anything:
 //
-//   live        yellow      signals arriving over SSE
-//   polling     yellow      fallback transport; slower, but updates do arrive
-//   reconnecting  red       the stream dropped and is being retried
-//   offline     dark grey   given up; the screen may be missing changes
+//   live          yellow            signals arriving over SSE
+//   polling       yellow            fallback transport; slower, but updates arrive
+//   reconnecting  yellow, spinning  the stream dropped and is being retried
+//   offline       red               nothing is arriving; the screen may be stale
+//
+// Spinning rather than a second colour for reconnecting: a brief drop is normal and
+// recovers by itself, so it should read as "working on it", not as a fault. Red is
+// reserved for the state that actually costs the operator something.
 const { state, label, description } = useConnectionState()
 
-const moonClass = computed(() => {
-  switch (state.value) {
-    case 'offline':
-      return 'text-gray-600'
-    case 'reconnecting':
-      return 'text-red-500'
-    default:
-      return 'text-yellow-400'
-  }
-})
+const moonClass = computed(() => (state.value === 'offline' ? 'text-red-500' : 'text-yellow-400'))
+
+// Only while retrying, and the icon carries it — no text moves on the page.
+const moonSpin = computed(() => state.value === 'reconnecting')
+
+// Shown on hover. The label alone is enough when healthy; the failure states are
+// where the explanation earns its place.
+const moonTooltip = computed(() => `Live opdatering: ${label.value}. ${description.value}`)
 
 //import { fas, far, fal, fass, fasds } from '@awesome.me/kit-KIT_CODE/icons'
 //import { faMoon, faLock, faWarning } from '@fortawesome/free-solid-svg-icons'
@@ -193,7 +194,7 @@ import 'primeicons/primeicons.css'
     <div class="container mx-auto">
       <div class="flex justify-between items-center">
         <!-- Logo and Brand Name -->
-        <a class="font-nathejk text-2xl leading-relaxed pr-5 uppercase" href="/"><FontAwesomeIcon :icon="['fas', 'moon']" flip="vertical" :class="moonClass" class="align-top transition-colors duration-300" :title="`Live opdatering: ${label}. ${description}`" role="status" :aria-label="`Live opdatering: ${label}. ${description}`" />{{ navTitle }}</a>
+        <a class="font-nathejk text-2xl leading-relaxed pr-5 uppercase" href="/"><FontAwesomeIcon :icon="['fas', 'moon']" flip="vertical" :spin="moonSpin" :class="moonClass" class="align-top transition-colors duration-300" v-tooltip.bottom="moonTooltip" role="status" :aria-label="moonTooltip" />{{ navTitle }}</a>
 
         <!-- Navigation Icons -->
         <div class="flex">
@@ -289,5 +290,13 @@ nav {
 .p-menubar-item-content:hover,
 .p-focus .p-menubar-item-content {
   background-color: #445e65 !important;
+}
+
+/* The spinning moon means "reconnecting". Colour already distinguishes the states,
+   so the motion is decoration and goes when the user has asked for less of it. */
+@media (prefers-reduced-motion: reduce) {
+  .fa-spin {
+    animation: none;
+  }
 }
 </style>

@@ -46,9 +46,23 @@ export type SseTransportOptions = {
 
   /** Injected for tests; defaults to the browser's EventSource. */
   create?: EventSourceFactory;
+
+  /**
+   * How long to wait before opening a fresh connection after EventSource has
+   * given up entirely.
+   *
+   * EventSource retries on its own only for recoverable failures; a non-2xx
+   * response or a closed stream puts it in CLOSED, where it stays. Without this,
+   * "no connection" was terminal and an operator had to reload the page to get
+   * updates back — exactly when they are least likely to notice they should.
+   */
+  retryDelay?: number;
 };
 
 const CLOSED = 2;
+
+/** Default gap between reconnect attempts once EventSource has given up. */
+export const DEFAULT_RETRY_DELAY = 5000;
 
 /**
  * Live updates over Server-Sent Events.
@@ -65,10 +79,18 @@ const CLOSED = 2;
  */
 export function createSseTransport(options: SseTransportOptions = {}): LiveTransport {
   const path = options.url ?? '/api/stream';
+  const retryDelay = options.retryDelay ?? DEFAULT_RETRY_DELAY;
   const state = ref<ConnectionState>('offline');
 
   let source: EventSourceLike | undefined;
   let hasConnected = false;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+  let currentYear = '';
+  // Whether EventSource has given up at least once. Distinct from the state being
+  // 'offline', which is also true before the first connect — telling those apart is
+  // what lets a fresh start show "connecting" while a retry after a real failure
+  // keeps showing "no connection".
+  let gaveUp = false;
 
   const create: EventSourceFactory =
     options.create ??
@@ -92,62 +114,102 @@ export function createSseTransport(options: SseTransportOptions = {}): LiveTrans
 
     start(year: string) {
       if (source) return; // idempotent
-
-      state.value = 'reconnecting'; // not live until the connection opens
-      const es = create(urlFor(year));
-      source = es;
-
-      es.onopen = () => {
-        state.value = 'live';
-        // Signals may have been missed while disconnected, so every connect —
-        // including the first — revalidates. This is the same path polling and
-        // hub overflow use, so there is one recovery behaviour, not three.
-        emitSignal({
-          type: SIGNAL_RESYNC,
-          reason: hasConnected ? 'reconnect' : 'connect',
-        });
-        hasConnected = true;
-      };
-
-      es.onerror = () => {
-        // EventSource retries by itself and reports CONNECTING while it does.
-        // CLOSED means it has given up, which is the only case the operator
-        // needs to act on.
-        state.value = es.readyState === CLOSED ? 'offline' : 'reconnecting';
-      };
-
-      // Dispatch on the event name so a new kind of signal — a deploy
-      // notification, say — is additive rather than a format change. Names we do
-      // not know are simply never subscribed to, which is the same as ignoring
-      // them.
-      es.addEventListener(SIGNAL_ENTITY_CHANGED, (event) => {
-        const signal = parse<EntityChangedSignal>(event.data);
-        if (signal && signal.entity) {
-          emitSignal({ ...signal, type: SIGNAL_ENTITY_CHANGED });
-        }
-      });
-
-      es.addEventListener(SIGNAL_RESYNC, () => {
-        emitSignal({ type: SIGNAL_RESYNC, reason: 'overflow' });
-      });
-
-      // Not a signal: it describes the stream rather than reporting a change, so
-      // it goes to the dependency checker rather than onto the bus. Arrives before
-      // the initial resync, and again on every reconnect — so a client that
-      // reconnects to a newly deployed build validates against that build's set.
-      es.addEventListener(SIGNAL_ENTITIES, (event) => {
-        const set = parse<EntitySet>(event.data);
-        if (set && Array.isArray(set.entities)) setKnownEntities(set);
-      });
+      currentYear = year;
+      connect();
     },
 
     stop() {
+      clearRetry();
       source?.close();
       source = undefined;
       hasConnected = false;
+      gaveUp = false;
       state.value = 'offline';
     },
   };
+
+  function clearRetry() {
+    if (retryTimer === undefined) return;
+    clearTimeout(retryTimer);
+    retryTimer = undefined;
+  }
+
+  /**
+   * Try again in a few seconds, once.
+   *
+   * Keeps at most one timer: an EventSource can report several errors for the
+   * same failure, and each must not add its own attempt.
+   */
+  function scheduleRetry() {
+    if (retryTimer !== undefined) return;
+    retryTimer = setTimeout(() => {
+      retryTimer = undefined;
+      source?.close();
+      source = undefined;
+      connect();
+    }, retryDelay);
+  }
+
+  function connect() {
+    // Once we have given up, the operator has been told there is no connection;
+    // flipping that to "connecting" and back every few seconds while the attempts
+    // keep failing would be noise. Only an opened connection clears it.
+    if (!gaveUp) state.value = 'reconnecting';
+
+    const es = create(urlFor(currentYear));
+    source = es;
+
+    es.onopen = () => {
+      clearRetry();
+      gaveUp = false;
+      state.value = 'live';
+      // Signals may have been missed while disconnected, so every connect —
+      // including the first — revalidates. This is the same path polling and
+      // hub overflow use, so there is one recovery behaviour, not three.
+      emitSignal({
+        type: SIGNAL_RESYNC,
+        reason: hasConnected ? 'reconnect' : 'connect',
+      });
+      hasConnected = true;
+    };
+
+    es.onerror = () => {
+      // EventSource retries by itself and reports CONNECTING while it does.
+      // CLOSED means it has given up, and it will never try again on its own —
+      // so from here the retry is ours.
+      if (es.readyState === CLOSED) {
+        gaveUp = true;
+        state.value = 'offline';
+        scheduleRetry();
+        return;
+      }
+      if (!gaveUp) state.value = 'reconnecting';
+    };
+
+    // Dispatch on the event name so a new kind of signal — a deploy
+    // notification, say — is additive rather than a format change. Names we do
+    // not know are simply never subscribed to, which is the same as ignoring
+    // them.
+    es.addEventListener(SIGNAL_ENTITY_CHANGED, (event) => {
+      const signal = parse<EntityChangedSignal>(event.data);
+      if (signal && signal.entity) {
+        emitSignal({ ...signal, type: SIGNAL_ENTITY_CHANGED });
+      }
+    });
+
+    es.addEventListener(SIGNAL_RESYNC, () => {
+      emitSignal({ type: SIGNAL_RESYNC, reason: 'overflow' });
+    });
+
+    // Not a signal: it describes the stream rather than reporting a change, so
+    // it goes to the dependency checker rather than onto the bus. Arrives before
+    // the initial resync, and again on every reconnect — so a client that
+    // reconnects to a newly deployed build validates against that build's set.
+    es.addEventListener(SIGNAL_ENTITIES, (event) => {
+      const set = parse<EntitySet>(event.data);
+      if (set && Array.isArray(set.entities)) setKnownEntities(set);
+    });
+  }
 }
 
 /**
