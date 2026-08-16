@@ -103,7 +103,10 @@ func TestEntitiesFrom(t *testing.T) {
 		},
 		{
 			name: "a consumer that declares no subjects is harmless",
-			// table/spejderstatus.go returns an empty slice today.
+			// table/spejderstatus.go used to be exactly this — an inert projection
+			// declaring no subjects — until PRD 006 revived it. Kept as a case
+			// because the shape is legal and must stay harmless: a projection under
+			// construction should not break the advertised token set.
 			consumers: []cqrs.Consumer{
 				consumerOf(),
 			},

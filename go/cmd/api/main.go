@@ -32,6 +32,7 @@ import (
 	"github.com/nathejk/shared-go/tables/senior"
 	"github.com/nathejk/shared-go/tables/signup"
 	"github.com/nathejk/shared-go/tables/spejder"
+	"github.com/nathejk/shared-go/tables/vehicle"
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/cmd/api/app"
 	"nathejk.dk/internal/data"
@@ -52,6 +53,7 @@ import (
 	"nathejk.dk/nathejk/table/personnel"
 	"nathejk.dk/nathejk/table/scan"
 	"nathejk.dk/nathejk/table/sos"
+	"nathejk.dk/nathejk/table/spejderstatus"
 	"nathejk.dk/nathejk/table/year"
 )
 
@@ -175,6 +177,7 @@ func main() {
 	personneltable := personnel.New(writer, db.DB())
 	paymenttable := payment.New(publisher, writer, db.DB(), currentYear)
 	spejdertable := spejder.New(writer, db.DB())
+	spejderstatustable := spejderstatus.New(writer, db.DB())
 	checkgroup := checkgroup.New(publisher, writer, reader)
 	checkpoint := checkpoint.New(publisher, writer, reader)
 	checkpersonnel := checkpersonnel.New(publisher, writer, reader)
@@ -182,6 +185,7 @@ func main() {
 	loktable := lok.New(writer, db.DB())
 	sectiontable := section.New(publisher, writer, db.DB())
 	crewmembertable := crewmember.New(publisher, writer, db.DB())
+	vehicletable := vehicle.New(publisher, writer, db.DB())
 	sostable := sos.New(publisher, writer, db.DB())
 	producttable := product.New(writer, db.DB())
 	if err := producttable.Seed(product.Seeds2026()); err != nil {
@@ -253,7 +257,7 @@ func main() {
 		patruljetable,
 		patruljenumbers,
 		table.NewPatruljeStatus(writer),
-		table.NewSpejderStatus(writer),
+		spejderstatustable,
 		personneltable,
 		paymenttable,
 		spejdertable,
@@ -266,6 +270,7 @@ func main() {
 		year,
 		sectiontable,
 		crewmembertable,
+		vehicletable,
 		ordertable,
 		sostable,
 	}
@@ -286,7 +291,7 @@ func main() {
 		logger.PrintFatal(err, nil)
 	}
 
-	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, ordertable, sostable)
+	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, vehicletable, ordertable, sostable)
 	cmds := commands.New(publisher, models)
 	cmds.Year = year
 	cmds.Checkpoint = checkpoint
@@ -294,6 +299,7 @@ func main() {
 	cmds.Checkpersonnel = checkpersonnel
 	cmds.Section = sectiontable
 	cmds.CrewMember = crewmembertable
+	cmds.Vehicle = vehicletable
 	cmds.Sos = sostable
 
 	expvar.NewString("version").Set(version)
