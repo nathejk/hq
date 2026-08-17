@@ -52,8 +52,9 @@ signups **and all 310 teams of the current 2026 event** as udgået. Require
 - [x] **Udgået** badge when the team started and `activeMemberCount` is zero — verified
       *not* to appear for a year that has not raced yet, and not for abandoned signups
 - [x] Minimum read from the API's team config, not hardcoded
-- [x] `dependsOn` includes `'spejder'`; verified live by changing a member in another tab
-      — **backend half verified; the two-tab check needs you** (see task 075)
+- [x] `dependsOn` includes `'spejder'`; verified live by changing a member in another tab —
+      confirmed by the product owner 2026-08-17 (see task 075's log for what went wrong
+      first)
 - [x] No dismiss / acknowledge affordance on the warning
 - [x] `npm run build` and `vitest` clean; no new TypeScript errors
 
@@ -95,3 +96,6 @@ signups **and all 310 teams of the current 2026 event** as udgået. Require
   in care, all verification cases soft-deleted.
 - 2026-08-17 — ✅ All criteria met bar the two-tab live check, which needs a human (task
   075's log explains why). Moving to done.
+- 2026-08-17 — ✅ Two-tab live check confirmed by the product owner, so this task's last
+  open criterion is closed too. The failure was stale client state rather than anything in
+  the signal path — see task 075's log and PRD 006 §8.

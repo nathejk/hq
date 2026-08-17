@@ -802,6 +802,25 @@ view, not a later phase. Specifics:
     The number sits on the team but only ever changes in response to a member event, so
     `patrulje` is the intuitive and wrong answer — and it fails silently.
 - Use the SPA's dev-only dependency validation while building.
+- **Two traps that make a working pipeline look broken.** Both cost real time on
+  2026-08-17 while verifying tasks 075/076, and neither produces an error anywhere:
+  1. **`/api/stream` filters by year, and an absent `?year=` defaults to the current
+     year** (`cmd/api/stream.go` → `time.Now().Format("2006")`). A client subscribed
+     without the parameter silently receives nothing for any other year — the write
+     succeeds, the projection runs, the row changes, and the signal is dropped in
+     `broadcastLocked`. When debugging by hand, always pass `?year=`. The SPA does send it
+     explicitly, and `sse.ts` says why: relying on the default would make a mismatch
+     between the stream's year and the year REST calls use invisible.
+  2. **The client cache and the signal subscription are module-level singletons.**
+     Changing a view's `dependsOn` while the dev server is running can leave the *old*
+     dependency set registered against an existing cache entry, because Vite HMR patches a
+     component without necessarily re-running its setup. A hard reload fixes it. This was
+     the actual cause of "live updates are not working" during 075 — the backend was
+     delivering both signals correctly the whole time.
+
+  The lesson for the next person: verify the **server** half with `curl -N
+  '/api/stream?year=…'` before touching the client. It takes a minute and rules out half
+  the system.
 - Optimistic writes for member actions: an operator on the phone must never wait for
   a round trip. But **not** for the resume action, which the server may legitimately
   reject — show it as pending and let the server answer.

@@ -70,8 +70,8 @@ correction is not part of the call the operator is on — see PRD 006 §7.
 - [x] Not optimistic on resume (the server may reject it); per-member pending state
 - [x] `waiting` rows visually distinct, with **no** elapsed-time threshold or warning state
 - [x] `npm run build` and `vitest` clean; no new TypeScript errors
-- [ ] Verified in two browser tabs: one operator's change appears in the other — **needs
-      you**, see log
+- [x] Verified in two browser tabs: one operator's change appears in the other — confirmed
+      by the product owner 2026-08-17
 
 ## Progress Log
 
@@ -134,3 +134,24 @@ correction is not part of the call the operator is on — see PRD 006 §7.
   004 §12 records that as the one thing an agent session cannot close. The backend half is
   verified (token advertised, consumers inside the `projections` slice, `dependsOn`
   declared).
+- 2026-08-17 — ✅ **Two-tab check confirmed by the product owner.** It did not work on the
+  first attempt, and the diagnosis is worth recording because nothing in the system reported
+  an error at any point:
+  - The backend was correct throughout. Verified by instrumenting `notifier.HandleMessage`
+    and `Hub.flush` (`notify publishing {Entity:spejder …}` → `flush pending=1 clients=1`)
+    and by capturing the raw SSE stream, which delivered **both** the `spejder` and the
+    `sos` signal for the exact 2026 scenario. Instrumentation reverted, `internal/live`
+    tests still green.
+  - My own first three probes failed for an unrelated reason: **`/api/stream` defaults an
+    absent `?year=` to the current year**, so 2025 events were filtered out of what was
+    effectively a 2026 subscription. Write succeeded, row changed, no signal —
+    indistinguishable from a broken pipeline, and the reason I nearly went looking in the
+    wrong half of the system.
+  - The browser's actual problem was **stale module-level state**: the live cache and the
+    `bus.on('live', …)` subscription are singletons, and changing `SosView`'s `dependsOn`
+    while the dev server ran left the old dependency set registered against the existing
+    cache entry. A hard reload fixed it.
+  Both traps are now written into PRD 006 §8, with the standing advice to verify the server
+  half with `curl -N '/api/stream?year=…'` before suspecting the client.
+- 2026-08-17 — Housekeeping: this file sat in `open/` with a `done` header for one commit —
+  exactly the board inconsistency the task-board skill warns about. Moved.
