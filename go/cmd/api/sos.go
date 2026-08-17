@@ -153,26 +153,34 @@ func (app *application) sosTeams(r *http.Request, c *sos.Sos) []sosTeam {
 
 // sosTeamMembers assembles a patrol's members with their lifecycle status.
 //
-// Two sources, joined here: the roster and contact details come from the spejder read
-// model, the status and its timestamp from spejderstatus. They are separate reads rather
-// than one join because the two entities are owned by different packages — and
-// spejderstatus is keyed on *currentTeamId*, which is the point: a member moved into this
-// patrol belongs on its card, and one moved away does not, even though the roster still
-// lists them under the team they signed up with.
+// Three sources have to be reconciled, and the reconciliation is the whole substance of
+// this function: the **roster** (who signed up with this patrol, from the spejder read
+// model), the **team's current members** (who is attached to it now, keyed on
+// `currentTeamId`), and each roster member's **own status row wherever it points**.
 //
-// Members with no status row are included with an empty status. A patrol whose case is
-// opened before the race has members who simply have no lifecycle yet, and leaving them
-// out would make the card look like it had lost people.
+// That third read is what makes the others usable. A roster member missing from the team's
+// current members is either somebody who moved to another patrol or somebody who never
+// started, and those must render completely differently — skipped in the first case, shown as
+// "ikke startet" in the second. Only their own status row can tell the two apart, and a
+// team-scoped query cannot return it by definition.
+//
+// Getting this wrong is not hypothetical: the first version tested `statuses[id]` from the
+// team-scoped read, so the moved-away branch could never fire and four members of a patrol
+// whose members had been moved rendered as "Ikke startet" while the patrol correctly showed
+// zero active.
 func (app *application) sosTeamMembers(r *http.Request, teamID types.TeamID) []sosMember {
 	members := []sosMember{}
+	year := app.YearSlug(r)
 
-	statuses := map[types.MemberID]spejderstatus.SpejderStatus{}
+	// Who is attached to this patrol now. This is the set strength is counted over, so it
+	// is also the set that decides who belongs on the card.
+	current := map[types.MemberID]spejderstatus.SpejderStatus{}
 	if rows, err := app.models.SpejderStatus.GetByTeam(r.Context(), spejderstatus.Filter{
-		YearSlug: app.YearSlug(r),
+		YearSlug: year,
 		TeamID:   teamID,
 	}); err == nil {
 		for _, s := range rows {
-			statuses[s.MemberID] = s
+			current[s.MemberID] = s
 		}
 	}
 
@@ -180,11 +188,24 @@ func (app *application) sosTeamMembers(r *http.Request, teamID types.TeamID) []s
 	if err != nil {
 		return members
 	}
+
+	// Every roster member's status wherever it points, so "moved away" and "never started"
+	// can be told apart.
+	rosterIDs := make([]types.MemberID, 0, len(roster))
+	for _, m := range roster {
+		rosterIDs = append(rosterIDs, m.MemberID)
+	}
+	ownStatus, err := app.models.SpejderStatus.GetByMemberIDs(r.Context(), year, rosterIDs)
+	if err != nil {
+		ownStatus = map[types.MemberID]spejderstatus.SpejderStatus{}
+	}
+
 	seen := map[types.MemberID]bool{}
 	for _, m := range roster {
-		// Skip a member the roster still lists here but who has been moved to another
-		// patrol: they are that patrol's business now.
-		if s, ok := statuses[m.MemberID]; ok && s.CurrentTeamID != teamID {
+		s, tracked := ownStatus[m.MemberID]
+		// Moved to another patrol: they are that patrol's business now, and listing them
+		// here would both mislead and contradict this team's strength.
+		if tracked && s.CurrentTeamID != "" && s.CurrentTeamID != teamID {
 			continue
 		}
 		seen[m.MemberID] = true
@@ -192,17 +213,21 @@ func (app *application) sosTeamMembers(r *http.Request, teamID types.TeamID) []s
 			MemberID: m.MemberID,
 			Name:     m.Name,
 		}
-		if s, ok := statuses[m.MemberID]; ok {
+		// Untracked means no lifecycle yet — a patrol whose case is opened before the race.
+		// Shown, with an empty status, because leaving them out would make the card look
+		// like it had lost people.
+		if tracked {
 			member.Status = s.Status
 			updated := s.UpdatedAt
 			member.UpdatedAt = &updated
 		}
 		members = append(members, member)
 	}
+
 	// A member moved *into* this patrol is not on its roster, so they would otherwise be
-	// missing from the card that now owns them — which is exactly the case the move
-	// feature creates. Their name comes from their own team's roster.
-	for id, s := range statuses {
+	// missing from the card that now owns them — which is exactly the case the move feature
+	// creates. Their name comes from their own team's roster.
+	for id, s := range current {
 		if seen[id] {
 			continue
 		}

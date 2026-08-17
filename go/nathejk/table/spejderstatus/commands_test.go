@@ -89,6 +89,18 @@ func (q stubQueries) GetHistory(context.Context, types.YearSlug, types.MemberID)
 	return nil, nil
 }
 
+func (q stubQueries) GetByMemberIDs(_ context.Context, _ types.YearSlug, ids []types.MemberID) (map[types.MemberID]SpejderStatus, error) {
+	out := map[types.MemberID]SpejderStatus{}
+	for _, id := range ids {
+		for i := range q.team {
+			if q.team[i].MemberID == id {
+				out[id] = q.team[i]
+			}
+		}
+	}
+	return out, nil
+}
+
 func newCommander(member *SpejderStatus, team []SpejderStatus) (commander, *recordingPublisher) {
 	p := &recordingPublisher{}
 	return commander{p: p, q: stubQueries{member: member, team: team}}, p

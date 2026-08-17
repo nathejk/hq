@@ -26,6 +26,7 @@ type Filter struct {
 
 type Queries interface {
 	GetByMemberID(context.Context, types.YearSlug, types.MemberID) (*SpejderStatus, error)
+	GetByMemberIDs(context.Context, types.YearSlug, []types.MemberID) (map[types.MemberID]SpejderStatus, error)
 	GetByTeam(context.Context, Filter) ([]SpejderStatus, error)
 	GetHistory(context.Context, types.YearSlug, types.MemberID) ([]StatusEvent, error)
 	InOurCare(context.Context, types.YearSlug) (*Care, error)
@@ -193,6 +194,55 @@ func (q *querier) GetHistory(ctx context.Context, year types.YearSlug, id types.
 		history = append(history, e)
 	}
 	return history, rows.Err()
+}
+
+// GetByMemberIDs reads the status of specific members, whatever team they are on now.
+//
+// This exists because GetByTeam cannot answer the question a roster asks. A patrol's roster
+// is its *signup* roster, and membership follows `currentTeamId` — so to decide whether a
+// listed member has moved away, a caller needs their row **regardless of team**, which a
+// team-scoped query by definition cannot return. Without it the two cases "has moved
+// elsewhere" and "has no status at all" are indistinguishable, and a moved member renders as
+// one who never started.
+//
+// One query with an IN clause rather than a lookup per member: a case with three patrols
+// asks about eighteen people, and that is a screen an operator keeps open all night.
+func (q *querier) GetByMemberIDs(ctx context.Context, year types.YearSlug, ids []types.MemberID) (map[types.MemberID]SpejderStatus, error) {
+	out := map[types.MemberID]SpejderStatus{}
+	if len(ids) == 0 {
+		return out, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	args := make([]any, 0, len(ids)+1)
+	args = append(args, string(year))
+	placeholders := make([]string, 0, len(ids))
+	for _, id := range ids {
+		placeholders = append(placeholders, "?")
+		args = append(args, string(id))
+	}
+
+	query := `SELECT id, year, initialTeamId, currentTeamId, status, updatedAt
+		FROM spejderstatus
+		WHERE year = ? AND id IN (` + strings.Join(placeholders, ",") + `)`
+
+	rows, err := q.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var s SpejderStatus
+		var updatedAt time.Time
+		if err := rows.Scan(&s.MemberID, &s.YearSlug, &s.InitialTeamID, &s.CurrentTeamID, &s.Status, &updatedAt); err != nil {
+			return nil, err
+		}
+		s.UpdatedAt = updatedAt
+		out[s.MemberID] = s
+	}
+	return out, rows.Err()
 }
 
 // GetByTeam reads every member currently attached to a team, whatever their status.
