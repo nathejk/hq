@@ -56,6 +56,10 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPut, "/api/klan/:id", app.updateKlanHandler)
 	router.HandlerFunc(http.MethodPatch, "/api/klan/:id", app.patchKlanHandler)
 	router.HandlerFunc(http.MethodGet, "/api/badut", app.showBadutListHandler)
+
+	// Members in our care (PRD 006). Event-wide rather than per case: a member we
+	// are responsible for is our problem whether or not anybody opened a case.
+	router.HandlerFunc(http.MethodGet, "/api/member/care", app.showMemberCareHandler)
 	router.HandlerFunc(http.MethodGet, "/api/mail/recipients", app.mailRecipientsHandler)
 
 	// Nødtelefon / SOS (PRD 001)

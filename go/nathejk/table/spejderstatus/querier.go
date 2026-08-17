@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
@@ -26,6 +27,28 @@ type Filter struct {
 type Queries interface {
 	GetByMemberID(context.Context, types.YearSlug, types.MemberID) (*SpejderStatus, error)
 	GetByTeam(context.Context, Filter) ([]SpejderStatus, error)
+	InOurCare(context.Context, types.YearSlug) (*Care, error)
+}
+
+// Care is how many members Nathejk is currently responsible for.
+//
+// The number that has to reach zero before the organisers can go home — which is why
+// it is a type with a breakdown rather than an int: an operator who sees 3 needs to
+// know whether that is three people waiting by a road or three asleep at HQ, because
+// the first three are blocking three patrols and somebody has to drive.
+type Care struct {
+	Total    int                        `json:"total"`
+	ByStatus map[types.MemberStatus]int `json:"byStatus"`
+
+	// OldestWaitingAt is when the longest-waiting member asked to leave, or nil if
+	// nobody is waiting. The threshold is applied by the caller, not here: it is
+	// configuration and still unsettled (PRD 006 §11), so the query returns the fact
+	// and lets the rule live where it can change.
+	//
+	// Only `waiting` is measured. A member in a car or asleep at HQ is accounted for
+	// and their patrol has stopped waiting for them; a member by the trailside is
+	// neither.
+	OldestWaitingAt *time.Time `json:"oldestWaitingAt"`
 }
 
 type querier struct {
@@ -64,8 +87,63 @@ func (q *querier) GetByMemberID(ctx context.Context, year types.YearSlug, id typ
 	return &s, nil
 }
 
-// GetByTeam reads every member currently attached to a team, whatever their
-// status.
+// InOurCare counts the members Nathejk is responsible for right now, per status,
+// with the oldest `waiting` timestamp for the alarm.
+//
+// The status set comes from InOurCareStatuses(), so this query does not name
+// waiting/transit/sheltered anywhere — see the comment there for why that is not
+// fussiness.
+//
+// Every in-care status is present in ByStatus even at zero. A breakdown that omitted
+// empty states would make the display flicker between three rows and one as the night
+// went on, and "transit: 0" is information: it says no car is currently carrying
+// anybody.
+func (q *querier) InOurCare(ctx context.Context, year types.YearSlug) (*Care, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	statuses := InOurCareStatuses()
+	care := &Care{ByStatus: make(map[types.MemberStatus]int, len(statuses))}
+	args := []any{string(year)}
+	placeholders := make([]string, 0, len(statuses))
+	for _, s := range statuses {
+		care.ByStatus[s] = 0
+		placeholders = append(placeholders, "?")
+		args = append(args, string(s))
+	}
+
+	query := `SELECT status, COUNT(*), MIN(updatedAt)
+		FROM spejderstatus
+		WHERE year = ? AND status IN (` + strings.Join(placeholders, ",") + `)
+		GROUP BY status`
+
+	rows, err := q.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var status types.MemberStatus
+		var count int
+		var oldest sql.NullTime
+		if err := rows.Scan(&status, &count, &oldest); err != nil {
+			return nil, err
+		}
+		care.ByStatus[status] = count
+		care.Total += count
+		if status == types.MemberStatusWaiting && oldest.Valid {
+			t := oldest.Time
+			care.OldestWaitingAt = &t
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return care, nil
+}
+
+// GetByTeam reads every member currently attached to a team, whatever their status.
 //
 // Keyed on currentTeamId rather than initialTeamId, because the question callers
 // ask is "who is with this patrol now?" — a member who was moved away is no longer

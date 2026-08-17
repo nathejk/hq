@@ -89,6 +89,57 @@ func TestParseMemberStatusFoldsCase(t *testing.T) {
 	}
 }
 
+// The in-our-care set is derived from shared-go's helper, never listed by hand.
+//
+// Asserted because the whole point is that a fourth in-care state added to
+// types.MemberStatus starts counting without anybody editing a query — and the way
+// that breaks is somebody "simplifying" InOurCareStatuses() into a literal slice.
+func TestInOurCareStatusesIsDerived(t *testing.T) {
+	got := InOurCareStatuses()
+
+	want := []types.MemberStatus{
+		types.MemberStatusWaiting,
+		types.MemberStatusTransit,
+		types.MemberStatusSheltered,
+	}
+	if len(got) != len(want) {
+		t.Fatalf("InOurCareStatuses() = %v, want %v", got, want)
+	}
+	for i, s := range want {
+		if got[i] != s {
+			t.Errorf("InOurCareStatuses()[%d] = %q, want %q", i, got[i], s)
+		}
+	}
+	// Every listed status must agree with the helper, and nothing outside the set may.
+	for _, s := range allMemberStatuses {
+		inSet := false
+		for _, c := range got {
+			if c == s {
+				inSet = true
+			}
+		}
+		if inSet != s.InOurCare() {
+			t.Errorf("%q: in set = %v, InOurCare() = %v", s, inSet, s.InOurCare())
+		}
+	}
+}
+
+// allMemberStatuses stands in for an enumeration shared-go cannot provide (Valid()
+// is a switch), so every entry must at least be one it recognises. This catches a
+// typo; nothing can catch an omission, which is why the list carries a comment
+// saying so — the count assertion is the closest available substitute.
+func TestAllMemberStatusesAreValid(t *testing.T) {
+	for _, s := range allMemberStatuses {
+		if !s.Valid() {
+			t.Errorf("%q is listed in allMemberStatuses but types.MemberStatus rejects it", s)
+		}
+	}
+	if len(allMemberStatuses) != 9 {
+		t.Errorf("allMemberStatuses has %d entries, want the 9 the lifecycle defines — "+
+			"if a status was added to shared-go, add it here too", len(allMemberStatuses))
+	}
+}
+
 // A legacy value must never be mistaken for a member who can still finish.
 //
 // 'active' and 'STARTED' map to racing, which *can* finish — correctly, those

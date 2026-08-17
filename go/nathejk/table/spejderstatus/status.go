@@ -76,3 +76,39 @@ func ParseMemberStatus(s string) (types.MemberStatus, bool) {
 	}
 	return types.MemberStatusNone, false
 }
+
+// allMemberStatuses is every status the lifecycle defines.
+//
+// shared-go has no such list — Valid() is a switch, which cannot be enumerated — so
+// it is spelled out here once and derived from thereafter. There is a test asserting
+// every entry is Valid(), which catches a typo, but nothing can catch an *omission*
+// from here, so anything added to types.MemberStatus must be added here too.
+var allMemberStatuses = []types.MemberStatus{
+	types.MemberStatusRegistered,
+	types.MemberStatusSeated,
+	types.MemberStatusRacing,
+	types.MemberStatusFinished,
+	types.MemberStatusWaiting,
+	types.MemberStatusTransit,
+	types.MemberStatusSheltered,
+	types.MemberStatusReunited,
+	types.MemberStatusReleased,
+}
+
+// InOurCareStatuses is the set of statuses that mean Nathejk is responsible for a
+// member's physical whereabouts.
+//
+// Derived by asking InOurCare() rather than by listing waiting/transit/sheltered,
+// which matters for the reason PRD 006 keeps insisting on: the set is shared-go's to
+// define, and a fourth in-care state added there must start counting here without
+// anybody remembering to edit a query. Listing them at the call site is how a member
+// ends up in our care but not in the count of members in our care.
+func InOurCareStatuses() []types.MemberStatus {
+	var out []types.MemberStatus
+	for _, s := range allMemberStatuses {
+		if s.InOurCare() {
+			out = append(out, s)
+		}
+	}
+	return out
+}
