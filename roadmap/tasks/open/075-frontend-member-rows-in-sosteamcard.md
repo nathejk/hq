@@ -29,7 +29,8 @@ Each member row shows:
   - **`transit` onwards the row is read-only.** It reflects what the car and shelter have
     recorded and offers no button to advance or reverse them.
 - secondary: **Flyt til anden patrulje**
-- members `waiting` past the threshold highlighted
+- members `waiting` are visually distinct from those racing — but **no elapsed-time
+  threshold**, which is deferred with the alarm to the dispatch dashboard PRD (task 082)
 
 **No status override here.** Corrections live on the patrol page (task 084), because a
 correction is not part of the call the operator is on — see PRD 006 §7.
@@ -65,7 +66,7 @@ correction is not part of the call the operator is on — see PRD 006 §7.
 - [ ] Status labels sourced from the backend
 - [ ] `dependsOn: ['sos:{id}', 'sos', 'spejder']`, no dev-console dependency warnings
 - [ ] Optimistic on all actions except resume
-- [ ] Members `waiting` past the threshold visually flagged
+- [ ] `waiting` rows visually distinct, with **no** elapsed-time threshold or warning state
 - [ ] `npm run build` and `vitest` clean; no new TypeScript errors
 - [ ] Verified in two browser tabs: one operator's change appears in the other
 
@@ -77,3 +78,6 @@ correction is not part of the call the operator is on — see PRD 006 §7.
 - 2026-08-17 — The status override was removed from this card by the decisions of
   2026-08-17: corrections belong on the patrol page (task 084). This card keeps only the
   actions that belong to a call in progress.
+- 2026-08-17 — Also removed the "waiting past the threshold" highlight: the alarm and its
+  threshold are deferred to the dispatch dashboard PRD (task 082). A `waiting` row should
+  still *look* different from a racing one — that is status, not elapsed time.

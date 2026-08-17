@@ -336,15 +336,17 @@ associated with it:
 - [ ] Tolerate transitions this interface did not cause, arriving in any order,
       including for members on teams never associated with a case.
 
-**Counters and alarms**
+**Counters**
 
 - [ ] Show a live **in our care** count (`MemberStatus.InOurCare()` — `waiting`,
       `transit`, `sheltered`) across the current year, permanently on screen rather
       than per-case. This is the number that must reach zero before the organisers
       can go home.
-- [ ] Flag members who have been `waiting` beyond a threshold. A waiting member
-      blocks their entire patrol, so this is the one state worth an alarm; the
-      threshold is a config value (see Open Questions).
+- [ ] **No `waiting` alarm.** Deferred 2026-08-17 to the PRD covering the dispatch
+      dashboard, which is where it belongs: nothing in this feature resolves a `waiting`
+      member — the car and shelter interfaces do not exist — so an alarm here would fire
+      for everybody and stay firing. The query still returns `oldestWaitingAt`, so the
+      fact is available the moment there is something to do about it.
 
 **Team strength and the 3-member requirement**
 
@@ -380,9 +382,18 @@ associated with it:
       reason and no approval; the record is the member changes and the resulting
       strength. Nothing in the schema, the events or the UI represents an exception, and
       there is no handled/unhandled distinction to track.
-- [ ] The required minimum (3) is a **configured value**, not a literal in code —
-      note it is currently hardcoded at `go/cmd/api/patrulje.go:99`. Where it lives
-      is an Open Question.
+- [ ] **The minimum is a property of the team type, and is not enforced
+      programmatically.** For patruljer — the only team type this flow covers — it is 3.
+      Klaner and gøglere have their own (1 today). Decided 2026-08-17: **no command
+      rejects anything on account of it, and no configuration is introduced.** The four
+      `TeamConfig` literals in `cmd/api` already express it per type (`patrulje.go:99`
+      passes 3; `klan.go`, `badut.go` and `mail.go` pass 1) and the API already serves it
+      to the SPA as `minMemberCount`, which is all a warning needs.
+
+      This is the whole of the mechanism: the number is **displayed**, an operator applies
+      it or decides an exception is warranted, and the tool records what happened either
+      way. Moving it into year configuration was the earlier proposal and is dropped — it
+      would be ceremony around a per-type constant that nothing branches on.
 
 **Discontinuation**
 
@@ -426,7 +437,7 @@ associated with it:
   rebuilt from JetStream on startup; frontend via the `http` module and PrimeVue
   Aura.
 - **Timeliness / freshness — load-bearing here in a way it is not for PRD 001.**
-  The in-our-care counter and the `waiting` alarm are the reason live updates
+  The in-our-care counter is the reason live updates
   matter: a count of the people we are responsible for that is quietly a minute out
   of date is worse than no count. Adoption uses PRD 004's shipped `useLiveResource`
   and SSE stream from the first commit.
@@ -716,7 +727,7 @@ and rather more reliable than a reason field filled in at 3am.
   `COUNT(*) FROM spejderstatus WHERE year = ? AND currentTeamId = ? AND status = 'racing'`,
   answerable directly given the `(year, currentTeamId)` index.
 - **In our care:** count by status over `InOurCare()`, plus the oldest `waiting`
-  timestamp for the alarm.
+  timestamp, which the dispatch dashboard PRD will use for its alarm.
 - **Move targets need no endpoint.** A valid target is any patrol in the same year
   still racing, and `SosTeamCard.vue` **already holds that list live**: its team-association
   picker filters the SPA's `patrulje:list` cache (min two characters, capped at ten,
@@ -770,9 +781,9 @@ fixes exactly the following and nothing more:
   associated with a case.
 - Until they ship, the **override** is the interim path: it is how an operator records
   a pickup or an arrival by hand. Its cost is measured (§9 tracks override
-  frequency), and the in-our-care counter and `waiting` alarm should be read as
-  provisional until then — do not tune the alarm threshold against interim manual
-  bookkeeping.
+  frequency), and the in-our-care counter should be read as
+  provisional until then — which is also why the `waiting` alarm is deferred rather than
+  tuned against interim manual bookkeeping.
 
 ### Live updates
 
@@ -894,8 +905,9 @@ Notes on the shape:
   the value — which this PRD should fix while it is there.
 - **The withdrawal route does not complete end to end until the car and shelter
   interfaces ship.** A member put into `waiting` has no automatic way out, so
-  `InOurCare()` will not drain on its own and the `waiting` alarm will fire for
-  everybody. The override is the interim path; see the seam section.
+  `InOurCare()` will not drain on its own. That is the reason the `waiting` alarm is
+  deferred to the dispatch dashboard PRD: here it would fire for everybody and stay
+  firing. The override is the interim path out; see the seam section.
 - **Lift-readiness can rot silently.** A single convenience import of
   `nathejk.dk/...` turns the future lift from a file move into a rewrite, and nothing
   in the build will complain. Worth an explicit review check.
@@ -995,8 +1007,8 @@ so these become 063+):
       `Fortsætter selv`, move to team
 - [ ] Task: Correction interface in `PatruljeView`'s expanded member row + the
       mint-and-close case behind it (task 084)
-- [ ] Task: Frontend — **I vores varetægt** counter + `waiting` alarm on the
-      nødtelefon list view
+- [ ] Task: Frontend — **I vores varetægt** counter on the nødtelefon list view (no
+      `waiting` alarm — deferred to the dispatch dashboard PRD)
 - [ ] Task: Frontend — breach warning + pre-commit warning on the `waiting` action,
       with collect-all / move-members actions and a dirty-guarded move dialog; the move
       picker reuses `SosTeamCard`'s live `patrulje:list` filter
@@ -1006,11 +1018,11 @@ so these become 063+):
       `PatruljeView.vue:116` with the real status
 - [ ] Task: Review check — assert the `spejderstatus` package imports nothing from
       `nathejk.dk/...` (lift-readiness)
-- [ ] Task: Confirm the `waiting` alarm threshold with organizers
 - [ ] Task: Follow-up (post-stabilisation) — lift `spejderstatus` into
       `shared-go/tables/`
-- [ ] Task: Follow-up PRDs — car-acceptance interface and shelter-acceptance
-      interface (out of scope here; this PRD fixes the seam they build against)
+- [ ] Task: Follow-up PRDs — car-acceptance interface, shelter-acceptance interface, and
+      the **dispatch dashboard** (which owns the `waiting` alarm). Out of scope here; this
+      PRD fixes the seam they build against.
 
 ## 11. Open Questions
 
@@ -1058,6 +1070,21 @@ Recorded 2026-08-17 so they are not reopened.
   separation than a visually-distinct button beside the normal actions, and it matches what
   the two surfaces are for: the case card is the call in progress, the patrol page is the
   record of a patrol.
+- **The `waiting` alarm is deferred to the dispatch dashboard PRD (2026-08-17).** Not
+  built here. The reason is the one this PRD already half-admitted in §8: nothing in this
+  feature resolves a `waiting` member, because the car and shelter interfaces do not
+  exist — so an alarm would fire for everybody and keep firing, and any threshold tuned
+  against that would be tuned against missing software. The in-our-care counter stays; the
+  query still returns `oldestWaitingAt`, so the fact is ready when something can act on
+  it. Task 082 (confirm the threshold with organizers) is closed unimplemented.
+- **The team minimum is per team type and is not enforced programmatically
+  (2026-08-17).** 3 for patruljer, which is the only type this flow covers; 1 for klaner
+  and gøglere. **No command rejects anything on account of it and no configuration is
+  introduced** — the existing per-type `TeamConfig` literals already say it and the API
+  already serves `minMemberCount` to the SPA. The number is displayed, an operator applies
+  it or judges an exception warranted, and the tool records what happened. This completes
+  the no-exception-mechanism decision: not only is there nothing to *grant*, there is
+  nothing to *enforce* either. Task 074 is closed as needing no change.
 - **There is no exception mechanism (2026-08-17).** Breaches of the 3-member
   requirement are **not handled** — we record what happened. Nothing grants, approves or
   resolves a short-handed patrol: no exception event, no reason text, no acting-operator
@@ -1123,14 +1150,6 @@ shelter PRDs will answer. All four originally-blocking questions are decided abo
 - **Correlating downstream events to a case** is covered by the first question above;
   the `correlationId`-propagation option is the version that needs every downstream
   producer to cooperate, and the decided event shape does not require it.
-- **Where does the required minimum live?** 3 is the requirement for patrols, but it
-  should be configurable rather than compiled in (currently hardcoded at
-  `go/cmd/api/patrulje.go:99`, with three sibling handlers passing 1). Year
-  configuration seems the natural home since it is a rule of the event. Confirm, and
-  confirm whether it has ever differed between years or ligas.
-- **`waiting` alarm threshold:** how long may a member be `waiting` before the
-  dashboard warns? Their patrol is blocked for the whole duration, so this is the one
-  number operators will feel. Fixed config value or per-severity?
 - **Where the in-our-care count lives:** the nødtelefon list view (proposal), the HQ
   dashboard (`/api/home`), or both? It is an event-wide number rather than a SOS one.
 - **Sequencing strictness:** should the API enforce the documented order (reject
@@ -1160,14 +1179,15 @@ shelter PRDs will answer. All four originally-blocking questions are decided abo
   producer.
 - **May a member be moved to a klan?** Closed: no. Klaner are not handled through the
   nødtelefon at all (Decisions above), so a move target is always a patrol.
-- **Does the 3-member requirement apply to klaner?** Moot for this feature for the same
-  reason; recorded only because the `MinMemberCount: 1` in the klan, badut and mail
-  handlers will still be sitting there when task 074 moves the patrol minimum into
-  configuration.
+- **Does the 3-member requirement apply to klaner?** Closed: the minimum is per team
+  type (klaner 1 today), it is informational, and klaner are not handled through the
+  nødtelefon anyway.
 - **Deferred to the car and shelter PRDs** (recorded here only so they are not lost):
   which product becomes the car interface and which the shelter one; who performs the
   final handover (`released` / `reunited`) — `reunited` happens at the finish line
-  rather than the shelter, so it may not belong to either; and car dispatch, including
-  whether the `waiting`-too-long alarm should *request* a pickup. The only piece that
-  may need to sit in the nødtelefon interface is that request, so it is worth a
-  decision when the car PRD is written rather than now.
+  rather than the shelter, so it may not belong to either.
+- **Deferred to the dispatch dashboard PRD:** the `waiting`-too-long alarm and its
+  threshold, and car dispatch generally — including whether the alarm should *request* a
+  pickup rather than only warn. That request is the one piece that might belong in the
+  nødtelefon interface rather than the dashboard, so it is worth deciding when that PRD is
+  written.
