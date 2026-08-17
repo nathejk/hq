@@ -14,8 +14,14 @@ type MemberModel struct {
 }
 
 type Spejder struct {
-	ID            types.MemberID     `json:"id"`
-	MemberID      types.MemberID     `json:"memberId"`
+	ID       types.MemberID `json:"id"`
+	MemberID types.MemberID `json:"memberId"`
+
+	// InitialTeamID is the team the member signed up with, CurrentTeamID the one
+	// they are racing for now. They differ only for a member who was moved — see
+	// PRD 006. CurrentTeamID falls back to the signup team for a member with no
+	// status row, because "not tracked yet" means they are still with their own
+	// patrol.
 	InitialTeamID types.TeamID       `json:"teamId"`
 	CurrentTeamID types.TeamID       `json:"currentTeamId"`
 	Status        types.MemberStatus `json:"status"`
@@ -31,6 +37,23 @@ type Spejder struct {
 	TShirtSize    string             `json:"tshirtSize"`
 }
 
+// GetSpejdere reads a patrol's members with their lifecycle status.
+//
+// The status comes from the spejderstatus projection and nowhere else. This query
+// used to invent one when the join found no row:
+//
+//	IF(ss.status IS NULL, IF(ps.startedUts > 0, 'started', 'paid'), ss.status)
+//
+// Neither 'started' nor 'paid' is a types.MemberStatus. They were not in the
+// documented legacy mapping either, so every lifecycle helper — Valid(),
+// CanFinish(), InOurCare() — returned false for them, and the field was typed
+// types.MemberStatus while holding values that type has never defined. The
+// fallback also leaned on patruljestatus.startedUts, which despite its name is
+// hardcoded to 1 on *signup*, so 'started' did not even mean started.
+//
+// A member with no row now reads as MemberStatusNone, which is what it means: no
+// status recorded. Callers that want to show something for that ("ikke startet")
+// decide so themselves rather than having the database decide for them.
 func (m MemberModel) GetSpejdere(filters Filters) ([]*Spejder, Metadata, error) {
 	// Create a context with a 3-second timeout.
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
@@ -39,7 +62,8 @@ func (m MemberModel) GetSpejdere(filters Filters) ([]*Spejder, Metadata, error) 
 	query := `Select
   s.memberId,
   s.teamId,
-  IF(ss.status IS NULL, IF(ps.startedUts > 0, 'started', 'paid'), ss.status) AS status,
+  COALESCE(ss.currentTeamId, s.teamId) AS currentTeamId,
+  COALESCE(ss.status, '') AS status,
   name,
   address,
   postalCode,
@@ -66,7 +90,7 @@ WHERE  (LOWER(s.year) = LOWER(?) OR ? = '') AND  (s.teamId = ? OR ? = '')`
 	spejdere := []*Spejder{}
 	for rows.Next() {
 		var s Spejder
-		if err := rows.Scan(&s.ID, &s.InitialTeamID, &s.Status, &s.Name, &s.Address, &s.PostalCode, &s.City, &s.Email, &s.Phone, &s.PhoneParent, &s.Birthday, &s.Returning, &s.TShirtSize); err != nil {
+		if err := rows.Scan(&s.ID, &s.InitialTeamID, &s.CurrentTeamID, &s.Status, &s.Name, &s.Address, &s.PostalCode, &s.City, &s.Email, &s.Phone, &s.PhoneParent, &s.Birthday, &s.Returning, &s.TShirtSize); err != nil {
 			log.Print(err)
 			return nil, Metadata{}, err
 		}

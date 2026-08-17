@@ -20,6 +20,16 @@ type Patrulje struct {
 	Korps       string       `json:"korps"`
 	Liga        string       `json:"liga"`
 	MemberCount int          `json:"memberCount"`
+
+	// ActiveMemberCount is the team's strength on the route: members still racing.
+	// Maintained by the spejderstatus projection (PRD 006). Zero on a team that
+	// **started** means discontinued — zero on one that never started means nothing
+	// at all, so the two must not be conflated by callers.
+	ActiveMemberCount int `json:"activeMemberCount"`
+
+	// SignupStatus is carried so a caller can tell those two cases apart without a
+	// second request.
+	SignupStatus types.SignupStatus `json:"signupStatus"`
 }
 type Klan struct {
 	ID          types.TeamID       `json:"id"`
@@ -51,7 +61,8 @@ func (m TeamModel) GetPatrulje(teamID types.TeamID) (*Patrulje, error) {
 		return nil, ErrRecordNotFound
 	}
 
-	query := `SELECT p.teamId, p.teamNumber, p.name, p.groupName, p.korps, p.liga, p.memberCount
+	query := `SELECT p.teamId, p.teamNumber, p.name, p.groupName, p.korps, p.liga, p.memberCount,
+			p.activeMemberCount, p.signupStatus
 		FROM patrulje p
 		JOIN patruljestatus ps ON p.teamId = ps.teamID
 		WHERE p.teamId = ?`
@@ -64,6 +75,8 @@ func (m TeamModel) GetPatrulje(teamID types.TeamID) (*Patrulje, error) {
 		&p.Korps,
 		&p.Liga,
 		&p.MemberCount,
+		&p.ActiveMemberCount,
+		&p.SignupStatus,
 	)
 	if err != nil {
 		switch {

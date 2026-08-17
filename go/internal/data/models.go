@@ -11,6 +11,7 @@ import (
 	"github.com/nathejk/shared-go/tables/payment"
 	"github.com/nathejk/shared-go/tables/section"
 	"github.com/nathejk/shared-go/tables/senior"
+	"github.com/nathejk/shared-go/tables/vehicle"
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/nathejk/table/checkgroup"
 	"nathejk.dk/nathejk/table/checkpersonnel"
@@ -75,11 +76,12 @@ type Models struct {
 	Lok            LokInterface
 	Section        section.Queries
 	CrewMember     crewmember.Queries
+	Vehicle        vehicle.Queries
 	Order          order.Queries
 	Sos            sos.Queries
 }
 
-func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface, sec section.Queries, crew crewmember.Queries, ord order.Queries, sosq sos.Queries) Models {
+func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface, sec section.Queries, crew crewmember.Queries, veh vehicle.Queries, ord order.Queries, sosq sos.Queries) Models {
 	return Models{
 		Year:           y,
 		Teams:          TeamModel{DB: db},
@@ -97,6 +99,7 @@ func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInte
 		Lok:            lok,
 		Section:        sec,
 		CrewMember:     crew,
+		Vehicle:        veh,
 		Order:          ord,
 		Sos:            sosq,
 	}
