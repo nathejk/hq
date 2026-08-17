@@ -28,8 +28,11 @@ Each member row shows:
     and saves a car being sent.
   - **`transit` onwards the row is read-only.** It reflects what the car and shelter have
     recorded and offers no button to advance or reverse them.
-- secondary, visibly separate: a status override, and **Flyt til anden patrulje**
+- secondary: **Flyt til anden patrulje**
 - members `waiting` past the threshold highlighted
+
+**No status override here.** Corrections live on the patrol page (task 084), because a
+correction is not part of the call the operator is on — see PRD 006 §7.
 
 ## Notes
 
@@ -45,17 +48,20 @@ Each member row shows:
   server answer.
 - Wire `pending` to `:loading`; do not add a spinner. `pending` is true only when nothing is
   cached, so a revisited page must not flash.
-- The override is deliberately unattractive: it exists to correct out-of-sync data, not as a
-  shortcut for work another interface owns. Its frequency is a tracked metric (PRD 006 §9).
-- Until the car and shelter interfaces ship, the override is the only way a member leaves
-  `waiting`, so it will be used more than it eventually should be. Do not design it away.
+- The correction path is deliberately elsewhere: it exists to record a reality another
+  interface failed to write down, and putting it on a different screen from the live-call
+  actions is a stronger separation than a visually-distinct button beside them. Its
+  frequency is a tracked metric (PRD 006 §9).
+- Until the car and shelter interfaces ship, that correction path is the only way a member
+  leaves `waiting`, so it will be used more than it eventually should be. Do not design it
+  away — and do not smuggle it back onto this card to save a click.
 
 ## Acceptance Criteria
 
 - [ ] Member rows render per associated patrol, with status, timestamp and acceptor
 - [ ] `Ønsker at udgå` on `racing` rows; `Fortsætter selv` prominent on `waiting` rows
 - [ ] Rows in `transit`, `sheltered`, `reunited`, `released` offer no transition buttons
-- [ ] Override and `Flyt til anden patrulje` present and visibly secondary
+- [ ] `Flyt til anden patrulje` present and visibly secondary; **no override on this card**
 - [ ] Status labels sourced from the backend
 - [ ] `dependsOn: ['sos:{id}', 'sos', 'spejder']`, no dev-console dependency warnings
 - [ ] Optimistic on all actions except resume
@@ -68,3 +74,6 @@ Each member row shows:
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-17 — Created from PRD 006. Depends on tasks 067 and 072.
+- 2026-08-17 — The status override was removed from this card by the decisions of
+  2026-08-17: corrections belong on the patrol page (task 084). This card keeps only the
+  actions that belong to a call in progress.

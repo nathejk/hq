@@ -167,8 +167,11 @@ list view (or the dashboard — see Open Questions).
   something this PRD forgot.
 - Migrating historical `patruljemerged` data (see Open Questions).
 - Position-request SMS / GPS location of members, and real-time map tracking.
-- Klan (senior) participation in SOS cases. PRD 001 scopes case association to
-  patrols; whether the projection covers seniors at all is an Open Question.
+- **Klan (senior) members entirely.** Decided 2026-08-17: klaner are **not handled
+  through the nødtelefon**, so this projection covers spejdere only. That settles the
+  seniors question outright rather than deferring it — the subject noun is `spejder`, the
+  projection keeps its name, and a klan member has no lifecycle here. If seniors ever need
+  one it is a separate entity with a separate token, not a widening of this.
 
 ## 5. User Stories & Scenarios
 
@@ -309,8 +312,14 @@ associated with it:
       Permitted **only** from `waiting`, enforced on the write side, with a message
       the operator can act on ("allerede hentet") rather than a generic conflict.
 - [ ] Override a member's status to any valid value to correct out-of-sync data,
-      **excluding `finished`**. Visibly distinct from the normal `waiting` action so
-      it is not used as a shortcut for work another interface owns.
+      **excluding `finished`**. **Not on the case card** — it lives on the patrol page's
+      member list (§7), because it is a correction rather than part of the call the
+      operator is on. Being a different screen is what keeps it from becoming a shortcut
+      for work another interface owns.
+- [ ] **`sosId` is required on every member command**, including the override and the
+      move. Nothing changes a member's status or team without a case explaining why. Where
+      the operator has no case — the correction path — the backend **creates one and closes
+      it immediately**, purely as the record (§8).
 - [ ] Move a member to another team: updates `currentTeamId`, leaves
       `initialTeamId` untouched, recomputes `activeMemberCount` on **both** teams, and
       is recorded on the case timeline.
@@ -454,9 +463,9 @@ All of this lands **inside PRD 001's surfaces**; this PRD adds no new views.
     their breath back is an ordinary outcome and saves a car being sent. **From
     `transit` onwards the row is read-only**: it reflects what the car and shelter
     have recorded and offers no buttons to advance or reverse them.
-  - Secondary actions: a visibly-separate status override, and **Flyt til anden
-    patrulje** (move the member). Use PrimeVue overlay/popover for these menus, not
-    `b-popover`.
+  - Secondary action: **Flyt til anden patrulje** (move the member). Use PrimeVue
+    overlay/popover for the menu, not `b-popover`. **No override here** — corrections live
+    on the patrol page, see below.
   - Members `waiting` past the threshold are highlighted.
 - **Below-strength panel** on the same card: when a team on the case has fewer than
   3 racing members, a prominent warning stating the current strength and offering the
@@ -469,6 +478,23 @@ All of this lands **inside PRD 001's surfaces**; this PRD adds no new views.
   long as the team is short-handed and needs no acknowledgement: there is nothing to
   grant, so there is nothing to settle. It states a fact and the timeline below it says
   how the team got there.
+- **`PatruljeView.vue` → the members list's expanded row: the correction interface.**
+  When reality and the record disagree — a member was driven in and nobody wrote it down,
+  a status was set on the wrong person — this is where it is put right. The expanded row is
+  currently a placeholder dumping `{{ data }}`, so there is room.
+
+  It shows the member's current status with its timestamp and acceptor, and offers setting
+  it to any valid value **except `finished`**. Deliberately *not* on the case card: a
+  correction is not part of the call an operator is on, and putting it on a different
+  screen is a stronger separation than a visually-distinct button on the same one — which
+  is what §6 was reaching for when it asked for the override to be hard to use as a
+  shortcut.
+
+  **Every correction still produces a case.** The operator has none here, so the backend
+  makes one and closes it immediately (§8). The patrol page already lists the patrol's
+  cases in its **Kontakt med nødtelefon** card, so corrections surface in context, on the
+  same page they were made, without an operator having to go looking — and without
+  polluting a live case with unrelated bookkeeping.
 - **`SosListView.vue` header:** a permanent **I vores varetægt** counter
   (`InOurCare()`: waiting + transit + sheltered) with a breakdown per status, and a
   warning state when any member has been `waiting` past the threshold. This is the
@@ -766,12 +792,35 @@ view, not a later phase. Specifics:
 |--------|------|---------|
 | PUT | `/api/member/:memberId/waiting` | Record that the member wants to leave the race (→ `waiting`), `sosId` required |
 | PUT | `/api/member/:memberId/racing` | Member carries on under their own steam (→ `racing`); rejected unless currently `waiting` |
-| PUT | `/api/member/:memberId/status` | Override a member's status (correction path), optional `sosId` |
-| PUT | `/api/member/:memberId/team` | Move member to another team (`currentTeamId`), optional `sosId` |
+| PUT | `/api/member/:memberId/status` | Override a member's status (correction path). `sosId` required; created-and-closed automatically when the caller has none |
+| PUT | `/api/member/:memberId/team` | Move member to another team (`currentTeamId`), `sosId` required |
 | POST | `/api/sos/:id/team/:teamId/collect` | Collect the whole team: every remaining `racing` member → `waiting`, one action |
 | GET | `/api/member/care` | In-our-care counts by status + oldest `waiting` timestamp |
 
 Notes on the shape:
+
+- **Every member command requires a `sosId`.** Nothing moves a member or changes their
+  status without a case explaining why, which is what makes the whole lifecycle auditable
+  from one place. The earlier draft had it required for the withdrawal request and optional
+  for the override and the move — the one combination nobody would choose deliberately,
+  since it made a correction auditable only if the operator happened to be inside a case.
+- **The correction path creates its own case and closes it at once.** An operator fixing an
+  out-of-sync status from the patrol page has no case, so the backend opens one, records
+  the correction on its timeline, and closes it in the same operation. Consequences, all of
+  them wanted:
+  - the timeline is uniform — there is no second, case-less way for a member's status to
+    change, so "what happened to this member?" is always answered by reading cases;
+  - it does not clutter the open-case list, because it is closed on arrival, and
+    `SosListView` groups by status;
+  - it is **countable**, which is what §9's "overrides stay rare" metric needs: one case per
+    correction, distinguishable by its headline, makes "how often are we fixing this by
+    hand?" a query rather than a guess;
+  - it appears in the patrol page's **Kontakt med nødtelefon** card automatically.
+
+  The headline must mark it as machine-created and name what was corrected, so nobody
+  reading the case list mistakes it for a call. Reusing an existing open case was the
+  alternative and is worse: a correction is rarely part of the story that case is telling,
+  and "reuse if exactly one is open" needs a rule for when two are.
 
 - **Member actions live on the member; breach handling lives on the case.**
   Associating, collecting and excepting a team are facts about *this case's handling
@@ -934,7 +983,9 @@ so these become 063+):
       into configuration (note three sibling handlers pass 1)
 - [ ] Task: Frontend — introduce member rows in `SosTeamCard.vue` (PRD 001 shipped the
       card without them): status, timestamps, acceptor, `Ønsker at udgå` /
-      `Fortsætter selv`, override, move to team
+      `Fortsætter selv`, move to team
+- [ ] Task: Correction interface in `PatruljeView`'s expanded member row + the
+      mint-and-close case behind it (task 084)
 - [ ] Task: Frontend — **I vores varetægt** counter + `waiting` alarm on the
       nødtelefon list view
 - [ ] Task: Frontend — breach warning + pre-commit warning on the `waiting` action,
@@ -978,6 +1029,26 @@ Recorded 2026-08-17 so they are not reopened.
   after building it rather than by reading the specification, which is worth recording:
   it is the same shape of mistake as the finished-team trap in §5, and the specification
   made it twice.
+- **Klaner are out, so the seniors question is closed (2026-08-17).** Klan members are
+  **not handled through the nødtelefon**, so `spejderstatus` covers spejdere only, keeps
+  its name, and publishes on the `spejder` entity. This also settles the `member` vs
+  `spejder` noun: the routes read `/api/member/…` because `MemberStatus` is a *member*
+  lifecycle, but the events and the live token are `spejder`, and there is no second
+  population to generalise for. If seniors ever need a lifecycle it is a separate entity
+  with its own token, not a widening of this one.
+- **Every member command requires a `sosId`, and the correction path mints its own
+  (2026-08-17).** No member's status or team changes without a case explaining why. The
+  asymmetry in the earlier draft — required for withdrawal, optional for the override and
+  the move — is removed. Where the operator has no case, the backend **creates one and
+  closes it immediately**, purely as the record. That keeps the timeline uniform, keeps the
+  open-case list clean, makes overrides countable for §9's metric, and surfaces corrections
+  in the patrol page's existing **Kontakt med nødtelefon** card.
+- **The correction interface lives on the patrol page, not the case card (2026-08-17).**
+  `PatruljeView.vue`'s member list, in the expanded row — which today is a placeholder
+  rendering `{{ data }}`. Being a different screen from the case card is a stronger
+  separation than a visually-distinct button beside the normal actions, and it matches what
+  the two surfaces are for: the case card is the call in progress, the patrol page is the
+  record of a patrol.
 - **There is no exception mechanism (2026-08-17).** Breaches of the 3-member
   requirement are **not handled** — we record what happened. Nothing grants, approves or
   resolves a short-handed patrol: no exception event, no reason text, no acting-operator
@@ -1056,17 +1127,11 @@ shelter PRDs will answer. All four originally-blocking questions are decided abo
 - **Sequencing strictness:** should the API enforce the documented order (reject
   `racing` → `sheltered`, say) or accept any `Valid()` status and let the timeline
   show what happened? Strictness protects the data; leniency matters at 3am when the
-  real world skipped a step. Note the override endpoint is where this bites.
-- **Seniors as well as spejdere:** `spejderstatus` is named for spejdere, but
-  `MemberStatus` is documented as a *member* lifecycle and klan members are members
-  too. Does the revived projection cover seniors, and if so does the name stay as-is
-  (shared-go's documentation refers to "the spejderstatus projection")? This also
-  decides the `member` vs `spejder` noun in the routes and the live token. PRD 001
-  scopes cases to patrols, so it is not blocking, but it shapes the eventual lift.
-- **Member event subject entity:** `spejder` (proposal — reuses the existing live
-  token, already advertised because shared-go's `spejder` consumer consumes
-  `spejder.*.updated` / `.deleted`) or a new `member` entity? Affects `dependsOn`
-  tokens across the SPA and is tangled with the seniors question above.
+  real world skipped a step. Note the override endpoint is where this bites — and now that
+  the override is the designated out-of-sync repair tool, leniency is the likelier answer:
+  its whole purpose is recording a reality that did not follow the diagram.
+- **Seniors as well as spejdere:** closed — klaner are not handled through the nødtelefon,
+  and with them the `member` vs `spejder` noun. See Decisions above.
 - **The Udgået page.** `Navigation.vue:160` links to `/ude`, which has no route, and
   shared-go's `spejder.GetInactive` is commented out waiting for exactly this
   projection — with a bug noted in its own doc comment ("two placeholders but passes
@@ -1085,11 +1150,12 @@ shelter PRDs will answer. All four originally-blocking questions are decided abo
   team that is not the one they started with (`initialTeamId` ≠ `currentTeamId`). Does
   that affect diplomas, results, or how the finish is recorded? Deferred with the finish
   producer.
-- **May a member be moved to a klan?** The move target rules are decided for patrols
-  (§11 Decisions); whether a spejder can be moved onto a klan at all is a separate and
-  probably-no question, tangled with the seniors question below.
-- **Does the 3-member requirement apply to klaner?** The rule as stated is
-  patrol-specific and klaner presumably have their own (or none).
+- **May a member be moved to a klan?** Closed: no. Klaner are not handled through the
+  nødtelefon at all (Decisions above), so a move target is always a patrol.
+- **Does the 3-member requirement apply to klaner?** Moot for this feature for the same
+  reason; recorded only because the `MinMemberCount: 1` in the klan, badut and mail
+  handlers will still be sitting there when task 074 moves the patrol minimum into
+  configuration.
 - **Deferred to the car and shelter PRDs** (recorded here only so they are not lost):
   which product becomes the car interface and which the shelter one; who performs the
   final handover (`released` / `reunited`) — `reunited` happens at the finish line
