@@ -8,6 +8,7 @@ import (
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/mysql"
 	"github.com/jrgensen/cqrs"
+	"github.com/jrgensen/stream"
 	"github.com/nathejk/shared-go/types"
 
 	_ "embed"
@@ -35,19 +36,21 @@ type SpejderStatus struct {
 func (s SpejderStatus) InOurCare() bool { return s.Status.InOurCare() }
 
 type table struct {
+	commander
 	consumer
 	querier
 }
 
 // New builds the projection.
 //
-// It takes the publisher even though the read side does not need one, so that
-// wiring in cmd/api does not change when the commands land in task 072.
-func New(w cqrs.Writer, r *sql.DB) *table {
+// It takes the publisher for the commander's sake; the writer is the consumer's and
+// the *sql.DB the querier's.
+func New(p stream.Publisher, w cqrs.Writer, r *sql.DB) *table {
 	q := querier{db: r, r: goqu.New("mysql", r)}
 	t := &table{
-		consumer: consumer{w: w},
-		querier:  q,
+		commander: commander{p: p, q: &q},
+		consumer:  consumer{w: w},
+		querier:   q,
 	}
 	if err := w.Consume(t.CreateTableSql()); err != nil {
 		log.Printf("Error creating table %q", err)

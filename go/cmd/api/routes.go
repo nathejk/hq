@@ -60,6 +60,16 @@ func (app *application) routes() http.Handler {
 	// Members in our care (PRD 006). Event-wide rather than per case: a member we
 	// are responsible for is our problem whether or not anybody opened a case.
 	router.HandlerFunc(http.MethodGet, "/api/member/care", app.showMemberCareHandler)
+
+	// The member lifecycle write surface (PRD 006). Every one of these requires a
+	// sosId: nothing changes a member's status or team without a case explaining why.
+	//
+	// Registered on the member rather than nested under /api/sos because a member's
+	// status is a fact about the member; the case is why an operator was looking.
+	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/waiting", app.requestWaitingHandler)
+	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/racing", app.resumeRacingHandler)
+	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/status", app.overrideMemberStatusHandler)
+	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/team", app.moveMemberTeamHandler)
 	router.HandlerFunc(http.MethodGet, "/api/mail/recipients", app.mailRecipientsHandler)
 
 	// Nødtelefon / SOS (PRD 001)

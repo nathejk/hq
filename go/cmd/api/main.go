@@ -175,7 +175,7 @@ func main() {
 	personneltable := personnel.New(writer, db.DB())
 	paymenttable := payment.New(publisher, writer, db.DB(), currentYear)
 	spejdertable := spejder.New(writer, db.DB())
-	spejderstatustable := spejderstatus.New(writer, db.DB())
+	spejderstatustable := spejderstatus.New(publisher, writer, db.DB())
 	checkgroup := checkgroup.New(publisher, writer, reader)
 	checkpoint := checkpoint.New(publisher, writer, reader)
 	checkpersonnel := checkpersonnel.New(publisher, writer, reader)
@@ -298,6 +298,7 @@ func main() {
 	cmds.CrewMember = crewmembertable
 	cmds.Vehicle = vehicletable
 	cmds.Sos = sostable
+	cmds.Member = spejderstatustable
 
 	expvar.NewString("version").Set(version)
 	expvar.NewInt("timestamp").Set(time.Now().Unix())

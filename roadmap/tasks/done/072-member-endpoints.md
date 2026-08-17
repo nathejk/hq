@@ -1,11 +1,11 @@
 # 072 — Member endpoints: waiting, resume, override, move
 
-**Status:** open
+**Status:** done
 **Priority:** high
 **Created:** 2026-08-17
-**Picked up by:**
-**Started:**
-**Completed:**
+**Picked up by:** agent session
+**Started:** 2026-08-17
+**Completed:** 2026-08-17
 
 ## Description
 
@@ -71,19 +71,20 @@ wrong. The write side reports strength and records what happened — it never de
 
 ## Acceptance Criteria
 
-- [ ] Four routes registered and wired to commands in the `spejderstatus` package
-- [ ] All four reject a missing `sosId` (the override's is minted by task 084's handler)
-- [ ] Resume rejected unless the member is currently `waiting`, with an actionable message
-- [ ] Override rejects `finished` and any status failing `Valid()`
-- [ ] Move rejects a target that is not a racing patrol in the same year, and rejects the
+- [x] Four routes registered and wired to commands in the `spejderstatus` package
+- [x] All four reject a missing `sosId` (the override's is minted by task 084's handler)
+- [x] Resume rejected unless the member is currently `waiting`, with an actionable message
+- [x] Override rejects `finished` and any status failing `Valid()`
+- [x] Move rejects a target that is not a racing patrol in the same year, and rejects the
       member's current team
-- [ ] Move rejects a klan as a target
-- [ ] Each action publishes per-member `spejder` events plus one summarising `sos` event
+- [x] Move rejects a klan as a target — by construction: the target is looked up as a
+      patrulje, so a klan id is "ukendt patrulje"
+- [x] Each action publishes per-member `spejder` events plus one summarising `sos` event
       when `sosId` is given
-- [ ] No-op writes publish nothing
-- [ ] Every endpoint exercised against the running dev stack, including the rejections
-- [ ] No `nathejk.dk/...` import in the package
-- [ ] `go build ./... && go vet ./...` and `gofmt -l` clean
+- [x] No-op writes publish nothing
+- [x] Every endpoint exercised against the running dev stack, including the rejections
+- [x] No `nathejk.dk/...` import in the package
+- [x] `go build ./... && go vet ./...` and `gofmt -l` clean
 
 ## Progress Log
 
@@ -95,3 +96,52 @@ wrong. The write side reports strength and records what happened — it never de
   combination nobody would choose, since it made a correction auditable only if the operator
   happened to be in a case). The override also moves off the case card entirely; task 084
   owns its surface and the mint-and-close behaviour.
+- 2026-08-17 — Picked up. `spejderstatus/commands.go` (four commands), three
+  `Record*` methods on the sos commander, and `cmd/api/member.go` composing them.
+- 2026-08-17 — **Hit a structural problem the task did not anticipate: the member command
+  must cause an `sos` event, but `spejderstatus` may not import `sos`** — both are written
+  to be lifted independently, and task 081's guard enforces it. Resolved by making the
+  **handler** the composition point: the member command publishes the member events and
+  returns a `Change`/`Move` describing what it did, and the handler enriches that with
+  names and publishes the summary. That is what a backend-for-frontend handler is *for*,
+  and it keeps both packages movable. Same reasoning for move-target validation, which
+  needs the patrulje entity: the handler checks it before calling.
+- 2026-08-17 — **The resulting team strength is computed in the command, not read from
+  `patrulje.activeMemberCount`.** Not an optimisation: at command time the projection has
+  not consumed the event yet, so the column still holds the *old* number — recording it
+  would put a stale strength on a permanent timeline entry. `strengthAfter` reads the team
+  and substitutes the one member's pending status in memory. `MemberStatusNone` is how
+  "leaving the team altogether" is expressed for a move.
+- 2026-08-17 — Withdrawal is refused from `transit` onwards (`ErrNotSelfCarrying`): once a
+  car has them, a member has not "asked to leave", they have left. Resume distinguishes
+  `ErrAlreadyCollected` from `ErrNotWaiting`, because the first is a fact about where the
+  scout physically is ("allerede hentet") and the second means the screen was wrong.
+- 2026-08-17 — Override implemented **lenient** as decided: `racing → sheltered` is accepted
+  with no pickup logged, because that is exactly the out-of-sync case the tool exists for.
+  Only `finished` stays shut.
+- 2026-08-17 — A failed summary publish is **logged, not returned**. The member events are
+  already in the log and cannot be recalled, so telling the operator the withdrawal failed
+  when it did not would be worse than losing a timeline line.
+- 2026-08-17 — 12 command tests. Writing them turned up that `stream.MutableMessage` needs
+  `SetSubject`/`SetTime` as well as the read methods — worth noting for the next fake
+  publisher in this repo, since the compiler reveals them one at a time.
+- 2026-08-17 — ✅ **Verified end to end against the dev stack — the first time the projection
+  has had a producer.** 15 steps on a real 2025 patrol (SISMO, 4 members), scripted so it
+  was reproducible:
+  - missing `sosId` → rejected with the explanatory message
+  - withdrawal → `racing→waiting`, **TeamStrength 3**, one timeline entry
+  - same request again → `change: null`, nothing published
+  - `/api/member/care` → total 1, `waiting: 1`, `oldestWaitingAt` set
+  - resume → `waiting→racing`, **TeamStrength back to 4**
+  - override to `finished` → "gennemført kan ikke sættes manuelt"
+  - override `racing→sheltered` → accepted (leniency confirmed on live data)
+  - resume while sheltered → "allerede hentet"
+  - move to a never-started 2026 team → "patruljen er ikke i løbet"
+  - move to their own team → "deltageren er allerede i patruljen"
+  - timeline carries self-contained summaries including the team name "SISMO"
+  - member restored to `racing` and `activeMemberCount` back to **4**
+- 2026-08-17 — These events are permanent dev JetStream history, so a 2025 team (past event)
+  was used deliberately. The two verification cases were soft-deleted through the API
+  afterwards so they do not clutter the case list; the throwaway script was removed.
+- 2026-08-17 — ✅ All criteria met. Full `go build`, `go vet`, `gofmt -l`, `go test ./...`
+  clean. Moving to done.

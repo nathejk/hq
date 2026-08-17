@@ -30,6 +30,18 @@ type Commands interface {
 	AssociateTeam(ctx context.Context, actor Actor, id types.SosID, teamID types.TeamID) error
 	DisassociateTeam(ctx context.Context, actor Actor, id types.SosID, teamID types.TeamID) error
 	SetSectionAssignable(ctx context.Context, actor Actor, year types.YearSlug, slug types.Slug, assignable bool) error
+
+	// The member lifecycle summaries (PRD 006). One per operation, published by the
+	// handler *after* the per-member events it describes, so that anything reading
+	// the summary is guaranteed the changes are already in the log.
+	//
+	// These take an assembled body rather than a list of arguments because the caller
+	// is the only party that can fill it: member names live in the spejder entity and
+	// the resulting strength comes from the member commands, and neither this package
+	// nor the member package may import the other.
+	RecordMemberStatusChanged(ctx context.Context, actor Actor, year types.YearSlug, body MemberStatusChanged) error
+	RecordTeamCollected(ctx context.Context, actor Actor, year types.YearSlug, body TeamCollected) error
+	RecordMembersMoved(ctx context.Context, actor Actor, year types.YearSlug, body MembersMoved) error
 }
 
 // ErrEmptyField is returned when a case is created without the two things that
@@ -314,4 +326,36 @@ func (c commander) publish(actor Actor, year types.YearSlug, id types.SosID, eve
 		return err
 	}
 	return c.p.Publish(msg)
+}
+
+// --- the member lifecycle summaries (PRD 006) ---
+//
+// Nothing is validated here beyond the case id, deliberately. These record something
+// that has *already happened* — the member events are published before them — so
+// refusing one would not undo the operation, it would only lose the record of it.
+// The place to reject a member operation is the member command, before anything has
+// been published.
+
+// RecordMemberStatusChanged puts a status-changing operation on a case's timeline.
+func (c commander) RecordMemberStatusChanged(ctx context.Context, actor Actor, year types.YearSlug, body MemberStatusChanged) error {
+	if body.SosID == "" {
+		return tables.ErrRecordNotFound
+	}
+	return c.publish(actor, year, body.SosID, "member.status.changed", &body)
+}
+
+// RecordTeamCollected puts a whole-team collection on a case's timeline as one line.
+func (c commander) RecordTeamCollected(ctx context.Context, actor Actor, year types.YearSlug, body TeamCollected) error {
+	if body.SosID == "" {
+		return tables.ErrRecordNotFound
+	}
+	return c.publish(actor, year, body.SosID, "team.collected", &body)
+}
+
+// RecordMembersMoved puts a move of one or more members on a case's timeline.
+func (c commander) RecordMembersMoved(ctx context.Context, actor Actor, year types.YearSlug, body MembersMoved) error {
+	if body.SosID == "" {
+		return tables.ErrRecordNotFound
+	}
+	return c.publish(actor, year, body.SosID, "member.moved", &body)
 }

@@ -11,6 +11,7 @@ import (
 	"nathejk.dk/nathejk/table/checkpersonnel"
 	"nathejk.dk/nathejk/table/checkpoint"
 	"nathejk.dk/nathejk/table/sos"
+	"nathejk.dk/nathejk/table/spejderstatus"
 	"nathejk.dk/nathejk/table/year"
 )
 
@@ -23,6 +24,7 @@ type Commands struct {
 	CrewMember     crewmember.Commands
 	Vehicle        vehicle.Commands
 	Sos            sos.Commands
+	Member         spejderstatus.Commands
 
 	Team interface {
 		UpdatePatrulje(types.TeamID, Patrulje, Contact, []Spejder) error
