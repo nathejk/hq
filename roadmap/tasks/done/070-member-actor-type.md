@@ -1,11 +1,11 @@
 # 070 — An actor type for the member package
 
-**Status:** open
+**Status:** done
 **Priority:** medium
 **Created:** 2026-08-17
-**Picked up by:**
-**Started:**
-**Completed:**
+**Picked up by:** agent session
+**Started:** 2026-08-17
+**Completed:** 2026-08-17
 
 ## Description
 
@@ -41,14 +41,30 @@ the critical path, and it matches how `sos` solved the same problem.
 
 ## Acceptance Criteria
 
-- [ ] Member commands take an actor without importing `sos`
-- [ ] Approach chosen and the reason recorded in the log
-- [ ] `cmd/api` resolves it from `requestctx` as `actor.go` does today
-- [ ] Task 081's lift-readiness check passes with it in place
-- [ ] `go build ./... && go vet ./...` clean
+- [x] Member commands take an actor without importing `sos`
+- [x] Approach chosen and the reason recorded in the log
+- [x] `cmd/api` resolves it from `requestctx` as `actor.go` does today
+- [x] Task 081's lift-readiness check passes with it in place
+- [x] `go build ./... && go vet ./...` clean
 
 ## Progress Log
 
 <!-- Append entries here — never edit or delete existing entries -->
 
 - 2026-08-17 — Created from PRD 006. Needed before task 072 publishes anything.
+- 2026-08-17 — **Option 1 chosen** (a package-local `Actor`), as proposed. Half of it was
+  already done: `spejderstatus.Actor` was defined in `messages.go` during task 063, because
+  the event bodies needed a field for it. This task added the missing half —
+  `app.memberActor(r)` in `cmd/api/actor.go`.
+- 2026-08-17 — Wrote the justification into the code rather than only here, because two
+  structurally identical five-line structs are exactly what a later reader "tidies up" by
+  making one import the other. The comment states the cost of that: `spejderstatus` and `sos`
+  are each written to be lifted to shared-go **independently**, so a shared `sos.Actor` would
+  make the member package depend on the SOS domain for no reason beyond saving five lines,
+  and its lift would stop being a file move. Task 081's guard would fail — which is the point
+  of having it, but a comment is cheaper than a failing test to interpret.
+- 2026-08-17 — Recorded the rejected alternative (one `types.Actor` in shared-go) with the
+  condition for revisiting it: a third occurrence. Three is a pattern, two is a coincidence,
+  and it is not worth a cross-repo change on the critical path to remove two small structs.
+- 2026-08-17 — ✅ All criteria met. `go build`, `go vet`, `gofmt` clean; task 081's
+  lift-readiness test still passes. Moving to done.

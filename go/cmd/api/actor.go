@@ -5,6 +5,7 @@ import (
 
 	"nathejk.dk/internal/requestctx"
 	"nathejk.dk/nathejk/table/sos"
+	"nathejk.dk/nathejk/table/spejderstatus"
 )
 
 // actor resolves who is making the request, for domain commands that record it.
@@ -26,4 +27,26 @@ func (app *application) actor(r *http.Request) sos.Actor {
 		return sos.Actor{}
 	}
 	return sos.Actor{UserID: u.ID, Name: u.Name}
+}
+
+// memberActor is the same thing for the member lifecycle (PRD 006).
+//
+// It exists as a second function returning a structurally identical type, which
+// looks like duplication and is not. spejderstatus and sos are both written to be
+// lifted to shared-go independently, and neither may import the other — so if the
+// member commands took a sos.Actor, the member package would depend on the SOS
+// domain for no reason beyond saving these five lines, and its lift would stop
+// being a file move. Its lift_test.go enforces that, and this is the pressure
+// valve that lets it.
+//
+// The alternative was one shared types.Actor in shared-go. Rejected for now: it is
+// a cross-repo change on the critical path to remove two small structs, and
+// sos.Actor is already shipped. Worth revisiting if a third appears — three is a
+// pattern, two is a coincidence.
+func (app *application) memberActor(r *http.Request) spejderstatus.Actor {
+	u, ok := requestctx.UserFrom(r.Context())
+	if !ok {
+		return spejderstatus.Actor{}
+	}
+	return spejderstatus.Actor{UserID: u.ID, Name: u.Name}
 }
