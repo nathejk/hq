@@ -29,7 +29,7 @@ func (q *querier) GetAll(ctx context.Context, filters Filter) ([]Patrulje, error
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	query := `SELECT p.teamId, teamNumber, name, groupName, korps, liga, contactName, contactPhone, contactEmail, contactRole, signupStatus,
+	query := `SELECT p.teamId, teamNumber, name, groupName, korps, liga, contactName, contactPhone, contactEmail, contactRole, signupStatus, activeMemberCount,
 			(SELECT COUNT(*) FROM spejder s where p.teamId = s.teamId) memberCount,
 			(SELECT COUNT(*) FROM spejder s where p.teamId = s.teamId AND s.tshirtSize != '') tshirtCount,
 			(SELECT COALESCE(SUM(pay.amount), 0) FROM payment pay
@@ -49,7 +49,7 @@ func (q *querier) GetAll(ctx context.Context, filters Filter) ([]Patrulje, error
 	patruljer := []Patrulje{}
 	for rows.Next() {
 		var p Patrulje
-		if err := rows.Scan(&p.TeamID, &p.TeamNumber, &p.Name, &p.Group, &p.Korps, &p.Liga, &p.ContactName, &p.ContactPhone, &p.ContactEmail, &p.ContactRole, &p.SignupStatus, &p.MemberCount, &p.TshirtCount, &p.PaidAmount); err != nil {
+		if err := rows.Scan(&p.TeamID, &p.TeamNumber, &p.Name, &p.Group, &p.Korps, &p.Liga, &p.ContactName, &p.ContactPhone, &p.ContactEmail, &p.ContactRole, &p.SignupStatus, &p.ActiveMemberCount, &p.MemberCount, &p.TshirtCount, &p.PaidAmount); err != nil {
 			return nil, err
 		}
 		payableAmount := p.TshirtCount*175 + p.MemberCount*250
@@ -78,7 +78,7 @@ func (q *querier) GetByID(ctx context.Context, teamID types.TeamID) (*Patrulje, 
 		return nil, tables.ErrRecordNotFound
 	}
 
-	query := `SELECT p.teamId, p.teamNumber, p.name, p.groupName, p.korps, p.liga, p.memberCount
+	query := `SELECT p.teamId, p.teamNumber, p.name, p.groupName, p.korps, p.liga, p.memberCount, p.activeMemberCount
 		FROM patrulje p
 		JOIN patruljestatus ps ON p.teamId = ps.teamID
 		WHERE p.teamId = ?`
@@ -91,6 +91,7 @@ func (q *querier) GetByID(ctx context.Context, teamID types.TeamID) (*Patrulje, 
 		&p.Korps,
 		&p.Liga,
 		&p.MemberCount,
+		&p.ActiveMemberCount,
 	)
 	if err != nil {
 		switch {

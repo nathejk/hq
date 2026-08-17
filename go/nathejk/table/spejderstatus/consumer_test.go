@@ -35,6 +35,50 @@ func (w *recordingWriter) last() string {
 	return w.stmts[len(w.stmts)-1]
 }
 
+// Every member write is now followed by a recompute of the team's strength, so
+// tests select the statement they mean rather than counting or taking the last
+// one. Splitting by target table keeps each assertion about one thing: the member
+// row, or the count derived from it.
+func (w *recordingWriter) memberStmts() []string { return w.stmtsFor("spejderstatus") }
+func (w *recordingWriter) countStmts() []string  { return w.stmtsFor("patrulje") }
+
+func (w *recordingWriter) stmtsFor(table string) []string {
+	var out []string
+	for _, s := range w.stmts {
+		// The recompute reads spejderstatus in a subquery, so match on what the
+		// statement *writes* rather than on any mention of the table.
+		if strings.HasPrefix(s, "UPDATE `"+table+"`") ||
+			strings.HasPrefix(s, "INSERT IGNORE INTO `"+table+"`") ||
+			strings.HasPrefix(s, "INSERT INTO `"+table+"`") ||
+			// goqu's mysql dialect renders a delete as DELETE `t` FROM `t` WHERE ...
+			strings.HasPrefix(s, "DELETE `"+table+"`") {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// firstMemberStmt is the member-row write, which most tests are about.
+func (w *recordingWriter) firstMemberStmt(t *testing.T) string {
+	t.Helper()
+	stmts := w.memberStmts()
+	if len(stmts) == 0 {
+		t.Fatalf("no spejderstatus statement emitted; subject unmatched?")
+	}
+	return stmts[0]
+}
+
+// updateClause is the ON DUPLICATE KEY UPDATE tail, i.e. exactly which columns an
+// event is entitled to overwrite on a row that already exists.
+func updateClause(t *testing.T, stmt string) string {
+	t.Helper()
+	i := strings.Index(stmt, "ON DUPLICATE KEY UPDATE")
+	if i < 0 {
+		t.Fatalf("statement is not an upsert, so replay would duplicate or clobber: %s", stmt)
+	}
+	return stmt[i:]
+}
+
 type fakeMessage struct {
 	subject stream.Subject
 	body    any
@@ -92,22 +136,24 @@ func TestTeamStartedMakesEveryStartingMemberRacing(t *testing.T) {
 		},
 	}))
 
-	if len(w.stmts) != 2 {
-		t.Fatalf("got %d statements, want one per starting member: %v", len(w.stmts), w.stmts)
+	members := w.memberStmts()
+	if len(members) != 2 {
+		t.Fatalf("got %d member statements, want one per starting member: %v", len(members), members)
 	}
-	for _, stmt := range w.stmts {
-		if !strings.Contains(stmt, "spejderstatus") {
-			t.Errorf("statement does not write spejderstatus: %s", stmt)
-		}
+	for _, stmt := range members {
 		if !strings.Contains(stmt, "racing") {
 			t.Errorf("starting member not set racing: %s", stmt)
 		}
-		if !strings.Contains(stmt, "ON DUPLICATE KEY UPDATE") {
-			t.Errorf("write is not an upsert, so replay would fail: %s", stmt)
-		}
+		updateClause(t, stmt)
 	}
-	if !strings.Contains(w.stmts[0], "'m-1'") || !strings.Contains(w.stmts[1], "'m-2'") {
-		t.Errorf("member ids not taken from the body: %v", w.stmts)
+	if !strings.Contains(members[0], "'m-1'") || !strings.Contains(members[1], "'m-2'") {
+		t.Errorf("member ids not taken from the body: %v", members)
+	}
+	// One recompute for the team, not one per member: the count is derived from the
+	// table rather than accumulated, so N statements would ask the same question N
+	// times.
+	if got := len(w.countStmts()); got != 1 {
+		t.Errorf("got %d strength recomputes for a two-member start, want 1", got)
 	}
 }
 
@@ -123,8 +169,8 @@ func TestTeamStartedSkipsMembersWithNoID(t *testing.T) {
 		Members: []messages.NathejkTeamStarted_Member{{MemberID: ""}, {MemberID: "m-1"}},
 	}))
 
-	if len(w.stmts) != 1 {
-		t.Fatalf("got %d statements, want 1: %v", len(w.stmts), w.stmts)
+	if got := len(w.memberStmts()); got != 1 {
+		t.Fatalf("got %d member statements, want 1: %v", got, w.memberStmts())
 	}
 }
 
@@ -145,8 +191,7 @@ func TestTeamStartedReplayDoesNotUndoAMove(t *testing.T) {
 		Members: []messages.NathejkTeamStarted_Member{{MemberID: "m-1"}},
 	}))
 
-	stmt := w.last()
-	update := stmt[strings.Index(stmt, "ON DUPLICATE KEY UPDATE"):]
+	update := updateClause(t, w.firstMemberStmt(t))
 	if strings.Contains(update, "currentTeamId") {
 		t.Errorf("start event overwrites currentTeamId, so replay would undo moves: %s", update)
 	}
@@ -162,14 +207,21 @@ func TestSpejderDeletedRemovesTheRow(t *testing.T) {
 	w := &recordingWriter{}
 	c := &consumer{w: w}
 
-	handle(t, c, msg("NATHEJK.2026.spejder.m-1.deleted", nil))
+	handle(t, c, msg("NATHEJK.2026.spejder.m-1.deleted", messages.NathejkMemberDeleted{
+		MemberID: "m-1", TeamID: "team-1",
+	}))
 
-	stmt := w.last()
+	stmt := w.firstMemberStmt(t)
 	if !strings.HasPrefix(strings.ToUpper(stmt), "DELETE") {
 		t.Errorf("want a DELETE, got: %s", stmt)
 	}
 	if !strings.Contains(stmt, "'m-1'") || !strings.Contains(stmt, "'2026'") {
 		t.Errorf("delete is not scoped to the member and year: %s", stmt)
+	}
+	// The deleted member's team loses strength, and the row is gone, so the team can
+	// only come from the event body.
+	if got := len(w.countStmts()); got != 1 {
+		t.Errorf("a non-starter's removal did not recompute their team's strength")
 	}
 }
 
@@ -194,15 +246,13 @@ func TestLifecycleEventsWriteTheirStatus(t *testing.T) {
 			c := &consumer{w: w}
 			handle(t, c, msg(tt.subject, tt.body))
 
-			stmt := w.last()
-			if stmt == "" {
-				t.Fatalf("no statement emitted; subject unmatched?")
-			}
+			stmt := w.firstMemberStmt(t)
 			if !strings.Contains(stmt, string(tt.want)) {
 				t.Errorf("want status %q in: %s", tt.want, stmt)
 			}
-			if !strings.Contains(stmt, "ON DUPLICATE KEY UPDATE") {
-				t.Errorf("not an upsert: %s", stmt)
+			updateClause(t, stmt)
+			if got := len(w.countStmts()); got != 1 {
+				t.Errorf("status change did not recompute the team's strength")
 			}
 		})
 	}
@@ -219,16 +269,79 @@ func TestTeamMovedChangesCurrentTeamOnly(t *testing.T) {
 		MemberID: "m-1", FromTeamID: "team-1", ToTeamID: "team-2",
 	}))
 
-	stmt := w.last()
+	stmt := w.firstMemberStmt(t)
 	if !strings.Contains(stmt, "'team-2'") {
 		t.Errorf("destination team not written: %s", stmt)
 	}
-	update := stmt[strings.Index(stmt, "ON DUPLICATE KEY UPDATE"):]
+	update := updateClause(t, stmt)
 	if !strings.Contains(update, "currentTeamId") {
 		t.Errorf("move does not update currentTeamId: %s", update)
 	}
 	if strings.Contains(update, "initialTeamId") {
 		t.Errorf("move overwrites initialTeamId, losing where the member started: %s", update)
+	}
+
+	// **Both** teams are recomputed: the origin lost a member and the destination
+	// gained one. Recomputing only the destination is the plausible half-fix that
+	// would leave the patrol the member left overstating its strength — and therefore
+	// not showing as under styrke when it should, which is the whole point of the
+	// number.
+	counts := w.countStmts()
+	if len(counts) != 2 {
+		t.Fatalf("got %d recomputes for a move, want one per team: %v", len(counts), counts)
+	}
+	if !strings.Contains(counts[0], "'team-1'") {
+		t.Errorf("origin team's strength not recomputed: %s", counts[0])
+	}
+	if !strings.Contains(counts[1], "'team-2'") {
+		t.Errorf("destination team's strength not recomputed: %s", counts[1])
+	}
+}
+
+// The recompute derives the count from the member rows rather than adjusting it.
+//
+// An increment would need the member's previous status, which no event carries, and
+// would make the result depend on the order history happens to arrive in — fatal for
+// a table rebuilt by replay on every restart. Asserting on the shape of the SQL is
+// the only way to pin this without a database.
+func TestStrengthIsRecomputedNotIncremented(t *testing.T) {
+	w := &recordingWriter{}
+	c := &consumer{w: w}
+
+	handle(t, c, msg("NATHEJK.2026.spejder.m-1.withdrawal.requested", WithdrawalRequested{
+		MemberID: "m-1", TeamID: "team-1",
+	}))
+
+	stmt := w.countStmts()[0]
+	if !strings.Contains(stmt, "SELECT COUNT(*)") {
+		t.Errorf("strength is not recomputed from the member rows: %s", stmt)
+	}
+	if strings.Contains(stmt, "activeMemberCount`+") || strings.Contains(stmt, "activeMemberCount`-") {
+		t.Errorf("strength is adjusted rather than recomputed, so replay order matters: %s", stmt)
+	}
+	// Only racing members count. waiting members are still on the team but not on
+	// the route, and counting them would hide every breach of the 3-member rule.
+	if !strings.Contains(stmt, "'racing'") {
+		t.Errorf("strength does not filter on racing: %s", stmt)
+	}
+	if !strings.Contains(stmt, "'2026'") {
+		t.Errorf("strength is not year-scoped: %s", stmt)
+	}
+}
+
+// A lifecycle event whose body names no team still updates the member, but must not
+// write a strength against the empty team id.
+func TestNoTeamMeansNoRecompute(t *testing.T) {
+	w := &recordingWriter{}
+	c := &consumer{w: w}
+
+	handle(t, c, msg("NATHEJK.2026.spejder.m-1.withdrawal.requested", WithdrawalRequested{MemberID: "m-1"}))
+
+	if len(w.memberStmts()) != 1 {
+		t.Errorf("member row should still be written: %v", w.stmts)
+	}
+	if got := len(w.countStmts()); got != 0 {
+		t.Errorf("recomputed a strength for no team: %v", w.countStmts())
 	}
 }
 
@@ -257,8 +370,15 @@ func TestReplayIsIdempotent(t *testing.T) {
 	handle(t, c, m)
 	handle(t, c, m)
 
-	if len(w.stmts) != 2 || w.stmts[0] != w.stmts[1] {
-		t.Errorf("replay is not idempotent:\n%s\n%s", w.stmts[0], w.stmts[1])
+	members := w.memberStmts()
+	if len(members) != 2 || members[0] != members[1] {
+		t.Errorf("replay is not idempotent:\n%s\n%s", members[0], members[1])
+	}
+	// The recompute is idempotent for the same reason it is order-independent: it
+	// asks the table, so running it twice lands the same number.
+	counts := w.countStmts()
+	if len(counts) != 2 || counts[0] != counts[1] {
+		t.Errorf("strength recompute is not idempotent:\n%v", counts)
 	}
 }
 
@@ -278,7 +398,7 @@ func TestYearComesFromSubjectNotMessageTime(t *testing.T) {
 		time.Date(2027, 3, 1, 12, 0, 0, 0, time.UTC),
 	))
 
-	stmt := w.last()
+	stmt := w.firstMemberStmt(t)
 	if !strings.Contains(stmt, "'2026'") {
 		t.Errorf("year not taken from the subject: %s", stmt)
 	}

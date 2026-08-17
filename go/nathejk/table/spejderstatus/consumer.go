@@ -117,24 +117,43 @@ func (c *consumer) HandleMessage(msg stream.Message) error {
 		}
 		// initialTeamId is deliberately absent from the update: it records where
 		// the member started and must survive any number of moves.
-		return c.upsert(msg, goqu.Record{
+		if err := c.upsert(msg, goqu.Record{
 			"id":            c.memberID(msg),
 			"year":          c.year(msg),
 			"initialTeamId": string(body.FromTeamID),
 			"currentTeamId": string(body.ToTeamID),
 			"status":        string(types.MemberStatusRacing),
 			"updatedAt":     c.at(msg),
-		}, "currentTeamId", "status", "updatedAt")
+		}, "currentTeamId", "status", "updatedAt"); err != nil {
+			return err
+		}
+		// Both teams: the origin lost a member and the destination gained one. This
+		// is the case that makes carrying FromTeamID on the event worth it — the row
+		// no longer says where the member came from.
+		if err := c.recomputeActiveMemberCount(msg, body.FromTeamID); err != nil {
+			return err
+		}
+		return c.recomputeActiveMemberCount(msg, body.ToTeamID)
 
 	// The member did not start. Delete rather than mark: a no-show has no place in
 	// the lifecycle at all, and leaving a row would make them count somewhere.
 	case msg.Subject().Match("NATHEJK.*.spejder.*.deleted"):
-		return c.exec(goqu.Dialect("mysql").
+		// The body is read only for its team: the delete itself is keyed on the
+		// subject, but the team whose strength just changed cannot be recovered from
+		// a row that no longer exists, so it has to come from the event.
+		var body messages.NathejkMemberDeleted
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		if err := c.exec(goqu.Dialect("mysql").
 			Delete("spejderstatus").
 			Where(
 				goqu.C("year").Eq(c.year(msg)),
 				goqu.C("id").Eq(c.memberID(msg)),
-			))
+			)); err != nil {
+			return err
+		}
+		return c.recomputeActiveMemberCount(msg, body.TeamID)
 
 	// Where racing comes from.
 	//
@@ -168,7 +187,10 @@ func (c *consumer) HandleMessage(msg stream.Message) error {
 				return err
 			}
 		}
-		return nil
+		// Once for the team, not once per member: the count is recomputed from the
+		// table rather than accumulated, so repeating it per member would issue N
+		// identical statements for the same answer.
+		return c.recomputeActiveMemberCount(msg, body.TeamID)
 
 	default:
 		log.Printf("Unhandled message %q", msg.Subject().Subject())
@@ -192,13 +214,69 @@ func (c *consumer) setStatus(msg stream.Message, e MemberEvent) error {
 		log.Printf("spejderstatus: refusing unknown status %q for member %q", e.Status(), c.memberID(msg))
 		return nil
 	}
-	return c.upsert(msg, goqu.Record{
+	if err := c.upsert(msg, goqu.Record{
 		"id":            c.memberID(msg),
 		"year":          c.year(msg),
 		"currentTeamId": string(c.teamID(e)),
 		"status":        string(status),
 		"updatedAt":     c.at(msg),
-	}, "status", "updatedAt")
+	}, "status", "updatedAt"); err != nil {
+		return err
+	}
+	// Strictly after the row is written, which is the whole reason the two live in
+	// one consumer — see below.
+	return c.recomputeActiveMemberCount(msg, c.teamID(e))
+}
+
+// recomputeActiveMemberCount rewrites the team's strength from the member rows.
+//
+// # Why this lives here, in the member projection, writing another package's table
+//
+// The count belongs to the team, so the obvious home is the patrulje consumer. That
+// would be wrong, and quietly: the mux hands the same message to every consumer with
+// **no ordering guarantee between them**, so a recompute in patrulje could read
+// spejderstatus before this projection had written the row the event describes, and
+// land a count that is one out. Nothing would fail. The number would simply be wrong
+// in a way that looks entirely plausible — which, for a count of who is still on the
+// route, is the worst available outcome.
+//
+// Writing both tables from the one consumer removes the race by construction: the
+// row is in place before it is counted, because the same function did both in order.
+//
+// # Why recompute rather than increment
+//
+// A ±1 would need the member's previous status, which the event does not carry and
+// which a replayed event cannot know. It would also make the result depend on
+// arrival order: replay the same events in a different order and the count drifts.
+// Recomputing converges on the same answer whatever order history arrives in, which
+// is the only property that matters for a table rebuilt from the log on every
+// restart. The subquery is indexed on (year, currentTeamId, status).
+//
+// # Why there is no event for discontinuation
+//
+// A team with activeMemberCount == 0 is discontinued. That needs no event, no flag
+// and no reverse event: move a member back in and the recompute makes the team
+// active again on its own. The legacy patruljemerged encoding needed .merged and
+// .splited precisely because it stored the conclusion instead of the input.
+func (c *consumer) recomputeActiveMemberCount(msg stream.Message, teamID types.TeamID) error {
+	if teamID == "" {
+		// Nothing to recompute. Not an error: a lifecycle event for a member whose
+		// team we do not know still updates the member's own row, and a strength we
+		// cannot attribute is better left alone than written against "".
+		return nil
+	}
+	racing := goqu.Dialect("mysql").
+		From("spejderstatus").
+		Select(goqu.COUNT(goqu.Star())).
+		Where(
+			goqu.C("year").Eq(c.year(msg)),
+			goqu.C("currentTeamId").Eq(string(teamID)),
+			goqu.C("status").Eq(string(types.MemberStatusRacing)),
+		)
+	return c.exec(goqu.Dialect("mysql").
+		Update("patrulje").
+		Set(goqu.Record{"activeMemberCount": racing}).
+		Where(goqu.C("teamId").Eq(string(teamID))))
 }
 
 // teamID reads the team off whichever event body carries one.

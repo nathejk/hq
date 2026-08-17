@@ -125,7 +125,8 @@ list view (or the dashboard — see Open Questions).
   same outcome expressed the way the domain actually works: a member is moved.
 - **Every team carries an `activeMemberCount`**, maintained from member status, so
   team strength and discontinuation are the same number rather than two independent
-  derivations: a team whose count is zero is **discontinued** (udgået), and moving a
+  derivations: a team that started and whose count is zero is **discontinued** (udgået),
+  and moving a
   member into it makes it active again. There is **no `team.discontinued` event** —
   the count is the fact, and a team cannot be discontinued except by losing its
   members.
@@ -376,9 +377,18 @@ associated with it:
 
 **Discontinuation**
 
-- [ ] A team whose **`activeMemberCount` is zero** is **discontinued** (udgået).
-      Derived from the count, recomputed on every membership or status change, and
-      therefore reversible: moving a member in makes the team active again.
+- [ ] A team that **started** and whose **`activeMemberCount` is zero** is
+      **discontinued** (udgået). Derived from the count, recomputed on every membership
+      or status change, and therefore reversible: moving a member in makes the team
+      active again.
+- [ ] **The "started" half is not optional.** A team that never started also has zero
+      racing members, so the count alone does not distinguish *left the route* from
+      *never on it*. Measured on the dev data (2026-08-17): the naive predicate marks 239
+      abandoned 2025 signups **and all 310 teams of the current 2026 event** as udgået.
+      The signal is `patrulje.signupStatus = 'STARTED'`, set by the patrulje consumer
+      from the same `patrulje.*.started` event the member projection derives `racing`
+      from. Note `patruljestatus.startedUts` is **not** that signal despite its name — it
+      is hardcoded to 1 on *signup* (`table/patruljestatus.go:87`).
 - [ ] **No `team.discontinued` event and no discontinued flag.** The count is the
       fact. Nothing may set discontinuation independently of membership, and no
       operator action discontinues a team directly — they retire or move its members.
@@ -545,7 +555,8 @@ the member's previous status.
 
 Consequences worth stating:
 
-- **Discontinued is not a column.** It is `activeMemberCount == 0`, read wherever the
+- **Discontinued is not a column.** It is `signupStatus = 'STARTED' AND
+  activeMemberCount == 0`, read wherever the
   team is read. Nothing to keep in sync, nothing to un-set, no reverse event.
 - **Live updates come free from the member signal.** Because the count changes only in
   response to a member event, the `spejder` token already announces it — a view showing
@@ -664,7 +675,8 @@ and rather more reliable than a reason field filled in at 3am.
 ### Queries
 
 - **Team strength is a column, not a query.** `patrulje.activeMemberCount` is read
-  with the team; "in breach" is `< minimum` and "discontinued" is `== 0`, both read off
+  with the team; "in breach" is `< minimum` and "discontinued" is `== 0` **on a team
+  that started**, both read off
   the same number. The recompute behind it is
   `COUNT(*) FROM spejderstatus WHERE year = ? AND currentTeamId = ? AND status = 'racing'`,
   answerable directly given the `(year, currentTeamId)` index.
@@ -951,11 +963,21 @@ Recorded 2026-08-17 so they are not reopened.
   discontinued. *Merge* and *split* are retired as concepts, not just as events, and
   `patruljemerged` goes with them. This closes the original question of whether an
   operator may discontinue a team directly: **no** — they retire or move its members.
-- **Discontinuation is `activeMemberCount == 0`, with no event (2026-08-17).** The team
+- **Discontinuation is `activeMemberCount == 0` on a team that started, with no event
+  (2026-08-17).** The team
   carries the count; nothing publishes `patrulje.discontinued` and there is no reverse
   event, because a count that is recomputed is reversible for free. This also settles
   the derived-vs-evented question: **neither** — it is a maintained column, read as a
   fact. Strength and discontinuation become the same number.
+
+  **Amended 2026-08-17, during task 066:** the count alone is not the predicate. A team
+  that never started has zero racing members too, so `activeMemberCount == 0` conflates
+  *left the route* with *never on it* — on the dev data that is 239 abandoned 2025
+  signups and **every one of the 310 teams in the current 2026 event**. The predicate is
+  `signupStatus = 'STARTED' AND activeMemberCount = 0`. Found by querying the projection
+  after building it rather than by reading the specification, which is worth recording:
+  it is the same shape of mistake as the finished-team trap in §5, and the specification
+  made it twice.
 - **There is no exception mechanism (2026-08-17).** Breaches of the 3-member
   requirement are **not handled** — we record what happened. Nothing grants, approves or
   resolves a short-handed patrol: no exception event, no reason text, no acting-operator

@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS patrulje (
     korps VARCHAR(9) NOT NULL DEFAULT "",
     liga VARCHAR(99) NOT NULL DEFAULT "",
     memberCount INT NOT NULL DEFAULT 0,
+    activeMemberCount INT NOT NULL DEFAULT 0,
     contactName VARCHAR(99) NOT NULL DEFAULT "",
     contactPhone VARCHAR(99) NOT NULL DEFAULT "",
     contactEmail VARCHAR(99) NOT NULL DEFAULT "",

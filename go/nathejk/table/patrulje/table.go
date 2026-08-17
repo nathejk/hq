@@ -24,9 +24,23 @@ type Patrulje struct {
 	ContactEmail types.EmailAddress `json:"contactEmail"`
 	ContactRole  string             `json:"contactRole"`
 	MemberCount  int                `json:"memberCount"`
-	TshirtCount  int                `json:"tshirtCount"`
-	SignupStatus types.SignupStatus `json:"signupStatus"`
-	PaidAmount   int                `json:"paidAmount"`
+
+	// ActiveMemberCount is how many of the team's members are still racing: its
+	// strength on the route, and — when it reaches zero — the fact that the team is
+	// discontinued (udgået). One number for both, so no caller derives either
+	// independently and drifts.
+	//
+	// Maintained by the spejderstatus projection rather than by this package's
+	// consumer, which owns the rest of the row. That is deliberate: the count is a
+	// function of member rows, and a recompute here would race the member projection
+	// over the same message — see the comment on recomputeActiveMemberCount in
+	// table/spejderstatus/consumer.go.
+	//
+	// Distinct from MemberCount, which is frozen at who started and does not move.
+	ActiveMemberCount int                `json:"activeMemberCount"`
+	TshirtCount       int                `json:"tshirtCount"`
+	SignupStatus      types.SignupStatus `json:"signupStatus"`
+	PaidAmount        int                `json:"paidAmount"`
 }
 
 type table struct {
@@ -40,7 +54,7 @@ func New(w cqrs.Writer, r *sql.DB) *table {
 	if err := w.Consume(table.CreateTableSql()); err != nil {
 		log.Printf("Error creating table %q", err)
 	}
-	for _, stmt := range widenTextColumns {
+	for _, stmt := range schemaMigrations {
 		if err := w.Consume(stmt); err != nil {
 			log.Printf("Error migrating patrulje table %q", err)
 		}
@@ -62,10 +76,20 @@ func New(w cqrs.Writer, r *sql.DB) *table {
 // a merger of three groups exceed 99 easily.
 //
 // MODIFY is idempotent: re-running it against a column that is already VARCHAR(999)
-// is accepted and changes nothing.
-var widenTextColumns = []string{
+// is accepted and changes nothing. ADD COLUMN IF NOT EXISTS is idempotent for the
+// same reason, which is what lets a new column arrive without dropping the table.
+var schemaMigrations = []string{
 	`ALTER TABLE patrulje MODIFY COLUMN name VARCHAR(999) NOT NULL DEFAULT ""`,
 	`ALTER TABLE patrulje MODIFY COLUMN groupName VARCHAR(999) NOT NULL DEFAULT ""`,
+
+	// activeMemberCount (PRD 006). Added here as well as in table.sql because a
+	// long-lived database — dev, and anything not cleared before deploy — would
+	// otherwise never gain the column, and every recompute would fail with "Unknown
+	// column". That is not hypothetical: it happened on the dev stack while task 065
+	// was being built, and the projection wrote nothing at all until the table was
+	// dropped by hand. A column nobody can add without manual intervention is a
+	// column that will be missing in production one day.
+	`ALTER TABLE patrulje ADD COLUMN IF NOT EXISTS activeMemberCount INT NOT NULL DEFAULT 0`,
 }
 
 //go:embed table.sql
