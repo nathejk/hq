@@ -4,6 +4,7 @@ import (
 	"github.com/jrgensen/stream"
 	"github.com/nathejk/shared-go/tables/crewmember"
 	"github.com/nathejk/shared-go/tables/section"
+	"github.com/nathejk/shared-go/tables/vehicle"
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/internal/data"
 	"nathejk.dk/nathejk/table/checkgroup"
@@ -20,6 +21,7 @@ type Commands struct {
 	Checkpersonnel checkpersonnel.Commands
 	Section        section.Commands
 	CrewMember     crewmember.Commands
+	Vehicle        vehicle.Commands
 	Sos            sos.Commands
 
 	Team interface {

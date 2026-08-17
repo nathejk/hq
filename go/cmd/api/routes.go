@@ -69,7 +69,7 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPut, "/api/sos/:id/team/:teamId", app.associateSosTeamHandler)
 	router.HandlerFunc(http.MethodDelete, "/api/sos/:id/team/:teamId", app.disassociateSosTeamHandler)
 
-	// Organisation (sections + crew members)
+	// Organisation (sections + crew members + vehicles)
 	router.HandlerFunc(http.MethodGet, "/api/organisation", app.showOrganisationHandler)
 	router.HandlerFunc(http.MethodPost, "/api/organisation/copy-from/:sourceYear", app.copySectionsFromYearHandler)
 	router.HandlerFunc(http.MethodPost, "/api/section", app.createSectionHandler)
@@ -79,7 +79,13 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPut, "/api/section/:slug/sos-assignable", app.setSectionSosAssignableHandler)
 	router.HandlerFunc(http.MethodDelete, "/api/section/:slug", app.deleteSectionHandler)
 	router.HandlerFunc(http.MethodPost, "/api/crewmember", app.registerCrewMemberHandler)
+	router.HandlerFunc(http.MethodPatch, "/api/crewmember/:userId", app.updateCrewMemberHandler)
+	router.HandlerFunc(http.MethodDelete, "/api/crewmember/:userId", app.deleteCrewMemberHandler)
 	router.HandlerFunc(http.MethodPut, "/api/crewmember/:userId/section", app.assignCrewMemberSectionHandler)
+	router.HandlerFunc(http.MethodPost, "/api/vehicle", app.registerVehicleHandler)
+	router.HandlerFunc(http.MethodPatch, "/api/vehicle/:vehicleId", app.updateVehicleHandler)
+	router.HandlerFunc(http.MethodDelete, "/api/vehicle/:vehicleId", app.deleteVehicleHandler)
+	router.HandlerFunc(http.MethodPut, "/api/vehicle/:vehicleId/section", app.assignVehicleSectionHandler)
 	/*
 		ctrlgrp := NewCrudRoute(NewControlGroupCmd(app.publisher), &CreateRequest{}, &ReadRequest{}, &UpdateRequest{}, &DeleteRequest{})
 		router.HandlerFunc(http.MethodGet, "/api/cgstatus", checkgroup.NewControlgroupStatusHandler(app.db.DB()))

@@ -21,10 +21,28 @@ type CrewMember = {
   sectionSlug: string
 }
 
+// A car present in the race area. Vehicles sit in the same tree as crew
+// members because they hang off the same sections: a car is brought by a crew
+// member (its custodian) and belongs to at most one section.
+type Vehicle = {
+  vehicleId: string
+  yearSlug: string
+  licensePlate: string
+  custodianUserId: string
+  driverUserId: string
+  sectionSlug: string
+  color: string
+  brand: string
+  model: string
+  seatCount: number
+  description: string
+}
+
 type OrganisationResponse = {
   year: string
   sections: Section[]
   crewMembers: CrewMember[]
+  vehicles: Vehicle[]
   availableYearsForCopy: string[]
   // Which sections may be assigned an SOS case (PRD 001). A list of slugs beside
   // the sections rather than a field on each one: the section entity belongs to
@@ -37,9 +55,10 @@ type TreeNode = {
   label: string
   icon?: string
   data: {
-    type: 'section' | 'crewmember'
+    type: 'section' | 'crewmember' | 'vehicle'
     slug?: string
     userId?: string
+    vehicleId?: string
     parentSlug?: string
     memberCount?: number
   }
@@ -56,6 +75,7 @@ const toast = useToast()
 const year = ref('')
 const sections = ref<Section[]>([])
 const crewMembers = ref<CrewMember[]>([])
+const vehicles = ref<Vehicle[]>([])
 const availableYearsForCopy = ref<string[]>([])
 const selectedCopyYear = ref<string | null>(null)
 
@@ -74,6 +94,25 @@ const newCrewName = ref('')
 const newCrewPhone = ref('')
 const newCrewEmail = ref('')
 
+// -- Edit crew member dialog
+const editCrewDialogOpen = ref(false)
+const editingCrew = ref<CrewMember | null>(null)
+const editCrewName = ref('')
+const editCrewPhone = ref('')
+const editCrewEmail = ref('')
+
+// -- Vehicle dialogs. One form serves both create and edit: the fields are the
+// same, and `editingVehicle` is what tells them apart at submit time.
+const vehicleDialogOpen = ref(false)
+const editingVehicle = ref<Vehicle | null>(null)
+const vehiclePlate = ref('')
+const vehicleCustodian = ref<string>('')
+const vehicleColor = ref('')
+const vehicleBrand = ref('')
+const vehicleModel = ref('')
+const vehicleSeatCount = ref<number>(0)
+const vehicleDescription = ref('')
+
 // -- Edit section dialog
 const editDialogOpen = ref(false)
 const editingSlug = ref('')
@@ -82,6 +121,18 @@ const editingLabel = ref('')
 // ----- Derived tree ----------------------------------------------------------
 
 const unassignedCrew = computed(() => crewMembers.value.filter((m) => !m.sectionSlug))
+const unassignedVehicles = computed(() => vehicles.value.filter((v) => !v.sectionSlug))
+
+// A plate alone reads as noise in a tree of names, so the label carries what an
+// operator recognises the car by. The plate stays first because that is what is
+// visible from outside the car.
+function vehicleLabel(v: Vehicle): string {
+  const make = [v.brand, v.model].filter(Boolean).join(' ')
+  const parts = [v.licensePlate || 'Ukendt nummerplade']
+  if (make) parts.push(make)
+  if (v.color) parts.push(v.color)
+  return parts.join(' · ')
+}
 
 // `tree` must be a ref (not a computed) because PrimeVue Tree mutates the
 // bound array on drag-drop. We rebuild it explicitly from `sections` and
@@ -108,6 +159,13 @@ function rebuildTree() {
     arr.push(m)
     membersBySection.set(m.sectionSlug, arr)
   }
+  const vehiclesBySection = new Map<string, Vehicle[]>()
+  for (const v of vehicles.value) {
+    if (!v.sectionSlug) continue
+    const arr = vehiclesBySection.get(v.sectionSlug) ?? []
+    arr.push(v)
+    vehiclesBySection.set(v.sectionSlug, arr)
+  }
 
   const build = (parentSlug: string): TreeNode[] => {
     const siblings = sections.value.filter((s) => (s.parentSlug ?? '') === parentSlug)
@@ -122,6 +180,15 @@ function rebuildTree() {
         droppable: false,
         selectable: true
       }))
+      const cars = (vehiclesBySection.get(s.slug) ?? []).map<TreeNode>((v) => ({
+        key: `vehicle:${v.vehicleId}`,
+        label: vehicleLabel(v),
+        icon: 'pi pi-car',
+        data: { type: 'vehicle', vehicleId: v.vehicleId, slug: s.slug },
+        draggable: true,
+        droppable: false,
+        selectable: true
+      }))
       return {
         key: `section:${s.slug}`,
         label: s.label,
@@ -132,7 +199,7 @@ function rebuildTree() {
           parentSlug,
           memberCount: members.length
         },
-        children: [...children, ...members],
+        children: [...children, ...members, ...cars],
         // Sections are draggable for sibling reordering. Reparent attempts
         // (drop under a different parent) are detected in onNodeDrop and
         // rejected because shared-go has no SectionMoved event.
@@ -235,6 +302,7 @@ async function load() {
     year.value = res.data.year
     sections.value = res.data.sections ?? []
     crewMembers.value = res.data.crewMembers ?? []
+    vehicles.value = res.data.vehicles ?? []
     availableYearsForCopy.value = res.data.availableYearsForCopy ?? []
     sosAssignable.value = new Set(res.data.sosAssignableSections ?? [])
     if (!selectedCopyYear.value && availableYearsForCopy.value.length > 0) {
@@ -429,6 +497,212 @@ async function submitNewCrew() {
   }
 }
 
+// ----- Crew member editing ---------------------------------------------------
+
+function openEditCrew(userId?: string) {
+  const m = crewMembers.value.find((x) => x.userId === userId)
+  if (!m) return
+  editingCrew.value = m
+  editCrewName.value = m.name
+  editCrewPhone.value = m.phone
+  editCrewEmail.value = m.email
+  editCrewDialogOpen.value = true
+}
+
+async function submitEditCrew() {
+  const m = editingCrew.value
+  if (!m) return
+  if (!editCrewName.value.trim()) {
+    toast.add({ severity: 'warn', summary: 'Navn mangler', life: 2500 })
+    return
+  }
+  busy.value = true
+  try {
+    await http.patch(`/crewmember/${encodeURIComponent(m.userId)}`, {
+      name: editCrewName.value.trim(),
+      phone: editCrewPhone.value.trim(),
+      email: editCrewEmail.value.trim()
+    })
+    toast.add({ severity: 'success', summary: 'Crew-medlem opdateret', life: 2500 })
+    editCrewDialogOpen.value = false
+    editingCrew.value = null
+    await load()
+  } catch (err: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Opdatering fejlede',
+      detail: err?.response?.data?.error ?? String(err),
+      life: 5000
+    })
+  } finally {
+    busy.value = false
+  }
+}
+
+async function deleteCrew() {
+  const m = editingCrew.value
+  if (!m) return
+  if (!window.confirm(`Slet crew-medlemmet "${m.name || m.userId}"?`)) return
+  busy.value = true
+  try {
+    await http.delete(`/crewmember/${encodeURIComponent(m.userId)}`)
+    toast.add({ severity: 'success', summary: 'Crew-medlem slettet', life: 2500 })
+    editCrewDialogOpen.value = false
+    editingCrew.value = null
+    await load()
+  } catch (err: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Sletning fejlede',
+      detail: err?.response?.data?.error ?? String(err),
+      life: 5000
+    })
+  } finally {
+    busy.value = false
+  }
+}
+
+// ----- Vehicles --------------------------------------------------------------
+
+// Crew members offered as custodian. A vehicle must have one — somebody has to
+// answer for the car — so there is no empty option.
+const custodianOptions = computed(() =>
+  crewMembers.value.map((m) => ({
+    label: m.name || m.email || m.userId,
+    value: m.userId
+  }))
+)
+
+function resetVehicleForm() {
+  vehiclePlate.value = ''
+  vehicleCustodian.value = ''
+  vehicleColor.value = ''
+  vehicleBrand.value = ''
+  vehicleModel.value = ''
+  vehicleSeatCount.value = 0
+  vehicleDescription.value = ''
+}
+
+function openNewVehicle() {
+  editingVehicle.value = null
+  resetVehicleForm()
+  vehicleDialogOpen.value = true
+}
+
+function openEditVehicle(vehicleId?: string) {
+  const v = vehicles.value.find((x) => x.vehicleId === vehicleId)
+  if (!v) return
+  editingVehicle.value = v
+  vehiclePlate.value = v.licensePlate
+  vehicleCustodian.value = v.custodianUserId
+  vehicleColor.value = v.color
+  vehicleBrand.value = v.brand
+  vehicleModel.value = v.model
+  vehicleSeatCount.value = v.seatCount ?? 0
+  vehicleDescription.value = v.description
+  vehicleDialogOpen.value = true
+}
+
+// One submit for both create and edit. The edit path PATCHes the whole form:
+// the API compares it against what is recorded and publishes only the fields
+// that actually change, so re-saving an untouched form writes nothing.
+async function submitVehicle() {
+  if (!vehiclePlate.value.trim()) {
+    toast.add({ severity: 'warn', summary: 'Nummerplade mangler', life: 2500 })
+    return
+  }
+  if (!vehicleCustodian.value) {
+    toast.add({ severity: 'warn', summary: 'Ansvarlig mangler', life: 2500 })
+    return
+  }
+  const payload = {
+    licensePlate: vehiclePlate.value.trim(),
+    custodianUserId: vehicleCustodian.value,
+    color: vehicleColor.value.trim(),
+    brand: vehicleBrand.value.trim(),
+    model: vehicleModel.value.trim(),
+    seatCount: vehicleSeatCount.value ?? 0,
+    description: vehicleDescription.value.trim()
+  }
+  const existing = editingVehicle.value
+  busy.value = true
+  try {
+    if (existing) {
+      await http.patch(`/vehicle/${encodeURIComponent(existing.vehicleId)}`, payload)
+      toast.add({ severity: 'success', summary: 'Køretøj opdateret', life: 2500 })
+    } else {
+      await http.post('/vehicle', payload)
+      toast.add({ severity: 'success', summary: 'Køretøj oprettet', life: 2500 })
+    }
+    vehicleDialogOpen.value = false
+    editingVehicle.value = null
+    resetVehicleForm()
+    await load()
+  } catch (err: any) {
+    toast.add({
+      severity: 'error',
+      summary: existing ? 'Opdatering fejlede' : 'Kunne ikke oprette køretøj',
+      detail: err?.response?.data?.error ?? String(err),
+      life: 5000
+    })
+  } finally {
+    busy.value = false
+  }
+}
+
+async function deleteVehicle() {
+  const v = editingVehicle.value
+  if (!v) return
+  if (!window.confirm(`Slet køretøjet "${vehicleLabel(v)}"?`)) return
+  busy.value = true
+  try {
+    await http.delete(`/vehicle/${encodeURIComponent(v.vehicleId)}`)
+    toast.add({ severity: 'success', summary: 'Køretøj slettet', life: 2500 })
+    vehicleDialogOpen.value = false
+    editingVehicle.value = null
+    await load()
+  } catch (err: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Sletning fejlede',
+      detail: err?.response?.data?.error ?? String(err),
+      life: 5000
+    })
+  } finally {
+    busy.value = false
+  }
+}
+
+async function assignVehicle(vehicleId: string, sectionSlug: string) {
+  busy.value = true
+  try {
+    await http.put(`/vehicle/${encodeURIComponent(vehicleId)}/section`, { sectionSlug })
+    // Optimistic local update; reload will reconcile with the read model.
+    const v = vehicles.value.find((x) => x.vehicleId === vehicleId)
+    if (v) v.sectionSlug = sectionSlug
+    await load()
+  } catch (err: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Tildeling fejlede',
+      detail: err?.response?.data?.error ?? String(err),
+      life: 5000
+    })
+  } finally {
+    busy.value = false
+  }
+}
+
+// A click on a leaf row opens its editor. Sections are excluded: clicking one
+// expands it, and they have their own pencil button in the row.
+//
+// The parameter is typed structurally rather than as our TreeNode because the
+// slot hands us PrimeVue's own (looser) node type.
+function onRowClick(node: { data?: any }) {
+  if (node.data?.type === 'crewmember') openEditCrew(node.data.userId)
+  else if (node.data?.type === 'vehicle') openEditVehicle(node.data.vehicleId)
+}
+
 async function copyFromYear() {
   if (!selectedCopyYear.value) return
   const source = selectedCopyYear.value
@@ -477,6 +751,8 @@ function onRowDragStart(ev: DragEvent, node: TreeNode) {
     ev.dataTransfer.setData('text/x-section-slug', node.data.slug ?? '')
   } else if (node.data.type === 'crewmember') {
     ev.dataTransfer.setData('text/x-crewmember-id', node.data.userId ?? '')
+  } else if (node.data.type === 'vehicle') {
+    ev.dataTransfer.setData('text/x-vehicle-id', node.data.vehicleId ?? '')
   }
   ev.dataTransfer.effectAllowed = 'move'
 }
@@ -485,11 +761,11 @@ function onRowDragOver(ev: DragEvent, node: TreeNode) {
   const dt = ev.dataTransfer
   if (!dt) return
   const isSectionDrag = dt.types.includes('text/x-section-slug')
-  const isCrewDrag = dt.types.includes('text/x-crewmember-id')
-  if (!isSectionDrag && !isCrewDrag) return
+  const isLeafDrag = dt.types.includes('text/x-crewmember-id') || dt.types.includes('text/x-vehicle-id')
+  if (!isSectionDrag && !isLeafDrag) return
 
-  // Crew can only drop ON sections (or on crew rows, treated as their section).
-  // Sections can only drop ON/BEFORE/AFTER other sections.
+  // Crew and vehicles can only drop ON sections (or on a leaf row, treated as
+  // its section). Sections can only drop ON/BEFORE/AFTER other sections.
   if (isSectionDrag && node.data.type !== 'section') return
 
   ev.preventDefault()
@@ -523,15 +799,24 @@ async function onRowDrop(ev: DragEvent, node: TreeNode) {
 
   const dt = ev.dataTransfer
   const crewId = dt?.getData('text/x-crewmember-id') ?? ''
+  const vehicleId = dt?.getData('text/x-vehicle-id') ?? ''
   const draggedSectionSlug = dt?.getData('text/x-section-slug') ?? ''
   const position = dragHover.value.position ?? 'on'
   onRowDragEnd()
 
   // Crew drop -> assign to whatever section this row is (or belongs to).
   if (crewId) {
-    const targetSection = node.data.type === 'section' ? node.data.slug : /* crew row */ node.data.slug
+    const targetSection = node.data.type === 'section' ? node.data.slug : /* leaf row */ node.data.slug
     if (!targetSection) return
     await assignCrew(crewId, targetSection)
+    return
+  }
+
+  // Vehicle drop -> same rule as crew: the row's section takes the car.
+  if (vehicleId) {
+    const targetSection = node.data.slug
+    if (!targetSection) return
+    await assignVehicle(vehicleId, targetSection)
     return
   }
 
@@ -590,15 +875,24 @@ function rowDropClasses(node: TreeNode): Record<string, boolean> {
 function onDropUnassigned(ev: DragEvent) {
   ev.preventDefault()
   const userId = ev.dataTransfer?.getData('text/x-crewmember-id')
-  if (!userId) return
-  assignCrew(userId, '')
+  if (userId) {
+    assignCrew(userId, '')
+    return
+  }
+  const vehicleId = ev.dataTransfer?.getData('text/x-vehicle-id')
+  if (vehicleId) assignVehicle(vehicleId, '')
 }
 function onDragStartCrew(ev: DragEvent, userId: string) {
   ev.dataTransfer?.setData('text/x-crewmember-id', userId)
   ev.dataTransfer!.effectAllowed = 'move'
 }
+function onDragStartVehicle(ev: DragEvent, vehicleId: string) {
+  ev.dataTransfer?.setData('text/x-vehicle-id', vehicleId)
+  ev.dataTransfer!.effectAllowed = 'move'
+}
 function allowDrop(ev: DragEvent) {
-  if (ev.dataTransfer?.types.includes('text/x-crewmember-id')) {
+  const types = ev.dataTransfer?.types
+  if (types?.includes('text/x-crewmember-id') || types?.includes('text/x-vehicle-id')) {
     ev.preventDefault()
   }
 }
@@ -607,6 +901,10 @@ function allowDrop(ev: DragEvent) {
 // convenient.
 function quickAssignFromDropdown(userId: string, slug: string) {
   assignCrew(userId, slug)
+}
+
+function quickAssignVehicleFromDropdown(vehicleId: string, slug: string) {
+  assignVehicle(vehicleId, slug)
 }
 
 onMounted(load)
@@ -618,6 +916,7 @@ onMounted(load)
       <h1 class="font-nathejk text-2xl">Organisation</h1>
       <div class="flex gap-2">
         <Button icon="pi pi-user-plus" label="Nyt crew-medlem" size="small" severity="secondary" @click="newCrewDialogOpen = true" />
+        <Button icon="pi pi-car" label="Nyt køretøj" size="small" severity="secondary" :disabled="crewMembers.length === 0" v-tooltip.bottom="crewMembers.length === 0 ? 'Opret først et crew-medlem, der kan være ansvarlig' : undefined" @click="openNewVehicle" />
         <Button icon="pi pi-plus" label="Ny sektion" size="small" :disabled="sections.length === 0 && availableYearsForCopy.length > 0" @click="addDialogOpen = true" />
       </div>
     </div>
@@ -641,7 +940,7 @@ onMounted(load)
       <div class="md:col-span-2">
         <Tree :value="tree" v-model:expandedKeys="expandedKeys" selectionMode="single" class="border rounded">
           <template #default="{ node }">
-            <div class="node-row" :class="rowDropClasses(node)" :draggable="true" @dragstart.stop="onRowDragStart($event, node)" @dragover.stop="onRowDragOver($event, node)" @dragleave.stop="onRowDragLeave(node)" @drop.stop="onRowDrop($event, node)" @dragend.stop="onRowDragEnd">
+            <div class="node-row" :class="[rowDropClasses(node), node.data.type === 'section' ? '' : 'cursor-pointer']" :draggable="true" @click="onRowClick(node)" @dragstart.stop="onRowDragStart($event, node)" @dragover.stop="onRowDragOver($event, node)" @dragleave.stop="onRowDragLeave(node)" @drop.stop="onRowDrop($event, node)" @dragend.stop="onRowDragEnd">
               <span class="flex-1">{{ node.label }}</span>
               <template v-if="node.data.type === 'section'">
                 <Badge v-if="node.data.memberCount" :value="node.data.memberCount" severity="secondary" />
@@ -665,17 +964,22 @@ onMounted(load)
       </div>
 
       <aside>
-        <h2 class="font-semibold pb-2">Ikke tildelt ({{ unassignedCrew.length }})</h2>
+        <h2 class="font-semibold pb-2">Ikke tildelt ({{ unassignedCrew.length + unassignedVehicles.length }})</h2>
         <ul class="border rounded p-2 min-h-32 space-y-1 bg-gray-50" @dragover="allowDrop" @drop="onDropUnassigned">
-          <li v-if="unassignedCrew.length === 0" class="text-sm text-gray-500 italic">Ingen frie crew-medlemmer</li>
+          <li v-if="unassignedCrew.length === 0 && unassignedVehicles.length === 0" class="text-sm text-gray-500 italic">Ingen frie crew-medlemmer eller køretøjer</li>
           <li v-for="m in unassignedCrew" :key="m.userId" :draggable="true" class="p-2 bg-white border rounded flex items-center gap-2 cursor-move" @dragstart="onDragStartCrew($event, m.userId)">
             <i class="pi pi-user text-gray-500" />
-            <span class="flex-1 truncate">{{ m.name || m.email || m.userId }}</span>
+            <span class="flex-1 truncate cursor-pointer" @click="openEditCrew(m.userId)">{{ m.name || m.email || m.userId }}</span>
             <Select :modelValue="''" :options="sectionOptions.filter((o) => o.value !== '')" optionLabel="label" optionValue="value" placeholder="Tildel…" size="small" class="w-32" @update:modelValue="(v: string) => v && quickAssignFromDropdown(m.userId, v)" />
+          </li>
+          <li v-for="v in unassignedVehicles" :key="v.vehicleId" :draggable="true" class="p-2 bg-white border rounded flex items-center gap-2 cursor-move" @dragstart="onDragStartVehicle($event, v.vehicleId)">
+            <i class="pi pi-car text-gray-500" />
+            <span class="flex-1 truncate cursor-pointer" @click="openEditVehicle(v.vehicleId)">{{ vehicleLabel(v) }}</span>
+            <Select :modelValue="''" :options="sectionOptions.filter((o) => o.value !== '')" optionLabel="label" optionValue="value" placeholder="Tildel…" size="small" class="w-32" @update:modelValue="(s: string) => s && quickAssignVehicleFromDropdown(v.vehicleId, s)" />
           </li>
         </ul>
 
-        <p class="mt-3 text-xs text-gray-500">Træk en sektion for at ændre rækkefølge eller flytte den til en ny forælder. Træk et crew-navn ind i en sektion for at tildele, eller tilbage hertil for at fjerne.</p>
+        <p class="mt-3 text-xs text-gray-500">Træk en sektion for at ændre rækkefølge eller flytte den til en ny forælder. Træk et crew-navn eller et køretøj ind i en sektion for at tildele, eller tilbage hertil for at fjerne. Klik på et navn eller en nummerplade for at rette det.</p>
       </aside>
     </div>
 
@@ -735,6 +1039,74 @@ onMounted(load)
       <template #footer>
         <Button label="Annuller" text @click="newCrewDialogOpen = false" />
         <Button label="Opret" icon="pi pi-check" :loading="busy" @click="submitNewCrew" />
+      </template>
+    </Dialog>
+
+    <!-- Edit crew member dialog -->
+    <Dialog v-model:visible="editCrewDialogOpen" modal :style="{ width: '30rem' }" header="Rediger crew-medlem">
+      <div class="grid gap-3 pt-2">
+        <FloatLabel variant="on">
+          <InputText id="edit-crew-name" v-model="editCrewName" class="w-full" autocomplete="off" @keydown.enter="submitEditCrew" />
+          <label for="edit-crew-name">Navn</label>
+        </FloatLabel>
+        <FloatLabel variant="on">
+          <InputText id="edit-crew-phone" v-model="editCrewPhone" class="w-full" autocomplete="off" />
+          <label for="edit-crew-phone">Telefon</label>
+        </FloatLabel>
+        <FloatLabel variant="on">
+          <InputText id="edit-crew-email" v-model="editCrewEmail" class="w-full" autocomplete="off" />
+          <label for="edit-crew-email">Email</label>
+        </FloatLabel>
+      </div>
+      <template #footer>
+        <Button label="Slet" icon="pi pi-trash" severity="danger" text :loading="busy" @click="deleteCrew" />
+        <Button label="Annuller" text @click="editCrewDialogOpen = false" />
+        <Button label="Gem" icon="pi pi-check" :loading="busy" @click="submitEditCrew" />
+      </template>
+    </Dialog>
+
+    <!-- Create / edit vehicle dialog. One form for both: the fields are the
+         same, and only the submit differs. -->
+    <Dialog v-model:visible="vehicleDialogOpen" modal :style="{ width: '32rem' }" :header="editingVehicle ? 'Rediger køretøj' : 'Nyt køretøj'">
+      <div class="grid gap-3 pt-2">
+        <FloatLabel variant="on">
+          <InputText id="vehicle-plate" v-model="vehiclePlate" class="w-full" autocomplete="off" placeholder="DK+AB12345" />
+          <label for="vehicle-plate">Nummerplade</label>
+        </FloatLabel>
+        <FloatLabel variant="on">
+          <Select id="vehicle-custodian" v-model="vehicleCustodian" :options="custodianOptions" optionLabel="label" optionValue="value" filter class="w-full" />
+          <label for="vehicle-custodian">Ansvarlig</label>
+        </FloatLabel>
+        <div class="grid grid-cols-2 gap-3">
+          <FloatLabel variant="on">
+            <InputText id="vehicle-brand" v-model="vehicleBrand" class="w-full" autocomplete="off" />
+            <label for="vehicle-brand">Mærke</label>
+          </FloatLabel>
+          <FloatLabel variant="on">
+            <InputText id="vehicle-model" v-model="vehicleModel" class="w-full" autocomplete="off" />
+            <label for="vehicle-model">Model</label>
+          </FloatLabel>
+        </div>
+        <div class="grid grid-cols-2 gap-3">
+          <FloatLabel variant="on">
+            <InputText id="vehicle-color" v-model="vehicleColor" class="w-full" autocomplete="off" />
+            <label for="vehicle-color">Farve</label>
+          </FloatLabel>
+          <FloatLabel variant="on">
+            <InputNumber id="vehicle-seats" v-model="vehicleSeatCount" :min="0" :max="99" showButtons class="w-full" />
+            <label for="vehicle-seats">Passagerpladser</label>
+          </FloatLabel>
+        </div>
+        <FloatLabel variant="on">
+          <Textarea id="vehicle-description" v-model="vehicleDescription" class="w-full" rows="3" autoResize />
+          <label for="vehicle-description">Bemærkninger</label>
+        </FloatLabel>
+        <p class="text-xs text-gray-500">Passagerpladser er ud over føreren. 0 betyder, at bilen kun kører ejeren selv.</p>
+      </div>
+      <template #footer>
+        <Button v-if="editingVehicle" label="Slet" icon="pi pi-trash" severity="danger" text :loading="busy" @click="deleteVehicle" />
+        <Button label="Annuller" text @click="vehicleDialogOpen = false" />
+        <Button :label="editingVehicle ? 'Gem' : 'Opret'" icon="pi pi-check" :loading="busy" @click="submitVehicle" />
       </template>
     </Dialog>
   </div>

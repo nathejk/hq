@@ -1,19 +1,21 @@
 package main
 
 import (
+	"encoding/json"
 	"net/http"
 	"regexp"
 	"strings"
 
 	"github.com/nathejk/shared-go/tables/crewmember"
 	"github.com/nathejk/shared-go/tables/section"
+	"github.com/nathejk/shared-go/tables/vehicle"
 	"github.com/nathejk/shared-go/types"
 	jsonapi "nathejk.dk/cmd/api/app"
 )
 
 // showOrganisationHandler returns the sections for the current year plus the
-// crew members in that year, so the frontend has everything needed to render
-// the org tree and the "unassigned" side panel. It also returns the list of
+// crew members and vehicles in that year, so the frontend has everything needed
+// to render the org tree and the "unassigned" side panel. It also returns the list of
 // prior years that have sections so the UI can offer a "copy from year" flow
 // when the current year is empty.
 func (app *application) showOrganisationHandler(w http.ResponseWriter, r *http.Request) {
@@ -25,6 +27,14 @@ func (app *application) showOrganisationHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 	members, err := app.models.CrewMember.GetAll(r.Context(), crewmember.Filter{YearSlug: year})
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+	// Vehicles hang off the same sections as crew members, so they travel with
+	// the organisation payload rather than through an endpoint of their own —
+	// one round trip is what lets the tree render both in a single pass.
+	vehicles, err := app.models.Vehicle.GetAll(r.Context(), vehicle.Filter{YearSlug: year})
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 		return
@@ -56,6 +66,7 @@ func (app *application) showOrganisationHandler(w http.ResponseWriter, r *http.R
 		"year":                  year,
 		"sections":              sections,
 		"crewMembers":           members,
+		"vehicles":              vehicles,
 		"availableYearsForCopy": otherYears,
 		"sosAssignableSections": assignable,
 	}
@@ -222,6 +233,18 @@ func (app *application) deleteSectionHandler(w http.ResponseWriter, r *http.Requ
 		app.BadRequestResponse(w, r, errFromString("cannot delete section: crew members are still assigned"))
 		return
 	}
+	// Same for vehicles: deleting the section would leave them pointing at a slug
+	// nothing renders, so they would drop out of the tree without turning up in the
+	// unassigned panel either.
+	parked, err := app.models.Vehicle.GetAll(r.Context(), vehicle.Filter{YearSlug: year, SectionSlug: slug})
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+	if len(parked) > 0 {
+		app.BadRequestResponse(w, r, errFromString("cannot delete section: vehicles are still assigned"))
+		return
+	}
 
 	if err := app.commands.Section.Delete(r.Context(), year, slug); err != nil {
 		app.BadRequestResponse(w, r, err)
@@ -280,6 +303,104 @@ func (app *application) registerCrewMemberHandler(w http.ResponseWriter, r *http
 		return
 	}
 	if err := app.WriteJSON(w, http.StatusCreated, jsonapi.Envelope{"userId": userID}, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
+// updateCrewMemberHandler edits a crew member's details.
+//
+// The fields are optional pointers, but the underlying event is a full replace
+// rather than a delta, so anything the request leaves out is filled in from the
+// current read model. Without that, saving the name from a small form would
+// silently blank out medlemsnummer, gruppe, korps and kost.
+func (app *application) updateCrewMemberHandler(w http.ResponseWriter, r *http.Request) {
+	userID := types.UserID(app.ReadNamedParam(r, "userId"))
+	if userID == "" {
+		app.BadRequestResponse(w, r, errFromString("userId is required"))
+		return
+	}
+	var input struct {
+		Name     *string `json:"name"`
+		Phone    *string `json:"phone"`
+		Email    *string `json:"email"`
+		MedlemNr *string `json:"medlemnr"`
+		Group    *string `json:"group"`
+		Corps    *string `json:"corps"`
+		Diet     *string `json:"diet"`
+	}
+	if err := app.ReadJSON(w, r, &input); err != nil {
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+	current, err := app.models.CrewMember.GetByID(r.Context(), userID)
+	if err != nil {
+		app.NotFoundResponse(w, r)
+		return
+	}
+	fields := crewmember.UpdateFields{
+		Name:     current.Name,
+		Phone:    current.Phone,
+		Email:    current.Email,
+		MedlemNr: current.MedlemNr,
+		Group:    current.Group,
+		Corps:    current.Corps,
+		Diet:     current.Diet,
+	}
+	// Additionals is stored as a JSON document but carried as a map, so it has to
+	// be decoded to be handed back unchanged.
+	if current.Additionals != "" {
+		var additionals map[string]any
+		if err := json.Unmarshal([]byte(current.Additionals), &additionals); err == nil {
+			fields.Additionals = additionals
+		}
+	}
+	if input.Name != nil {
+		fields.Name = strings.TrimSpace(*input.Name)
+	}
+	if fields.Name == "" {
+		app.BadRequestResponse(w, r, errFromString("name is required"))
+		return
+	}
+	if input.Phone != nil {
+		fields.Phone = types.PhoneNumber(strings.TrimSpace(*input.Phone))
+	}
+	if input.Email != nil {
+		fields.Email = types.EmailAddress(strings.TrimSpace(*input.Email))
+	}
+	if input.MedlemNr != nil {
+		fields.MedlemNr = strings.TrimSpace(*input.MedlemNr)
+	}
+	if input.Group != nil {
+		fields.Group = strings.TrimSpace(*input.Group)
+	}
+	if input.Corps != nil {
+		fields.Corps = types.CorpsSlug(strings.TrimSpace(*input.Corps))
+	}
+	if input.Diet != nil {
+		fields.Diet = strings.TrimSpace(*input.Diet)
+	}
+	if err := app.commands.CrewMember.Update(r.Context(), app.YearSlug(r), userID, fields); err != nil {
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"userId": userID}, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
+// deleteCrewMemberHandler withdraws a crew member (soft delete in the read
+// model).
+func (app *application) deleteCrewMemberHandler(w http.ResponseWriter, r *http.Request) {
+	userID := types.UserID(app.ReadNamedParam(r, "userId"))
+	if userID == "" {
+		app.BadRequestResponse(w, r, errFromString("userId is required"))
+		return
+	}
+	if err := app.commands.CrewMember.Delete(r.Context(), app.YearSlug(r), userID); err != nil {
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"deleted": "ok"}, nil); err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}
 }
