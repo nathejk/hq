@@ -304,6 +304,26 @@ type MemberRow = TeamRow['members'][number]
 
 const racingMembers = (team: TeamRow) => team.members.filter((m) => m.status === 'racing')
 
+// "Active" has one meaning throughout this domain: racing. It is what `activeMemberCount`
+// counts and what team strength is measured in, so a member who is waiting, in a car, at HQ,
+// reunited, released — or who never started — is not active.
+//
+// Kept separate from canWithdraw even though the condition is identical today, because they
+// are different questions: one is a domain fact about the member, the other is a permission
+// this screen grants. Collapsing them would tie the appearance of the list to what the
+// buttons happen to allow.
+const isActive = (status: string) => status === 'racing'
+
+// Dimmed rather than hidden: a member who has left the race is still the patrol's member and
+// still the person an operator may be asked about. Grey says "not counting towards strength"
+// while the status icon keeps its own colour, which says something different — a waiting
+// member is out of the race *and* urgent, and those two facts should not fight over one
+// visual channel.
+//
+// gray-500 rather than a lighter grey deliberately: these are names read off a screen at
+// three in the morning, and gray-400 on white falls below the contrast a small font needs.
+const nameClass = (status: string) => (isActive(status) ? '' : 'text-gray-500')
+
 // Pre-commit warning. Confirming a withdrawal that takes the team below the minimum
 // should change the conversation the operator is having on the phone *before* it is
 // recorded — but it must never block: the member is leaving whether or not the patrol
@@ -484,7 +504,7 @@ const submitMove = async () => {
            @keydown.space.prevent="openMember(member, team)">
         <i :class="[statusIcon(member.status), statusColour(member.status)]"
            class="text-base" :aria-label="statusLabel(member.status)" />
-        <span class="font-medium">{{ member.name || member.memberId }}</span>
+        <span class="font-medium" :class="nameClass(member.status)">{{ member.name || member.memberId }}</span>
       </div>
       <div v-if="team.members.length === 0" class="pl-3 py-1 text-sm text-gray-500">
         Ingen deltagere registreret.

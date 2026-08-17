@@ -80,6 +80,25 @@ const memberStatusSeverity = (slug) => {
   }
 };
 
+// Whether a member is active **for this patrol**, which is not the same as being active.
+//
+// The roster this page lists is the signup roster (`spejder.teamId`), but membership for
+// every purpose that counts — strength, discontinuation, the SOS card — follows
+// `currentTeamId`. So a member moved to another patrol is still listed here and is still
+// `racing`, just not for this team. Treating them as active would contradict the
+// "{n} i løbet" this same page shows, which counts only members whose current team is this
+// one.
+const isActiveHere = (member) =>
+  member.status === 'racing' && (!member.currentTeamId || member.currentTeamId === props.teamId);
+
+const movedAway = (member) =>
+  !!member.currentTeamId && member.currentTeamId !== props.teamId;
+
+// Dimmed rather than hidden: a member who has left the race — or left for another patrol —
+// is still somebody an operator may be asked about. gray-500 rather than lighter, because
+// these are names read off a screen at three in the morning.
+const memberNameClass = (member) => (isActiveHere(member) ? '' : 'text-gray-500');
+
 watch(error, (err) => {
   if (!err) return;
   console.log('patrulje load failed', err);
@@ -172,7 +191,21 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
             v-model:expandedRows="expandedRows" dataKey="id" @rowExpand="onRowExpand" @rowCollapse="onRowCollapse"
         >
             <Column expander />
-            <Column field="name" header="Navn" sortable></Column>
+            <Column field="name" header="Navn" sortable>
+                <template #body="{data}">
+                    <span :class="memberNameClass(data)">{{ data.name }}</span>
+                    <!--
+                      Made visible in the collapsed row, not only in the expanded one: a
+                      member moved to another patrol is still listed here and still racing,
+                      so without saying so the row looks active while the patrol's own
+                      "{n} i løbet" does not count them — two true numbers that appear to
+                      disagree.
+                    -->
+                    <span v-if="movedAway(data)" class="ml-2 text-xs italic text-gray-500">
+                        flyttet til anden patrulje
+                    </span>
+                </template>
+            </Column>
             <Column field="phone" header="Telefon" sortable></Column>
             <Column field="phoneParent" header="Kontaktperson"></Column>
             <Column field="status" header="Status">
