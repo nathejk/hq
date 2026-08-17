@@ -25,6 +25,11 @@ type TeamConfig struct {
 	TShirtPrice    int         `json:"tshirtPrice"`
 	Korps          []SlugLabel `json:"korps"`
 	TShirtSizes    []SlugLabel `json:"tshirtSizes"`
+
+	// MemberStatuses is the member lifecycle with Danish labels. Only the patrol page
+	// populates it — klaner are not handled through the nødtelefon, so their members
+	// have no lifecycle — hence omitempty rather than an empty array on every payload.
+	MemberStatuses []SlugLabel `json:"memberStatuses,omitempty"`
 }
 
 // MemberStatuses is the member lifecycle with Danish labels, served to the SPA rather
@@ -127,6 +132,11 @@ func (app *application) showPatruljeHandler(w http.ResponseWriter, r *http.Reque
 		TShirtPrice:    175,
 		Korps:          Korps(),
 		TShirtSizes:    TShirtSizes(),
+		// The member lifecycle with Danish labels (PRD 006 §6), for the members table's
+		// status column and the correction row beneath it. On the config rather than
+		// loose in the envelope because that is where this page already looks for the
+		// server's vocabulary — korps, t-shirt sizes, and now statuses.
+		MemberStatuses: MemberStatuses(),
 	}
 	contact, _ := app.models.Teams.GetContact(teamId)
 

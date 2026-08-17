@@ -37,6 +37,7 @@ const { data, pending, error } = useLiveResource(
       members: response.data.members || [],
       orders: response.data.orders || [],
       sosCases: response.data.sosCases || [],
+      config: response.data.config || {},
     };
   },
   { dependsOn: [`patrulje:${props.teamId}`, 'spejder', 'order', 'payment', 'sos'] },
@@ -46,6 +47,38 @@ const patrulje = computed(() => data.value?.team ?? {});
 const spejdere = computed(() => data.value?.members ?? []);
 const orders = computed(() => data.value?.orders ?? []);
 const sosCases = computed(() => data.value?.sosCases ?? []);
+const config = computed(() => data.value?.config ?? {});
+
+// --- member lifecycle status (PRD 006) ---
+//
+// Labels come from the backend, never a map in this view. Two screens show these strings
+// and they are persisted values, so a local copy is how the two drift apart until one says
+// "waiting" to an operator at 3am.
+const memberStatusLabel = (slug) => {
+  const found = (config.value.memberStatuses ?? []).find((s) => s.slug === slug);
+  // "Ikke startet" is the honest reading of an absent status: the member exists on the
+  // roster and the race has not claimed them yet. Before PRD 006 this column said that
+  // for *everybody*, regardless of status — which is what made the bug invisible.
+  return found?.label ?? (slug ? slug : 'Ikke startet');
+};
+
+const memberStatusSeverity = (slug) => {
+  switch (slug) {
+    case 'racing':
+    case 'finished':
+      return 'success';
+    case 'waiting':
+      return 'danger';
+    case 'transit':
+    case 'sheltered':
+      return 'warn';
+    case 'reunited':
+    case 'released':
+      return 'secondary';
+    default:
+      return 'contrast';
+  }
+};
 
 watch(error, (err) => {
   if (!err) return;
@@ -65,24 +98,6 @@ const onRowCollapse = (event) => {
   //  toast.add({ severity: 'success', summary: 'Row Group Collapsed', detail: 'Value: ' + event.data, life: 3000 });
 };
 
-const getSeverity = (status) => {
-    switch (status) {
-        case 'unqualified':
-            return 'danger';
-
-        case 'qualified':
-            return 'success';
-
-        case 'new':
-            return 'info';
-
-        case 'negotiation', 'requested':
-            return 'warn';
-
-        case 'renewal':
-            return null;
-    }
-};
 const linkToSignUp = () => {
     window.open("http://tilmelding.nathejk.dk/patrulje/" + patrulje.value.id, '_blank')
 }
@@ -113,7 +128,8 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
             <Column field="phoneParent" header="Kontaktperson"></Column>
             <Column field="status" header="Status">
                 <template #body="{data}">
-                    <Tag value="ikke startet" :severity="getSeverity(data.status)" />
+                    <Tag :value="memberStatusLabel(data.status)"
+                         :severity="memberStatusSeverity(data.status)" />
                 </template>
             </Column>
             <template #expansion="{data}">
