@@ -93,12 +93,24 @@ func (app *application) moveMemberTeamHandler(w http.ResponseWriter, r *http.Req
 		app.ServerErrorResponse(w, r, err)
 		return
 	}
-	// "Still racing" is what makes a patrol able to receive somebody. A team that
-	// never started has nobody on the route to join, and one that has been emptied
-	// is discontinued — moving a member into either would be recording a fiction.
-	if target.SignupStatus != types.SignupStatusStarted || target.ActiveMemberCount == 0 {
+	// The destination must be a patrol that **started**. Deliberately *not* "and still
+	// has racing members".
+	//
+	// That extra condition was here first and it broke a guarantee PRD 006 §5 makes
+	// explicitly: moving a member back into a team with nobody left makes it active
+	// again — the reversibility the legacy `.splited` event had. A team emptied to zero is
+	// discontinued, and requiring `activeMemberCount > 0` meant **discontinuation could
+	// never be undone**, because the only action that reverses it was refused for the only
+	// teams that needed it. Found by trying to undo a test (task 077).
+	//
+	// The *picker* still offers only racing patrols, which is right for the survivors
+	// flow — but a UI convenience must not become a domain rule.
+	//
+	// `started` remains required: a patrol that never started has nobody on the route to
+	// join, so moving somebody into it would record a fiction.
+	if target.SignupStatus != types.SignupStatusStarted {
 		app.FailedValidationResponse(w, r, map[string]string{
-			"teamId": "patruljen er ikke i løbet",
+			"teamId": "patruljen er ikke startet",
 		})
 		return
 	}

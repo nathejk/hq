@@ -154,6 +154,139 @@ const discontinued = (team: { started: boolean; activeMemberCount: number }) =>
   team.started && team.activeMemberCount === 0
 
 const since = (value: string | null) => (value ? hhmm(value) : '')
+
+// --- the 3-member requirement (PRD 006, task 077) ---
+//
+// Nothing here enforces anything. The requirement is displayed, an operator applies it
+// or judges an exception warranted, and the tool records what happened — there is
+// deliberately no exception object, no approval and no "handled" flag to clear
+// (PRD 006 §11). That is why the warning has no dismiss button: it states a fact for as
+// long as the fact holds.
+
+type TeamRow = (typeof props.teams)[number]
+type MemberRow = TeamRow['members'][number]
+
+const racingMembers = (team: TeamRow) => team.members.filter((m) => m.status === 'racing')
+
+// Pre-commit warning. Confirming a withdrawal that takes the team below the minimum
+// should change the conversation the operator is having on the phone *before* it is
+// recorded — but it must never block: the member is leaving whether or not the patrol
+// is compliant.
+const confirm = ref<{ member: MemberRow; team: TeamRow; resulting: number } | null>(null)
+
+const askWithdraw = (member: MemberRow, team: TeamRow) => {
+  const resulting = team.activeMemberCount - 1
+  if (team.started && resulting < team.minMemberCount) {
+    confirm.value = { member, team, resulting }
+    return
+  }
+  act(member.memberId, 'waiting')
+}
+
+const proceedWithdraw = () => {
+  const c = confirm.value
+  confirm.value = null
+  if (c) act(c.member.memberId, 'waiting')
+}
+
+// Collecting the whole patrol is one request, not one per member: three separate calls
+// could half-succeed and leave the team split across two states with nobody noticing.
+const collecting = ref<Record<string, boolean>>({})
+
+const collect = async (team: TeamRow) => {
+  confirm.value = null
+  collecting.value = { ...collecting.value, [team.teamId]: true }
+  try {
+    await http.post(`/sos/${props.sosId}/team/${team.teamId}/collect`)
+    emit('changed')
+  } catch {
+    // surfaced by the axios plugin
+  } finally {
+    collecting.value = { ...collecting.value, [team.teamId]: false }
+  }
+}
+
+// --- moving the remaining members ---
+//
+// The dialog snapshots the members it offers when it opens. That is the dirty guard: the
+// operator is choosing from a list, and having rows appear or vanish underneath them
+// mid-choice is how the wrong scout gets moved. Incoming updates still arrive for the
+// rest of the card — only this working set is frozen, which is the part that would be
+// lost.
+const moveDlg = ref<{
+  team: TeamRow
+  offered: MemberRow[]
+  selected: Set<string>
+  target: { teamId: string; teamNumber: string; name: string } | null
+  query: string
+  submitting: boolean
+} | null>(null)
+
+const openMove = (team: TeamRow) => {
+  confirm.value = null
+  const offered = racingMembers(team)
+  moveDlg.value = {
+    team,
+    offered,
+    // All of them by default: survivors usually stay together. Deselecting is how the
+    // rarer split is expressed, rather than making the common case laborious.
+    selected: new Set(offered.map((m) => m.memberId)),
+    target: null,
+    query: '',
+    submitting: false,
+  }
+}
+
+const toggleMember = (memberId: string) => {
+  const d = moveDlg.value
+  if (!d) return
+  const next = new Set(d.selected)
+  if (next.has(memberId)) next.delete(memberId)
+  else next.add(memberId)
+  moveDlg.value = { ...d, selected: next }
+}
+
+// Any patrol in the same year that is still racing is a valid destination — no
+// proximity, liga or size rule, because crew in the field agree the destination and the
+// operator is recording it, not choosing it (PRD 006 §11). So there is no candidate
+// endpoint: this filters the patrol list the SPA already holds live, exactly as the
+// association picker above does.
+const moveTargets = computed(() => {
+  const d = moveDlg.value
+  if (!d) return []
+  const q = d.query.trim().toLowerCase()
+  if (q.length < 2) return []
+  return (patruljeData.value ?? [])
+    .filter((p: { teamId: string; signupStatus?: string; activeMemberCount?: number }) =>
+      // Still racing: a team that never started has nobody on the route to join, and one
+      // that has been emptied is itself discontinued. Moving somebody into either would
+      // be recording a fiction.
+      p.teamId !== d.team.teamId && p.signupStatus === 'STARTED' && (p.activeMemberCount ?? 0) > 0,
+    )
+    .filter((p: { teamNumber?: string; name?: string; group?: string }) =>
+      [p.teamNumber, p.name, p.group].some((f) => (f ?? '').toLowerCase().includes(q)),
+    )
+    .slice(0, 10)
+})
+
+const submitMove = async () => {
+  const d = moveDlg.value
+  if (!d || !d.target || d.selected.size === 0) return
+  moveDlg.value = { ...d, submitting: true }
+  try {
+    // One request per member, because a move is per member: two survivors may end up in
+    // two different patrols, and the server has no notion of moving a group.
+    for (const memberId of d.selected) {
+      await http.put(`/member/${memberId}/team`, { sosId: props.sosId, teamId: d.target.teamId })
+    }
+    moveDlg.value = null
+    emit('changed')
+  } catch {
+    moveDlg.value = moveDlg.value ? { ...moveDlg.value, submitting: false } : null
+    // surfaced by the axios plugin; the dialog stays open so the operator can see what
+    // was selected rather than having to reconstruct it
+  }
+}
 </script>
 
 <template>
@@ -210,7 +343,7 @@ const since = (value: string | null) => (value ? hhmm(value) : '')
           </span>
           <Button v-if="canWithdraw(member.status)" label="Ønsker at udgå" size="small" severity="danger"
                   outlined :loading="pending[member.memberId]"
-                  @click="act(member.memberId, 'waiting')" />
+                  @click="askWithdraw(member, team)" />
           <!--
             Prominent rather than tucked into a menu: a scout getting their breath back
             is an ordinary outcome and saves a car being sent. Not optimistic — the
@@ -224,6 +357,28 @@ const since = (value: string | null) => (value ? hhmm(value) : '')
       </div>
       <div v-if="team.members.length === 0" class="pl-3 py-1 text-sm text-gray-500">
         Ingen deltagere registreret.
+      </div>
+
+      <!--
+        Below-strength panel. Persists for as long as the patrol is short-handed and has
+        no dismiss: there is nothing to grant and nothing to settle, so it states a fact
+        rather than raising an open item. The timeline below the card says how the patrol
+        got here.
+      -->
+      <div v-if="belowStrength(team)"
+           class="ml-3 mt-2 rounded border border-red-300 bg-red-50 p-2 text-sm">
+        <div class="font-semibold text-red-800">
+          Patruljen har kun {{ team.activeMemberCount }} tilbage i løbet — krævet er {{ team.minMemberCount }}.
+        </div>
+        <div class="mt-1 text-red-900">
+          Aftal med patruljen og feltet hvad der skal ske, og registrer det her.
+        </div>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <Button label="Hent hele patruljen" size="small" severity="danger"
+                  :loading="collecting[team.teamId]" @click="collect(team)" />
+          <Button label="Flyt de resterende" size="small" severity="secondary" outlined
+                  @click="openMove(team)" />
+        </div>
       </div>
     </div>
 
@@ -244,5 +399,85 @@ const since = (value: string | null) => (value ? hhmm(value) : '')
       </div>
       <small v-if="query.trim().length === 1" class="text-gray-500">Skriv mindst to tegn...</small>
     </div>
+
+    <!--
+      Pre-commit warning. It names the resulting strength because that is the fact that
+      changes the conversation, and it offers the two actions an operator actually takes
+      — plus proceeding, which is always allowed: the member is leaving regardless.
+    -->
+    <Dialog v-if="confirm" :visible="true" modal header="Patruljen kommer under styrke"
+            :style="{ width: '30rem' }" @update:visible="confirm = null">
+      <p class="mb-3">
+        Hvis <strong>{{ confirm.member.name || confirm.member.memberId }}</strong> udgår, har
+        <strong>{{ confirm.team.name }}</strong> kun <strong>{{ confirm.resulting }}</strong>
+        tilbage i løbet. Krævet er {{ confirm.team.minMemberCount }}.
+      </p>
+      <p class="mb-3 text-sm text-gray-600">
+        Registreringen sker uanset hvad — aftal med feltet om resten af patruljen skal
+        hentes, flyttes, eller fortsætte alligevel.
+      </p>
+      <template #footer>
+        <div class="flex flex-wrap justify-end gap-2">
+          <Button label="Annuller" severity="secondary" text @click="confirm = null" />
+          <Button label="Flyt de resterende" severity="secondary" outlined
+                  @click="openMove(confirm.team)" />
+          <Button label="Hent hele patruljen" severity="danger" outlined
+                  @click="collect(confirm.team)" />
+          <Button label="Kun denne udgår" severity="danger" @click="proceedWithdraw" />
+        </div>
+      </template>
+    </Dialog>
+
+    <!--
+      Move dialog. The member list is a snapshot taken when the dialog opened — see the
+      script — so rows cannot appear or vanish under the operator mid-choice.
+    -->
+    <Dialog v-if="moveDlg" :visible="true" modal header="Flyt deltagere til anden patrulje"
+            :style="{ width: '34rem' }" @update:visible="moveDlg = null">
+      <p class="mb-2 text-sm italic text-amber-700">
+        Listen er låst mens du vælger — opdateringer fra andre er sat på pause.
+      </p>
+
+      <div class="mb-3">
+        <div v-for="m in moveDlg.offered" :key="m.memberId" class="flex items-center gap-2 py-1">
+          <Checkbox :model-value="moveDlg.selected.has(m.memberId)" binary
+                    @update:model-value="toggleMember(m.memberId)" />
+          <span>{{ m.name || m.memberId }}</span>
+        </div>
+        <small v-if="moveDlg.offered.length === 0" class="text-gray-500">
+          Ingen af patruljens deltagere er i løbet.
+        </small>
+      </div>
+
+      <div v-if="moveDlg.target" class="mb-2">
+        Flyttes til:
+        <strong>
+          <span v-if="moveDlg.target.teamNumber">{{ moveDlg.target.teamNumber }} — </span>
+          {{ moveDlg.target.name }}
+        </strong>
+        <Button label="Skift" text size="small" @click="moveDlg.target = null" />
+      </div>
+      <div v-else>
+        <InputText v-model="moveDlg.query" class="w-full"
+                   placeholder="Søg modtagende patrulje (nummer, navn, gruppe)" />
+        <div v-for="c in moveTargets" :key="c.teamId"
+             class="flex items-center justify-between gap-2 py-1">
+          <span class="text-sm">
+            <span v-if="c.teamNumber">{{ c.teamNumber }} — </span>{{ c.name }}
+            <span class="text-gray-500">{{ c.group }} · {{ c.activeMemberCount }} i løbet</span>
+          </span>
+          <Button label="Vælg" size="small" @click="moveDlg.target = c" />
+        </div>
+        <small v-if="moveDlg.query.trim().length === 1" class="text-gray-500">Skriv mindst to tegn...</small>
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <Button label="Annuller" severity="secondary" text @click="moveDlg = null" />
+          <Button label="Flyt" :disabled="!moveDlg.target || moveDlg.selected.size === 0"
+                  :loading="moveDlg.submitting" @click="submitMove" />
+        </div>
+      </template>
+    </Dialog>
   </div>
 </template>
