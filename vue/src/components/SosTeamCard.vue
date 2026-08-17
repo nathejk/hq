@@ -33,6 +33,8 @@ const props = defineProps<{
       name: string
       status: string
       updatedAt: string | null
+      movedAway?: boolean
+      movedIn?: boolean
     }[]
   }[]
 }>()
@@ -302,17 +304,26 @@ const birthday = (value: string | null) => {
 type TeamRow = (typeof props.teams)[number]
 type MemberRow = TeamRow['members'][number]
 
-const racingMembers = (team: TeamRow) => team.members.filter((m) => m.status === 'racing')
+// The members a below-strength action operates on: those actually racing **for this team**.
+// A member who moved away is racing for somebody else, so collecting or moving "the rest of
+// this patrol" must not reach them — and the server would refuse anyway, since the origin it
+// derives comes from the member's own row.
+const racingMembers = (team: TeamRow) =>
+  team.members.filter((m) => m.status === 'racing' && !m.movedAway)
 
 // "Active" has one meaning throughout this domain: racing. It is what `activeMemberCount`
 // counts and what team strength is measured in, so a member who is waiting, in a car, at HQ,
 // reunited, released — or who never started — is not active.
 //
-// Kept separate from canWithdraw even though the condition is identical today, because they
-// are different questions: one is a domain fact about the member, the other is a permission
-// this screen grants. Collapsing them would tie the appearance of the list to what the
-// buttons happen to allow.
-const isActive = (status: string) => status === 'racing'
+// A member who moved to another patrol is not active *here* either, even though their status
+// is `racing`: they are racing for somebody else, and this team's strength does not count
+// them. Dimming them keeps the list consistent with the number beside the team name.
+//
+// Kept separate from canWithdraw even though the conditions overlap, because they are
+// different questions: one is a domain fact about the member, the other is a permission this
+// screen grants. Collapsing them would tie the appearance of the list to what the buttons
+// happen to allow.
+const isActive = (member: MemberRow) => member.status === 'racing' && !member.movedAway
 
 // Dimmed rather than hidden: a member who has left the race is still the patrol's member and
 // still the person an operator may be asked about. Grey says "not counting towards strength"
@@ -322,7 +333,7 @@ const isActive = (status: string) => status === 'racing'
 //
 // gray-500 rather than a lighter grey deliberately: these are names read off a screen at
 // three in the morning, and gray-400 on white falls below the contrast a small font needs.
-const nameClass = (status: string) => (isActive(status) ? '' : 'text-gray-500')
+const nameClass = (member: MemberRow) => (isActive(member) ? '' : 'text-gray-500')
 
 // Pre-commit warning. Confirming a withdrawal that takes the team below the minimum
 // should change the conversation the operator is having on the phone *before* it is
@@ -504,7 +515,19 @@ const submitMove = async () => {
            @keydown.space.prevent="openMember(member, team)">
         <i :class="[statusIcon(member.status), statusColour(member.status)]"
            class="text-base" :aria-label="statusLabel(member.status)" />
-        <span class="font-medium" :class="nameClass(member.status)">{{ member.name || member.memberId }}</span>
+        <span class="font-medium" :class="nameClass(member)">{{ member.name || member.memberId }}</span>
+        <!--
+          Why a member with an active status is not counted in this team's strength, said on
+          the row rather than left for the operator to work out. Both directions are worth
+          marking: one explains a racing member who does not count, the other explains a name
+          that is not on the patrol's own roster.
+        -->
+        <span v-if="member.movedAway" class="text-xs italic text-gray-500">
+          → flyttet til anden patrulje
+        </span>
+        <span v-else-if="member.movedIn" class="text-xs italic text-gray-500">
+          ← flyttet hertil
+        </span>
       </div>
       <div v-if="team.members.length === 0" class="pl-3 py-1 text-sm text-gray-500">
         Ingen deltagere registreret.
