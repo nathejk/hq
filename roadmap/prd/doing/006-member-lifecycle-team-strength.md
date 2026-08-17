@@ -666,12 +666,21 @@ Two consequences worth stating:
   `sosId` onto interfaces that cannot know one.
 - **Whole-team collection is one command, not N.** A single
   `sos.team.collected`-style command publishes a withdrawal request per remaining
-  racing member, atomically from the operator's point of view, sharing one
-  `correlationId`, and then the one summarising `sos` event. Publishing three
-  independent requests from the frontend would risk a partial collection if one call
-  fails — the worst possible outcome, since the team would then be split across
-  states with nobody noticing. It is the general rule above applied to the case that
-  motivated it.
+  racing member, atomically from the operator's point of view, and then the one
+  summarising `sos` event. Publishing three independent requests from the frontend would
+  risk a partial collection if one call fails — the worst possible outcome, since the team
+  would then be split across states with nobody noticing. It is the general rule above
+  applied to the case that motivated it.
+
+  **Amended 2026-08-17 (task 073): there is no shared `correlationId`.** This section
+  originally required the per-member events to share one so the timeline could render them
+  as a single entry. Two things retired that: the summarising `sos` event now does that job
+  outright, and `shared-go/messages.Metadata` has **no `CorrelationID` field** — only
+  `CorrelationSequence uint64` — so honouring it would have meant a cross-repo change to
+  serve a purpose that no longer existed. The grouping is recoverable anyway, because the
+  summary lists every member id. Recorded rather than silently dropped, because "share a
+  correlationId" reads like an implementation detail and was in fact a rendering
+  requirement that has since been met a better way.
 
 ### The self-carrying boundary is enforced on the write side
 

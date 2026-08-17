@@ -3,6 +3,7 @@ package spejderstatus
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -279,5 +280,91 @@ func TestEventsArePublishedOnTheMemberSubject(t *testing.T) {
 	want := "NATHEJK.2026.spejder.m-9.withdrawal.requested"
 	if p.subjects[0] != want {
 		t.Errorf("subject = %q, want %q", p.subjects[0], want)
+	}
+}
+
+// --- collecting a whole team ---
+
+// One event per racing member, and the loop is on the server so a partial failure is a
+// failure rather than a team split across two states with nobody noticing.
+func TestCollectTeamRequestsWithdrawalForEveryRacingMember(t *testing.T) {
+	team := []SpejderStatus{
+		racing("m-1", "t-1"),
+		racing("m-2", "t-1"),
+		racing("m-3", "t-1"),
+	}
+	c, p := newCommander(nil, team)
+
+	changes, err := c.CollectTeam(context.Background(), Actor{}, "2026", "t-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(changes) != 3 {
+		t.Fatalf("collected %d members, want 3", len(changes))
+	}
+	if len(p.subjects) != 3 {
+		t.Fatalf("published %d events, want one per member: %v", len(p.subjects), p.subjects)
+	}
+	for _, subj := range p.subjects {
+		if !strings.HasSuffix(subj, ".withdrawal.requested") {
+			t.Errorf("unexpected subject %q", subj)
+		}
+	}
+	// Nobody is left on the route, which is what makes the patrol discontinued — with
+	// no event of its own.
+	for _, ch := range changes {
+		if ch.TeamStrength != 0 {
+			t.Errorf("TeamStrength = %d after collecting the whole team, want 0", ch.TeamStrength)
+		}
+		if ch.From != types.MemberStatusRacing || ch.To != types.MemberStatusWaiting {
+			t.Errorf("change = %+v, want racing → waiting", ch)
+		}
+	}
+}
+
+// **The member already in a car must not be touched.**
+//
+// They have left the route; re-publishing a withdrawal request would put a second,
+// false line in their history and walk them backwards through the lifecycle. This is
+// the case that makes "collect the whole team" different from "set everyone to
+// waiting".
+func TestCollectTeamSkipsMembersAlreadyOutOfTheRace(t *testing.T) {
+	team := []SpejderStatus{
+		racing("m-1", "t-1"),
+		{MemberID: "m-2", CurrentTeamID: "t-1", Status: types.MemberStatusTransit},
+		{MemberID: "m-3", CurrentTeamID: "t-1", Status: types.MemberStatusWaiting},
+		{MemberID: "m-4", CurrentTeamID: "t-1", Status: types.MemberStatusSheltered},
+	}
+	c, p := newCommander(nil, team)
+
+	changes, err := c.CollectTeam(context.Background(), Actor{}, "2026", "t-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(changes) != 1 || changes[0].MemberID != "m-1" {
+		t.Fatalf("collected %+v, want only the racing member m-1", changes)
+	}
+	if len(p.subjects) != 1 {
+		t.Errorf("published %v, want one event", p.subjects)
+	}
+}
+
+// A second click collects nobody and publishes nothing, so it cannot produce a second
+// timeline entry.
+func TestCollectTeamIsANoOpWhenNobodyIsRacing(t *testing.T) {
+	team := []SpejderStatus{
+		{MemberID: "m-1", CurrentTeamID: "t-1", Status: types.MemberStatusWaiting},
+	}
+	c, p := newCommander(nil, team)
+
+	changes, err := c.CollectTeam(context.Background(), Actor{}, "2026", "t-1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(changes) != 0 {
+		t.Errorf("collected %+v, want none", changes)
+	}
+	if len(p.subjects) != 0 {
+		t.Errorf("published %v", p.subjects)
 	}
 }

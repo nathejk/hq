@@ -140,6 +140,73 @@ func (app *application) moveMemberTeamHandler(w http.ResponseWriter, r *http.Req
 	}
 }
 
+// collectTeamHandler takes a whole patrol out of the race in one action.
+//
+// One request, not one per member: three separate calls from the browser could
+// half-succeed and leave a team split across two states with nobody noticing.
+//
+// Renders as a single timeline entry — "hele patruljen hentes" — because the N member
+// events are summarised by one case event, which is the general rule from task 071
+// applied to the case that motivated it.
+func (app *application) collectTeamHandler(w http.ResponseWriter, r *http.Request) {
+	sosID := types.SosID(app.ReadNamedParam(r, "id"))
+	teamID := types.TeamID(app.ReadNamedParam(r, "teamId"))
+	if sosID == "" || teamID == "" {
+		app.NotFoundResponse(w, r)
+		return
+	}
+	year := app.YearSlug(r)
+
+	changes, err := app.commands.Member.CollectTeam(r.Context(), app.memberActor(r), year, teamID)
+	if err != nil {
+		app.memberCommandError(w, r, err)
+		return
+	}
+	// Nobody left to collect. Answered as success with an empty list: the operator's
+	// intent holds, and a double click must not produce a second timeline entry.
+	if len(changes) == 0 {
+		if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"collected": []any{}}, nil); err != nil {
+			app.ServerErrorResponse(w, r, err)
+		}
+		return
+	}
+
+	team, _ := app.models.Teams.GetPatrulje(teamID)
+	teamName := ""
+	if team != nil {
+		teamName = team.Name
+	}
+	// One lookup for the whole team rather than one per member: memberName would
+	// otherwise re-read the same roster once per collected member.
+	names := map[types.MemberID]string{}
+	if members, _, err := app.models.Members.GetSpejdere(data.Filters{TeamID: teamID}); err == nil {
+		for _, m := range members {
+			names[m.MemberID] = m.Name
+		}
+	}
+
+	summary := sos.TeamCollected{
+		SosID:        sosID,
+		TeamID:       teamID,
+		TeamName:     teamName,
+		TeamStrength: 0,
+	}
+	for _, ch := range changes {
+		summary.Members = append(summary.Members, sos.MemberChange{
+			MemberID: ch.MemberID,
+			Name:     names[ch.MemberID],
+			From:     ch.From,
+			To:       ch.To,
+		})
+	}
+	if err := app.commands.Sos.RecordTeamCollected(r.Context(), app.actor(r), year, summary); err != nil {
+		log.Printf("sos summary for member operation failed: %v", err)
+	}
+	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"collected": changes}, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
 // memberContext is everything a member handler needs after validation.
 type memberContext struct {
 	r        *http.Request

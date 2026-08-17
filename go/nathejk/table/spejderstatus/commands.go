@@ -46,6 +46,7 @@ type Commands interface {
 	CancelWithdrawal(ctx context.Context, actor Actor, year types.YearSlug, id types.MemberID) (*Change, error)
 	OverrideStatus(ctx context.Context, actor Actor, year types.YearSlug, id types.MemberID, to types.MemberStatus) (*Change, error)
 	MoveTeam(ctx context.Context, actor Actor, year types.YearSlug, id types.MemberID, to types.TeamID) (*Move, error)
+	CollectTeam(ctx context.Context, actor Actor, year types.YearSlug, team types.TeamID) ([]Change, error)
 }
 
 var (
@@ -253,6 +254,62 @@ func (c commander) MoveTeam(ctx context.Context, actor Actor, year types.YearSlu
 		FromTeamStrength: from,
 		ToTeamStrength:   dest,
 	}, nil
+}
+
+// CollectTeam takes every remaining racing member of a patrol out of the race in one
+// operation: the team leaves together.
+//
+// # One command, not N calls from the browser
+//
+// Three separate requests could half-succeed, and a team split across two states with
+// nobody noticing is the worst available outcome — worse than the operator having to
+// click three times, which is itself a way to forget two of them while on the phone.
+// So the loop is here, on the server, where a partial failure is returned as a failure.
+//
+// # Members already out are skipped, not re-requested
+//
+// Collecting a patrol where one member is already in a car must not touch that member:
+// they have left the route, and re-publishing a withdrawal request for them would put a
+// second, false line in their history and move them backwards through the lifecycle.
+//
+// Returns one Change per member actually collected, in team order, for the caller to
+// summarise as a single timeline entry. An empty result means there was nobody left to
+// collect — not an error, just a no-op, which is what a double click produces.
+func (c commander) CollectTeam(ctx context.Context, actor Actor, year types.YearSlug, team types.TeamID) ([]Change, error) {
+	if team == "" {
+		return nil, ErrRecordNotFound
+	}
+	members, err := c.q.GetByTeam(ctx, Filter{YearSlug: year, TeamID: team})
+	if err != nil {
+		return nil, err
+	}
+
+	var changes []Change
+	for _, m := range members {
+		if m.Status != types.MemberStatusRacing {
+			continue
+		}
+		body := &WithdrawalRequested{MemberID: m.MemberID, TeamID: team, Actor: actor}
+		if err := c.publish(actor, year, m.MemberID, "withdrawal.requested", body); err != nil {
+			// Returned rather than swallowed: the caller must be able to tell the
+			// operator that the collection did not complete, since some members are now
+			// waiting and others are not. Whatever was published stays published — the
+			// log is the record — and the changes so far are discarded so no summary
+			// claims an operation that did not finish.
+			return nil, err
+		}
+		changes = append(changes, Change{
+			MemberID: m.MemberID,
+			TeamID:   team,
+			From:     types.MemberStatusRacing,
+			To:       types.MemberStatusWaiting,
+			// Zero by definition: every racing member of this team is being taken out
+			// of the race, so none is left on the route. This is also what makes the
+			// patrol discontinued, with no event of its own.
+			TeamStrength: 0,
+		})
+	}
+	return changes, nil
 }
 
 // change assembles the Change for a status transition, including the team's

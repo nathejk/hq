@@ -70,6 +70,10 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/racing", app.resumeRacingHandler)
 	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/status", app.overrideMemberStatusHandler)
 	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/team", app.moveMemberTeamHandler)
+
+	// Collecting a whole patrol is one action on the *case*, not four on members:
+	// three separate calls could half-succeed and split a team across two states.
+	router.HandlerFunc(http.MethodPost, "/api/sos/:id/team/:teamId/collect", app.collectTeamHandler)
 	router.HandlerFunc(http.MethodGet, "/api/mail/recipients", app.mailRecipientsHandler)
 
 	// Nødtelefon / SOS (PRD 001)
