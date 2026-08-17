@@ -117,6 +117,56 @@ const statusSeverity = (slug: string) => {
   }
 }
 
+// A member row shows its status as an icon alone, with the label and any actions in a
+// popover on hover. Twelve rows of coloured word-tags read as a wall of text when what an
+// operator scans for is "is anybody not racing?", and the colour already answers that.
+//
+// The icon must therefore carry the same information the tag did, so these two maps are
+// kept beside each other rather than one being derived from the other: the colour is the
+// glanceable signal and the glyph is what disambiguates two states sharing a colour
+// (transit and sheltered are both amber).
+const statusIcon = (slug: string) => {
+  switch (slug) {
+    case 'racing':
+      return 'pi pi-directions' // on the route, under their own steam
+    case 'waiting':
+      return 'pi pi-clock' // by the trailside, and their patrol is stopped with them
+    case 'transit':
+      return 'pi pi-car'
+    case 'sheltered':
+      return 'pi pi-home'
+    case 'reunited':
+      return 'pi pi-users' // handed back to their own team
+    case 'released':
+      return 'pi pi-sign-out' // gone home with a guardian
+    case 'finished':
+      return 'pi pi-flag'
+    case 'registered':
+      return 'pi pi-user'
+    case 'seated':
+      return 'pi pi-ticket'
+    default:
+      return 'pi pi-minus-circle' // no status recorded: not started
+  }
+}
+
+// Matches the severities above rather than inventing a second palette — the product owner
+// confirmed the existing colours read correctly, so only the shape changes.
+const statusColour = (slug: string) => {
+  switch (statusSeverity(slug)) {
+    case 'success':
+      return 'text-green-600'
+    case 'danger':
+      return 'text-red-600'
+    case 'warn':
+      return 'text-amber-600'
+    case 'secondary':
+      return 'text-gray-500'
+    default:
+      return 'text-gray-400'
+  }
+}
+
 // A member is self-carrying up to and including `waiting`: they have covered every
 // metre on their own legs. Those are the transitions this screen owns. From `transit`
 // onwards the row is read-only, because the car and shelter interfaces record what
@@ -343,23 +393,58 @@ const submitMove = async () => {
             {{ member.phoneParent }}
           </a>
         </div>
-        <div class="flex items-center gap-2 shrink-0">
-          <Tag :value="statusLabel(member.status)" :severity="statusSeverity(member.status)" />
-          <span v-if="member.updatedAt && member.status" class="text-gray-500">
-            {{ since(member.updatedAt) }}
-          </span>
-          <Button v-if="canWithdraw(member.status)" label="Ønsker at udgå" size="small" severity="danger"
-                  outlined :loading="pending[member.memberId]"
-                  @click="askWithdraw(member, team)" />
-          <!--
-            Prominent rather than tucked into a menu: a scout getting their breath back
-            is an ordinary outcome and saves a car being sent. Not optimistic — the
-            server may legitimately reject it if a car has already collected them, so it
-            shows as pending and lets the server answer.
-          -->
-          <Button v-if="canResume(member.status)" label="Fortsætter selv" size="small" severity="success"
-                  :loading="pending[member.memberId]"
-                  @click="act(member.memberId, 'racing')" />
+        <!--
+          Status as an icon, with the label and any actions in a panel on hover.
+
+          The panel is a **child of the hovered element**, which is what makes the
+          interaction work without any JavaScript or close-delay: moving the pointer from
+          the icon onto the panel keeps the group hovered, so the buttons inside are
+          actually clickable. A popover anchored elsewhere and hidden on mouseleave would
+          vanish on the way to the button it exists to offer — which for an operator on the
+          phone is worse than no menu at all.
+
+          focus-within opens it from the keyboard too, so the actions are not
+          hover-only.
+        -->
+        <div class="group relative shrink-0">
+          <i :class="[statusIcon(member.status), statusColour(member.status)]"
+             class="cursor-default text-base"
+             tabindex="0"
+             :aria-label="statusLabel(member.status)" />
+
+          <div class="invisible absolute right-0 top-full z-20 mt-1 w-max rounded border border-gray-200
+                      bg-white p-2 text-left shadow-lg group-hover:visible group-focus-within:visible">
+            <div class="flex items-center gap-2 whitespace-nowrap">
+              <i :class="[statusIcon(member.status), statusColour(member.status)]" />
+              <span class="font-medium">{{ statusLabel(member.status) }}</span>
+              <span v-if="member.updatedAt && member.status" class="text-gray-500">
+                siden {{ since(member.updatedAt) }}
+              </span>
+            </div>
+
+            <div v-if="canWithdraw(member.status) || canResume(member.status)" class="mt-2 flex gap-2">
+              <Button v-if="canWithdraw(member.status)" label="Ønsker at udgå" size="small"
+                      severity="danger" outlined :loading="pending[member.memberId]"
+                      @click="askWithdraw(member, team)" />
+              <!--
+                Still prominent within the panel: a scout getting their breath back is an
+                ordinary outcome and saves a car being sent. Not optimistic — the server may
+                legitimately reject it if a car has already collected them, so it shows as
+                pending and lets the server answer.
+              -->
+              <Button v-if="canResume(member.status)" label="Fortsætter selv" size="small"
+                      severity="success" :loading="pending[member.memberId]"
+                      @click="act(member.memberId, 'racing')" />
+            </div>
+            <!--
+              From transit onwards there is deliberately nothing to press: the car and
+              shelter interfaces record what happens next, and this card must not pretend
+              to. Saying so is better than an empty panel that looks broken.
+            -->
+            <div v-else-if="member.status" class="mt-1 text-gray-500">
+              Ingen handlinger herfra
+            </div>
+          </div>
         </div>
       </div>
       <div v-if="team.members.length === 0" class="pl-3 py-1 text-sm text-gray-500">

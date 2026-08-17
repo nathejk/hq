@@ -474,6 +474,20 @@ All of this lands **inside PRD 001's surfaces**; this PRD adds no new views.
     their breath back is an ordinary outcome and saves a car being sent. **From
     `transit` onwards the row is read-only**: it reflects what the car and shelter
     have recorded and offers no buttons to advance or reverse them.
+
+    **Amended 2026-08-17, after shipping.** The row shows the status as a **coloured icon
+    alone**; the label, its timestamp and the actions appear in a panel on hover or
+    keyboard focus. The colours were right — what was wrong was the volume: a dozen rows of
+    coloured word-tags read as a wall of text, when the question an operator scans for is
+    "is anybody not racing?", which the colour alone answers. The glyph is what
+    distinguishes two states sharing a colour (`transit` and `sheltered` are both amber).
+
+    The panel is a **child of the hovered element**, not an anchored overlay. That is the
+    load-bearing detail: it means moving the pointer from the icon onto the panel keeps the
+    group hovered, so the buttons are reachable. A popover hidden on `mouseleave` would
+    vanish on the way to the button it exists to offer — which for an operator on the phone
+    is worse than no menu. Read-only states say "Ingen handlinger herfra" rather than
+    showing an empty panel.
   - Secondary action: **Flyt til anden patrulje** (move the member). Use PrimeVue
     overlay/popover for the menu, not `b-popover`. **No override here** — corrections live
     on the patrol page, see below.
