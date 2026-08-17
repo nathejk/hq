@@ -157,6 +157,37 @@ func (app *application) collectTeamHandler(w http.ResponseWriter, r *http.Reques
 	}
 	year := app.YearSlug(r)
 
+	// The team must actually be on this case.
+	//
+	// Found missing while verifying task 076: the endpoint happily emptied a patrol that
+	// had never been associated. Nothing in the URL enforces the relationship it asserts,
+	// so a stale or copy-pasted teamId would take a patrol out of the race from a case
+	// that has nothing to do with it — and the summary would land on a timeline whose team
+	// card does not even list them, making it invisible where it matters.
+	//
+	// This is the one member operation that needs the check: the others act on a member
+	// the operator is looking at, whereas this one acts on a *set* derived from a team id
+	// alone, which is the difference between a mistake affecting one row and one emptying
+	// a patrol.
+	case_, err := app.models.Sos.GetByID(r.Context(), sosID)
+	if err != nil {
+		app.handleSosError(w, r, err)
+		return
+	}
+	associated := false
+	for _, t := range case_.Teams {
+		if t.TeamID == teamID {
+			associated = true
+			break
+		}
+	}
+	if !associated {
+		app.FailedValidationResponse(w, r, map[string]string{
+			"teamId": "patruljen er ikke tilknyttet sagen",
+		})
+		return
+	}
+
 	changes, err := app.commands.Member.CollectTeam(r.Context(), app.memberActor(r), year, teamID)
 	if err != nil {
 		app.memberCommandError(w, r, err)

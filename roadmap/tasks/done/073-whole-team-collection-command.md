@@ -95,3 +95,20 @@ This is the general N+1 rule from task 071 applied to the case that motivated it
     case soft-deleted
 - 2026-08-17 — ✅ All criteria met, 3 new tests. Full `go build`, `go vet`, `gofmt -l`,
   `go test ./...` clean. Moving to done — this closes Phase B.
+- 2026-08-17 (later, during task 076) — **⚠️ Defect found and fixed: the endpoint did not
+  check that the team was associated with the case.** Noticed by accident — a verification
+  script's association call failed, and the collect afterwards emptied the patrol anyway.
+  So a stale or copy-pasted `teamId` would take a patrol out of the race from a case that
+  has nothing to do with it, and the summary would land on a timeline whose team card does
+  not even list them — invisible exactly where it matters.
+
+  Added the check in `collectTeamHandler`: the case is loaded and the team must be among
+  its associations, else `"patruljen er ikke tilknyttet sagen"`. This is the one member
+  operation that needs it, and the reason is worth keeping: the other three act on a member
+  the operator is looking at, whereas this one acts on a **set** derived from a team id
+  alone. That is the difference between a mistake affecting one row and one emptying a
+  patrol.
+
+  Verified: collecting a non-associated team is now rejected, an associated one still
+  works. My own acceptance criteria did not ask for this, which is the lesson — the URL
+  asserted a relationship the handler never verified.
