@@ -107,16 +107,19 @@ type sosTeam struct {
 	Members []sosMember `json:"members"`
 }
 
-// sosMember is one member of an associated patrol, as the operator needs them
-// mid-call: who they are, how to reach them, and where they are in the lifecycle.
+// sosMember is one member of an associated patrol, as a **row** needs them: who they are
+// and where they are in the lifecycle. Nothing more.
+//
+// Contact details, address, birthday and the status history are deliberately absent — the
+// row is an index an operator scans down, and all of that belongs to one member at a time.
+// `GET /api/member/:memberId` serves it when the detail modal opens, so a case with three
+// patrols does not carry eighteen members' worth of detail nobody has asked to see.
 type sosMember struct {
-	MemberID    types.MemberID     `json:"memberId"`
-	Name        string             `json:"name"`
-	Phone       string             `json:"phone"`
-	PhoneParent string             `json:"phoneParent"`
-	Status      types.MemberStatus `json:"status"`
+	MemberID types.MemberID     `json:"memberId"`
+	Name     string             `json:"name"`
+	Status   types.MemberStatus `json:"status"`
 
-	// UpdatedAt is when the status last changed, so a row can say "venter siden 21:40".
+	// UpdatedAt is when the status last changed, so the modal can say "venter siden 21:40".
 	// Nil for a member with no status row — one who has not started — rather than a zero
 	// time, which the SPA would render as 1970.
 	UpdatedAt *time.Time `json:"updatedAt"`
@@ -186,10 +189,8 @@ func (app *application) sosTeamMembers(r *http.Request, teamID types.TeamID) []s
 		}
 		seen[m.MemberID] = true
 		member := sosMember{
-			MemberID:    m.MemberID,
-			Name:        m.Name,
-			Phone:       m.Phone,
-			PhoneParent: m.PhoneParent,
+			MemberID: m.MemberID,
+			Name:     m.Name,
 		}
 		if s, ok := statuses[m.MemberID]; ok {
 			member.Status = s.Status

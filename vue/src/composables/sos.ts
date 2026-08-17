@@ -103,6 +103,27 @@ const memberStatusLabels: Record<string, string> = {
 // ("Ida: i løbet → venter") rather than as a standalone tag.
 export const memberStatusPhrase = (slug: string) => memberStatusLabels[slug] ?? slug
 
+// What *happened*, as opposed to where the member ended up.
+//
+// Kept apart from the status labels because the two carry different information and a
+// timeline needs both: `racing` reached by carrying on under their own steam and `racing`
+// reached by being moved to another patrol are the same status and very different facts.
+// Without this the history would render two identical lines.
+const memberEventLabels: Record<string, string> = {
+  started: 'Startede løbet',
+  'withdrawal.requested': 'Ønskede at udgå',
+  'withdrawal.cancelled': 'Fortsatte selv',
+  'status.overridden': 'Rettet manuelt',
+  'team.moved': 'Flyttet til anden patrulje',
+  // Published by the car and shelter interfaces, which do not exist yet — named now so a
+  // history recorded once they do reads correctly without a frontend change.
+  'pickup.accepted': 'Taget op i bil',
+  'shelter.accepted': 'Ankommet til HQ',
+  'handover.completed': 'Overdraget',
+}
+
+export const memberEventPhrase = (event: string) => memberEventLabels[event] ?? event
+
 export interface MemberChangeSummary {
   memberId: string
   name?: string

@@ -594,6 +594,100 @@ func (app *application) memberCommandError(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// showMemberHandler serves everything known about one member, for the detail modal.
+//
+// Its own endpoint rather than folding this into the case payload: a case with three
+// patrols has eighteen members, and carrying each one's address, birthday and full status
+// history would make the screen an operator stares at all night pay for detail they open
+// one member at a time. The card sends what a row needs; this sends what a modal needs.
+func (app *application) showMemberHandler(w http.ResponseWriter, r *http.Request) {
+	memberID := types.MemberID(app.ReadNamedParam(r, "memberId"))
+	if memberID == "" {
+		app.NotFoundResponse(w, r)
+		return
+	}
+	year := app.YearSlug(r)
+
+	status, err := app.models.SpejderStatus.GetByMemberID(r.Context(), year, memberID)
+	if err != nil && !errors.Is(err, spejderstatus.ErrRecordNotFound) {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+
+	// The roster is keyed by team, so the member's own team has to come from their status
+	// row — or, for somebody with no status row yet, from the team the request names.
+	// A member with neither is genuinely unknown.
+	teamID := types.TeamID(r.URL.Query().Get("teamId"))
+	if status != nil {
+		if status.InitialTeamID != "" {
+			teamID = status.InitialTeamID
+		}
+		if status.CurrentTeamID != "" {
+			teamID = status.CurrentTeamID
+		}
+	}
+	if teamID == "" {
+		app.NotFoundResponse(w, r)
+		return
+	}
+
+	var member *data.Spejder
+	roster, _, err := app.models.Members.GetSpejdere(data.Filters{TeamID: teamID})
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+	for _, m := range roster {
+		if m.MemberID == memberID {
+			member = m
+			break
+		}
+	}
+	// A member moved into this team is not on its roster, so fall back to the team they
+	// started with — the same asymmetry the case card handles.
+	if member == nil && status != nil && status.InitialTeamID != "" && status.InitialTeamID != teamID {
+		if initial, _, err := app.models.Members.GetSpejdere(data.Filters{TeamID: status.InitialTeamID}); err == nil {
+			for _, m := range initial {
+				if m.MemberID == memberID {
+					member = m
+					break
+				}
+			}
+		}
+	}
+	if member == nil {
+		app.NotFoundResponse(w, r)
+		return
+	}
+
+	history, err := app.models.SpejderStatus.GetHistory(r.Context(), year, memberID)
+	if err != nil && !errors.Is(err, spejderstatus.ErrRecordNotFound) {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+	if history == nil {
+		history = []spejderstatus.StatusEvent{}
+	}
+
+	// The member's own team, named, so the modal can say which patrol they are with now
+	// without a second request.
+	teamName := ""
+	if team, err := app.models.Teams.GetPatrulje(teamID); err == nil && team != nil {
+		teamName = team.Name
+	}
+
+	envelope := jsonapi.Envelope{
+		"member":         member,
+		"teamId":         teamID,
+		"teamName":       teamName,
+		"history":        history,
+		"memberStatuses": MemberStatuses(),
+	}
+	if err := app.WriteJSON(w, http.StatusOK, envelope, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
 // showMemberCareHandler serves the count of members Nathejk is currently
 // responsible for: the number that has to reach zero before the organisers can go
 // home.

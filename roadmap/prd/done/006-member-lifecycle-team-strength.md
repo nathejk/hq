@@ -475,19 +475,28 @@ All of this lands **inside PRD 001's surfaces**; this PRD adds no new views.
     `transit` onwards the row is read-only**: it reflects what the car and shelter
     have recorded and offers no buttons to advance or reverse them.
 
-    **Amended 2026-08-17, after shipping.** The row shows the status as a **coloured icon
-    alone**; the label, its timestamp and the actions appear in a panel on hover or
-    keyboard focus. The colours were right — what was wrong was the volume: a dozen rows of
-    coloured word-tags read as a wall of text, when the question an operator scans for is
-    "is anybody not racing?", which the colour alone answers. The glyph is what
-    distinguishes two states sharing a colour (`transit` and `sheltered` are both amber).
+    **Amended 2026-08-17, after shipping — supersedes both the original row design and a
+    short-lived hover-panel version.** A member row is an **index**, not a control surface:
+    a status icon and a name, nothing else. Clicking the row (or pressing enter on it) opens
+    a **member detail modal** carrying everything known about that participant — phone
+    numbers, contact person, address, birthday, the patrol they are with — plus the full
+    **status history** and the actions that belong to them.
 
-    The panel is a **child of the hovered element**, not an anchored overlay. That is the
-    load-bearing detail: it means moving the pointer from the icon onto the panel keeps the
-    group hovered, so the buttons are reachable. A popover hidden on `mouseleave` would
-    vanish on the way to the button it exists to offer — which for an operator on the phone
-    is worse than no menu. Read-only states say "Ingen handlinger herfra" rather than
-    showing an empty panel.
+    Three things were learned getting here. Coloured word-tags on every row read as a wall
+    of text when the question an operator scans for is "is anybody not racing?", which the
+    colour alone answers — so the label moved off the row. A hover panel was tried for the
+    label and actions and abandoned: it works only if the panel is a child of the hovered
+    element, and even then it is a poor home for anything an operator needs to read rather
+    than glance at. And phone numbers on every row competed with the name for the same
+    scanning attention while being useful for exactly one member at a time.
+
+    The icon still carries the status: colour is the glanceable signal, the glyph
+    distinguishes states sharing a colour (`transit` and `sheltered` are both amber).
+    Read-only states say so in the modal rather than leaving an empty space that looks
+    unfinished.
+
+    **This required a new projection.** `spejderstatus` holds only where a member is *now*,
+    so the history had nowhere to come from — see §8 (Member status projection).
   - Secondary action: **Flyt til anden patrulje** (move the member). Use PrimeVue
     overlay/popover for the menu, not `b-popover`. **No override here** — corrections live
     on the patrol page, see below.
@@ -587,6 +596,26 @@ the projection, keep the name.
 - **Reuse the lifecycle helpers rather than re-deriving them.** `Valid()` gates what
   the API accepts, `CanFinish()` guards the finish-line flow, `InOurCare()` *is* the
   in-our-care count. No hand-rolled status lists in handlers, queries or the SPA.
+- **Added 2026-08-17, after shipping: `spejderstatuslog`, the member's history.** The
+  projection as specified holds only where a member is *now*, which is all any count or
+  strength needs — but a member detail view needs how they got there, and "venter siden
+  21:40" answers far less than "racing at 20:07, waiting at 21:40, in a car at 22:15". So
+  the same consumer now also appends one row per lifecycle event.
+
+  Two details are load-bearing. It is keyed by **(stream sequence, member id)**, not
+  sequence alone: a patrol starting puts its whole roster into `racing` from a single
+  message, and a seq-only key would let the first member written silently swallow the rest —
+  the composite key keeps replay idempotent while allowing one event to concern several
+  members. And it stores the **event name alongside the status**, because they answer
+  different questions: `racing` reached by carrying on under one's own steam and `racing`
+  reached by being moved to another patrol are the same status and very different facts, and
+  a history showing only the status renders them identically.
+
+  `from` is deliberately not stored — the previous status is the previous row, and deriving
+  it would have meant a read-modify-write in a consumer that needs none. A non-starter's
+  history is deleted with them, so no history outlives the member it describes. Served by
+  `GET /api/member/:memberId`, its own endpoint so a case does not carry every member's
+  history for a modal opened one member at a time.
 
 ### `activeMemberCount` is owned by the member projection
 
@@ -848,9 +877,17 @@ view, not a later phase. Specifics:
 | PUT | `/api/member/:memberId/status` | Override a member's status (correction path). `sosId` required; created-and-closed automatically when the caller has none |
 | PUT | `/api/member/:memberId/team` | Move member to another team (`currentTeamId`), `sosId` required |
 | POST | `/api/sos/:id/team/:teamId/collect` | Collect the whole team: every remaining `racing` member → `waiting`, one action |
-| GET | `/api/member/care` | In-our-care counts by status + oldest `waiting` timestamp |
+| GET | `/api/members/care` | In-our-care counts by status + oldest `waiting` timestamp |
+| GET | `/api/member/:memberId` | One member in full for the detail modal: contact, address, birthday and status history (added 2026-08-17) |
+| POST | `/api/sos/:id/team/:teamId/move` | Move several members to one patrol in a single operation (added 2026-08-17, task 085) |
 
 Notes on the shape:
+
+- **`/api/members/care` is plural, and that is not cosmetic.** `httprouter` builds one tree
+  per method and cannot hold a static segment where a sibling holds a wildcard, so
+  `GET /api/member/care` beside `GET /api/member/:memberId` **panics the router at boot** —
+  discovered on 2026-08-17 by adding the second one and watching the API fail to start.
+  Plural is also the truer name: the count is a fact about the population, not a member.
 
 - **Every member command requires a `sosId`.** Nothing moves a member or changes their
   status without a case explaining why, which is what makes the whole lifecycle auditable

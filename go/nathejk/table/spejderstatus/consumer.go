@@ -3,6 +3,7 @@ package spejderstatus
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/doug-martin/goqu/v9"
@@ -127,6 +128,9 @@ func (c *consumer) HandleMessage(msg stream.Message) error {
 		}, "currentTeamId", "status", "updatedAt"); err != nil {
 			return err
 		}
+		if err := c.appendHistory(msg, body.MemberID, body.ToTeamID, types.MemberStatusRacing); err != nil {
+			return err
+		}
 		// Both teams: the origin lost a member and the destination gained one. This
 		// is the case that makes carrying FromTeamID on the event worth it — the row
 		// no longer says where the member came from.
@@ -147,6 +151,17 @@ func (c *consumer) HandleMessage(msg stream.Message) error {
 		}
 		if err := c.exec(goqu.Dialect("mysql").
 			Delete("spejderstatus").
+			Where(
+				goqu.C("year").Eq(c.year(msg)),
+				goqu.C("id").Eq(c.memberID(msg)),
+			)); err != nil {
+			return err
+		}
+		// The history goes with them. A member who did not start has no lifecycle to
+		// show, and leaving orphaned rows behind would put a history on a person the
+		// rest of the read model says does not exist.
+		if err := c.exec(goqu.Dialect("mysql").
+			Delete("spejderstatuslog").
 			Where(
 				goqu.C("year").Eq(c.year(msg)),
 				goqu.C("id").Eq(c.memberID(msg)),
@@ -186,6 +201,11 @@ func (c *consumer) HandleMessage(msg stream.Message) error {
 			}, "initialTeamId"); err != nil {
 				return err
 			}
+			// The first line of every member's timeline. Keyed by this one event's
+			// sequence plus the member id, which is why the log's key is composite.
+			if err := c.appendHistory(msg, m.MemberID, body.TeamID, types.MemberStatusRacing); err != nil {
+				return err
+			}
 		}
 		// Once for the team, not once per member: the count is recomputed from the
 		// table rather than accumulated, so repeating it per member would issue N
@@ -223,9 +243,65 @@ func (c *consumer) setStatus(msg stream.Message, e MemberEvent) error {
 	}, "status", "updatedAt"); err != nil {
 		return err
 	}
+	if err := c.appendHistory(msg, types.MemberID(c.memberID(msg)), c.teamID(e), status); err != nil {
+		return err
+	}
 	// Strictly after the row is written, which is the whole reason the two live in
 	// one consumer — see below.
 	return c.recomputeActiveMemberCount(msg, c.teamID(e))
+}
+
+// appendHistory records one step in a member's lifecycle.
+//
+// Takes the member id explicitly rather than reading it from the subject, because the
+// start event's subject names the **team**: one message puts a whole roster into
+// `racing`, and taking parts[3] there would file every one of them under the team's id.
+//
+// Keyed by the event's stream sequence, so replaying history rebuilds the same rows
+// rather than appending a second copy of every member's past on each restart. That is
+// the same decision sos_activity rests on, and it is the only thing making an
+// append-only table safe in a projection that is replayed by design.
+//
+// The event name is stored alongside the status because they answer different
+// questions: the status is where the member ended up, the event is what happened to
+// them. "racing" reached by carrying on themselves and "racing" reached by being moved
+// to another patrol are the same status and very different facts.
+func (c *consumer) appendHistory(msg stream.Message, memberID types.MemberID, teamID types.TeamID, status types.MemberStatus) error {
+	if memberID == "" {
+		return nil
+	}
+	return c.exec(goqu.Dialect("mysql").
+		Insert("spejderstatuslog").Rows(goqu.Record{
+		"seq":         msg.Sequence(),
+		"id":          string(memberID),
+		"year":        c.year(msg),
+		"teamId":      string(teamID),
+		"status":      string(status),
+		"event":       c.event(msg),
+		"actorUserId": string(c.actor(msg)),
+		"createdAt":   c.at(msg),
+	}).
+		OnConflict(goqu.DoNothing()))
+}
+
+// event is everything after the member id in the subject — "withdrawal.requested",
+// "team.moved" — so a dotted name survives whole.
+func (c *consumer) event(msg stream.Message) string {
+	parts := msg.Subject().Parts()
+	if len(parts) < 5 {
+		return ""
+	}
+	return strings.Join(parts[4:], ".")
+}
+
+// actor is the user the event was published by, empty until the platform
+// authenticates anybody (PRD 001 §6 Auth).
+func (c *consumer) actor(msg stream.Message) types.UserID {
+	var meta messages.Metadata
+	if err := msg.Meta(&meta); err != nil {
+		return ""
+	}
+	return meta.UserID
 }
 
 // recomputeActiveMemberCount rewrites the team's strength from the member rows.

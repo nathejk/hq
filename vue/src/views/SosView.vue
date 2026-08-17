@@ -49,8 +49,6 @@ interface SosCase {
 interface SosMember {
   memberId: string
   name: string
-  phone: string
-  phoneParent: string
   status: string
   updatedAt: string | null
 }

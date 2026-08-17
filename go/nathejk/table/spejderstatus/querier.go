@@ -27,7 +27,24 @@ type Filter struct {
 type Queries interface {
 	GetByMemberID(context.Context, types.YearSlug, types.MemberID) (*SpejderStatus, error)
 	GetByTeam(context.Context, Filter) ([]SpejderStatus, error)
+	GetHistory(context.Context, types.YearSlug, types.MemberID) ([]StatusEvent, error)
 	InOurCare(context.Context, types.YearSlug) (*Care, error)
+}
+
+// StatusEvent is one step in a member's lifecycle, as the member detail view shows it.
+//
+// Event is kept alongside Status because they answer different questions: the status is
+// where the member ended up, the event is what happened to them. `racing` reached by
+// carrying on under their own steam and `racing` reached by being moved to another patrol
+// are the same status and very different facts, and a timeline that showed only the status
+// would render those two identically.
+type StatusEvent struct {
+	Seq       uint64             `json:"seq"`
+	Status    types.MemberStatus `json:"status"`
+	Event     string             `json:"event"`
+	TeamID    types.TeamID       `json:"teamId"`
+	Actor     types.UserID       `json:"actorUserId"`
+	CreatedAt time.Time          `json:"createdAt"`
 }
 
 // Care is how many members Nathejk is currently responsible for.
@@ -141,6 +158,41 @@ func (q *querier) InOurCare(ctx context.Context, year types.YearSlug) (*Care, er
 		return nil, err
 	}
 	return care, nil
+}
+
+// GetHistory reads one member's lifecycle in the order it happened.
+//
+// Ordered by stream sequence rather than by timestamp. They almost always agree, but the
+// sequence is the order the platform actually applied things, and two events inside one
+// operation share a timestamp to the second — so sorting by time would render a collection
+// of three members in an arbitrary order while the sequence gives the true one.
+func (q *querier) GetHistory(ctx context.Context, year types.YearSlug, id types.MemberID) ([]StatusEvent, error) {
+	if id == "" {
+		return nil, ErrRecordNotFound
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	query := `SELECT seq, status, event, teamId, actorUserId, createdAt
+		FROM spejderstatuslog
+		WHERE year = ? AND id = ?
+		ORDER BY seq`
+
+	rows, err := q.db.QueryContext(ctx, query, string(year), string(id))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	history := []StatusEvent{}
+	for rows.Next() {
+		var e StatusEvent
+		if err := rows.Scan(&e.Seq, &e.Status, &e.Event, &e.TeamID, &e.Actor, &e.CreatedAt); err != nil {
+			return nil, err
+		}
+		history = append(history, e)
+	}
+	return history, rows.Err()
 }
 
 // GetByTeam reads every member currently attached to a team, whatever their status.

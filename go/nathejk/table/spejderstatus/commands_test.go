@@ -85,6 +85,10 @@ func (q stubQueries) InOurCare(context.Context, types.YearSlug) (*Care, error) {
 	return &Care{}, nil
 }
 
+func (q stubQueries) GetHistory(context.Context, types.YearSlug, types.MemberID) ([]StatusEvent, error) {
+	return nil, nil
+}
+
 func newCommander(member *SpejderStatus, team []SpejderStatus) (commander, *recordingPublisher) {
 	p := &recordingPublisher{}
 	return commander{p: p, q: stubQueries{member: member, team: team}}, p

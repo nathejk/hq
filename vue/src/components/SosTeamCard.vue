@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { http } from '@/plugins/axios'
 import { useLiveResource } from '@/composables/useLiveResource'
-import { hhmm } from '@/composables/datefilters'
+import { hhmm, parseApiDate } from '@/composables/datefilters'
+import { memberEventPhrase, formatDateTime } from '@/composables/sos'
 
 // The patrols associated with a case, and their members.
 //
@@ -30,8 +31,6 @@ const props = defineProps<{
     members: {
       memberId: string
       name: string
-      phone: string
-      phoneParent: string
       status: string
       updatedAt: string | null
     }[]
@@ -204,6 +203,93 @@ const discontinued = (team: { started: boolean; activeMemberCount: number }) =>
   team.started && team.activeMemberCount === 0
 
 const since = (value: string | null) => (value ? hhmm(value) : '')
+
+// --- member detail modal ---
+//
+// Opened by clicking a row. Its data comes from its own endpoint rather than the case
+// payload: a case with three patrols has eighteen members, and carrying each one's address,
+// birthday and full lifecycle would make the screen an operator stares at all night pay for
+// detail they open one member at a time.
+//
+// It is still **live**, without a second live resource: the open member's row comes from
+// `props.teams`, which the case resource keeps current, so watching that row's status is
+// enough to know when the history has changed and reload it. That reuses the live channel
+// already in place instead of introducing a resource whose key would have to vary.
+const detail = ref<{ memberId: string; team: TeamRow } | null>(null)
+const detailData = ref<{
+  member: {
+    name: string
+    phone: string
+    phoneParent: string
+    address: string
+    postalCode: string
+    city: string
+    birthday: string | null
+    status: string
+  }
+  teamName: string
+  history: { seq: number; status: string; event: string; createdAt: string }[]
+} | null>(null)
+const detailPending = ref(false)
+
+// The open member as the *card* sees them — live, because props.teams is. This is what the
+// modal's status badge and action buttons read, so they cannot disagree with the row behind
+// the modal.
+const detailMember = computed<MemberRow | null>(() => {
+  const d = detail.value
+  if (!d) return null
+  const team = props.teams.find((t) => t.teamId === d.team.teamId)
+  return team?.members.find((m) => m.memberId === d.memberId) ?? null
+})
+
+const loadDetail = async () => {
+  const d = detail.value
+  if (!d) return
+  detailPending.value = true
+  try {
+    const response = await http.get(`/member/${d.memberId}`, {
+      // The member's team, so a member with no status row yet can still be found on a
+      // roster — the endpoint cannot infer it for somebody the lifecycle has not touched.
+      params: { teamId: d.team.teamId },
+    })
+    detailData.value = response.data
+  } catch {
+    detailData.value = null
+    // surfaced by the axios plugin
+  } finally {
+    detailPending.value = false
+  }
+}
+
+const openMember = (member: MemberRow, team: TeamRow) => {
+  detail.value = { memberId: member.memberId, team }
+  detailData.value = null
+  void loadDetail()
+}
+
+const closeMember = () => {
+  detail.value = null
+  detailData.value = null
+}
+
+// A status change — whether this operator's or a colleague's — adds a line to the history,
+// so reload when the live row moves.
+watch(
+  () => detailMember.value?.status,
+  (next, previous) => {
+    if (detail.value && next !== undefined && previous !== undefined && next !== previous) {
+      void loadDetail()
+    }
+  },
+)
+
+// Birthday is a date, not a moment. The API serves it as an instant, so formatting it as a
+// datetime would show the day before for anybody born in the evening — a scout born on the
+// 5th at 23:00 UTC is a 5th-of-December birthday in Copenhagen, not a 4th.
+const birthday = (value: string | null) => {
+  const date = parseApiDate(value)
+  return date ? date.toLocaleDateString('da-DK', { day: 'numeric', month: 'long', year: 'numeric' }) : ''
+}
 
 // --- the 3-member requirement (PRD 006, task 077) ---
 //
@@ -384,68 +470,21 @@ const submitMove = async () => {
         screen owns — from `transit` onwards the row is deliberately read-only, because
         the car and shelter interfaces record those and this card must not pretend to.
       -->
+      <!--
+        A member row: status icon and name, nothing else. The row is the *index* — what an
+        operator scans down looking for somebody not racing — so it carries the colour that
+        answers that and the name that identifies who. Phone numbers, address, birthday and
+        the lifecycle belong to one member at a time, which is what the modal is for.
+      -->
       <div v-for="member in team.members" :key="member.memberId"
-           class="flex items-center justify-between gap-2 py-1 pl-3 text-sm">
-        <div class="min-w-0">
-          <span class="font-medium">{{ member.name || member.memberId }}</span>
-          <a v-if="member.phone" :href="`tel:${member.phone}`" class="ml-2 underline">{{ member.phone }}</a>
-          <a v-if="member.phoneParent" :href="`tel:${member.phoneParent}`" class="ml-2 underline text-gray-500">
-            {{ member.phoneParent }}
-          </a>
-        </div>
-        <!--
-          Status as an icon, with the label and any actions in a panel on hover.
-
-          The panel is a **child of the hovered element**, which is what makes the
-          interaction work without any JavaScript or close-delay: moving the pointer from
-          the icon onto the panel keeps the group hovered, so the buttons inside are
-          actually clickable. A popover anchored elsewhere and hidden on mouseleave would
-          vanish on the way to the button it exists to offer — which for an operator on the
-          phone is worse than no menu at all.
-
-          focus-within opens it from the keyboard too, so the actions are not
-          hover-only.
-        -->
-        <div class="group relative shrink-0">
-          <i :class="[statusIcon(member.status), statusColour(member.status)]"
-             class="cursor-default text-base"
-             tabindex="0"
-             :aria-label="statusLabel(member.status)" />
-
-          <div class="invisible absolute right-0 top-full z-20 mt-1 w-max rounded border border-gray-200
-                      bg-white p-2 text-left shadow-lg group-hover:visible group-focus-within:visible">
-            <div class="flex items-center gap-2 whitespace-nowrap">
-              <i :class="[statusIcon(member.status), statusColour(member.status)]" />
-              <span class="font-medium">{{ statusLabel(member.status) }}</span>
-              <span v-if="member.updatedAt && member.status" class="text-gray-500">
-                siden {{ since(member.updatedAt) }}
-              </span>
-            </div>
-
-            <div v-if="canWithdraw(member.status) || canResume(member.status)" class="mt-2 flex gap-2">
-              <Button v-if="canWithdraw(member.status)" label="Ønsker at udgå" size="small"
-                      severity="danger" outlined :loading="pending[member.memberId]"
-                      @click="askWithdraw(member, team)" />
-              <!--
-                Still prominent within the panel: a scout getting their breath back is an
-                ordinary outcome and saves a car being sent. Not optimistic — the server may
-                legitimately reject it if a car has already collected them, so it shows as
-                pending and lets the server answer.
-              -->
-              <Button v-if="canResume(member.status)" label="Fortsætter selv" size="small"
-                      severity="success" :loading="pending[member.memberId]"
-                      @click="act(member.memberId, 'racing')" />
-            </div>
-            <!--
-              From transit onwards there is deliberately nothing to press: the car and
-              shelter interfaces record what happens next, and this card must not pretend
-              to. Saying so is better than an empty panel that looks broken.
-            -->
-            <div v-else-if="member.status" class="mt-1 text-gray-500">
-              Ingen handlinger herfra
-            </div>
-          </div>
-        </div>
+           class="flex cursor-pointer items-center gap-2 rounded py-1 pl-3 pr-2 text-sm hover:bg-gray-100"
+           role="button" tabindex="0"
+           @click="openMember(member, team)"
+           @keydown.enter="openMember(member, team)"
+           @keydown.space.prevent="openMember(member, team)">
+        <i :class="[statusIcon(member.status), statusColour(member.status)]"
+           class="text-base" :aria-label="statusLabel(member.status)" />
+        <span class="font-medium">{{ member.name || member.memberId }}</span>
       </div>
       <div v-if="team.members.length === 0" class="pl-3 py-1 text-sm text-gray-500">
         Ingen deltagere registreret.
@@ -569,6 +608,104 @@ const submitMove = async () => {
           <Button label="Flyt" :disabled="!moveDlg.target || moveDlg.selected.size === 0"
                   :loading="moveDlg.submitting" @click="submitMove" />
         </div>
+      </template>
+    </Dialog>
+    <!--
+      Member detail. Everything known about one participant, plus the actions that belong to
+      them — which is where they live now that the row is an index rather than a control
+      surface.
+    -->
+    <Dialog v-if="detail" :visible="true" modal :style="{ width: '32rem' }"
+            :header="detailData?.member.name || detailMember?.name || 'Deltager'"
+            @update:visible="closeMember">
+      <div v-if="detailMember" class="mb-3 flex items-center gap-2">
+        <i :class="[statusIcon(detailMember.status), statusColour(detailMember.status)]" class="text-lg" />
+        <span class="font-medium">{{ statusLabel(detailMember.status) }}</span>
+        <span v-if="detailMember.updatedAt && detailMember.status" class="text-sm text-gray-500">
+          siden {{ since(detailMember.updatedAt) }}
+        </span>
+        <span v-if="detailData?.teamName" class="text-sm text-gray-500">
+          · {{ detailData.teamName }}
+        </span>
+      </div>
+
+      <!--
+        The actions, on the member they concern. `racing` offers leaving the race; `waiting`
+        offers carrying on — an ordinary outcome that saves a car being sent, so it is a
+        primary button rather than something tucked away. From `transit` onwards there is
+        deliberately nothing to press: the car and shelter interfaces record what happens
+        next, and saying so is better than an empty space that looks unfinished.
+      -->
+      <div v-if="detailMember" class="mb-4">
+        <div v-if="canWithdraw(detailMember.status) || canResume(detailMember.status)" class="flex gap-2">
+          <Button v-if="canWithdraw(detailMember.status)" label="Ønsker at udgå" severity="danger"
+                  outlined :loading="pending[detailMember.memberId]"
+                  @click="askWithdraw(detailMember, detail.team)" />
+          <Button v-if="canResume(detailMember.status)" label="Fortsætter selv" severity="success"
+                  :loading="pending[detailMember.memberId]"
+                  @click="act(detailMember.memberId, 'racing')" />
+        </div>
+        <div v-else-if="detailMember.status" class="text-sm italic text-gray-500">
+          Ingen handlinger herfra — bil og HQ registrerer selv de næste skridt.
+        </div>
+      </div>
+
+      <div v-if="detailPending && !detailData" class="text-sm text-gray-500">Henter…</div>
+
+      <template v-if="detailData">
+        <dl class="mb-4 grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1 text-sm">
+          <dt class="text-gray-500">Telefon</dt>
+          <dd>
+            <!-- tel: so an operator on a phone taps to call rather than copying digits -->
+            <a v-if="detailData.member.phone" :href="`tel:${detailData.member.phone}`" class="underline">
+              {{ detailData.member.phone }}
+            </a>
+            <span v-else class="text-gray-400">—</span>
+          </dd>
+
+          <dt class="text-gray-500">Kontaktperson</dt>
+          <dd>
+            <a v-if="detailData.member.phoneParent" :href="`tel:${detailData.member.phoneParent}`" class="underline">
+              {{ detailData.member.phoneParent }}
+            </a>
+            <span v-else class="text-gray-400">—</span>
+          </dd>
+
+          <dt class="text-gray-500">Adresse</dt>
+          <dd>
+            <span v-if="detailData.member.address">
+              {{ detailData.member.address }}<br>
+              {{ detailData.member.postalCode }} {{ detailData.member.city }}
+            </span>
+            <span v-else class="text-gray-400">—</span>
+          </dd>
+
+          <dt class="text-gray-500">Fødselsdag</dt>
+          <dd>
+            <span v-if="detailData.member.birthday">{{ birthday(detailData.member.birthday) }}</span>
+            <span v-else class="text-gray-400">—</span>
+          </dd>
+        </dl>
+
+        <!--
+          The lifecycle, oldest first, because it reads as a story: started, asked to leave,
+          carried on. Both the status and the event are shown — they answer different
+          questions, and "racing" reached by carrying on is a different fact from "racing"
+          reached by being moved to another patrol.
+        -->
+        <h3 class="font-nathejk text-lg">Statushistorik</h3>
+        <ol v-if="detailData.history.length" class="mt-1 text-sm">
+          <li v-for="entry in detailData.history" :key="entry.seq"
+              class="flex items-baseline gap-2 border-b border-gray-100 py-1 last:border-0">
+            <i :class="[statusIcon(entry.status), statusColour(entry.status)]" class="text-xs" />
+            <span class="w-28 shrink-0 text-gray-500">{{ formatDateTime(entry.createdAt) }}</span>
+            <span>{{ memberEventPhrase(entry.event) }}</span>
+            <span class="text-gray-500">→ {{ statusLabel(entry.status) }}</span>
+          </li>
+        </ol>
+        <p v-else class="mt-1 text-sm text-gray-500">
+          Ingen statusskift registreret — deltageren er ikke startet.
+        </p>
       </template>
     </Dialog>
   </div>

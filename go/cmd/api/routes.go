@@ -59,7 +59,18 @@ func (app *application) routes() http.Handler {
 
 	// Members in our care (PRD 006). Event-wide rather than per case: a member we
 	// are responsible for is our problem whether or not anybody opened a case.
-	router.HandlerFunc(http.MethodGet, "/api/member/care", app.showMemberCareHandler)
+	//
+	// Plural `/api/members/care` rather than `/api/member/care`, because httprouter builds
+	// one tree per method and cannot hold a static segment where a sibling route has a
+	// wildcard — `GET /api/member/:memberId` below would conflict with it and panic the
+	// router at boot. Plural is also the truer name: this is a fact about the population,
+	// not about a member.
+	router.HandlerFunc(http.MethodGet, "/api/members/care", app.showMemberCareHandler)
+
+	// One member in full, for the detail modal on the case card: contact details, address,
+	// birthday and the whole status history. Its own endpoint so the case payload does not
+	// carry all of that for every member of every associated patrol.
+	router.HandlerFunc(http.MethodGet, "/api/member/:memberId", app.showMemberHandler)
 
 	// The member lifecycle write surface (PRD 006). Every one of these requires a
 	// sosId: nothing changes a member's status or team without a case explaining why.

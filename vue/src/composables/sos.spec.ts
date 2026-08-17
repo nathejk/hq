@@ -5,6 +5,7 @@ import {
   isMemberSummaryType,
   parseMemberSummary,
   memberStatusPhrase,
+  memberEventPhrase,
 } from './sos';
 
 // The member lifecycle summaries (PRD 006) are the only timeline entries whose value is
@@ -123,5 +124,30 @@ describe('memberStatusPhrase', () => {
 
   it('falls back to the raw slug for something it does not know', () => {
     expect(memberStatusPhrase('hibernating')).toBe('hibernating');
+  });
+});
+
+describe('memberEventPhrase', () => {
+  it('names what happened, not just where the member ended up', () => {
+    // The distinction the member history depends on: these two events both leave a member
+    // `racing`, and a timeline showing only the status would render them identically.
+    expect(memberEventPhrase('withdrawal.cancelled')).toBe('Fortsatte selv');
+    expect(memberEventPhrase('team.moved')).toBe('Flyttet til anden patrulje');
+  });
+
+  it('names the derived start, which is the first line of every history', () => {
+    expect(memberEventPhrase('started')).toBe('Startede løbet');
+  });
+
+  it('already names the events the car and shelter interfaces will publish', () => {
+    // Defined before their producers exist, so a history recorded once they ship reads
+    // correctly with no frontend change.
+    expect(memberEventPhrase('pickup.accepted')).toBe('Taget op i bil');
+    expect(memberEventPhrase('shelter.accepted')).toBe('Ankommet til HQ');
+    expect(memberEventPhrase('handover.completed')).toBe('Overdraget');
+  });
+
+  it('falls back to the raw event name', () => {
+    expect(memberEventPhrase('member.teleported')).toBe('member.teleported');
   });
 });

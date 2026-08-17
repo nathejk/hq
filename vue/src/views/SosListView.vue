@@ -52,7 +52,7 @@ const closed = computed<SosCase[]>(() => data.value?.closed ?? [])
 const { data: careData, error: careError } = useLiveResource(
   'member:care',
   async () => {
-    const response = await http.get('/member/care')
+    const response = await http.get('/members/care')
     return response.data.care as {
       total: number
       byStatus: Record<string, number>
