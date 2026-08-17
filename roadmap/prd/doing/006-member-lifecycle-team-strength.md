@@ -1141,10 +1141,9 @@ shelter PRDs will answer. All four originally-blocking questions are decided abo
   orders?) — not needed by this feature, since the panel only sees members who have
   started, but worth knowing before `spejderstatus` is treated as complete. `racing`
   is settled: derived from `NathejkTeamStarted`.
-- **Existing `patruljemerged` data:** historical rows encode past discontinuations
-  the new model cannot reconstruct (there are no per-member move events behind
-  them). Since legacy data migration is out of scope, confirm we simply drop them and
-  start fresh for the current year.
+- **Existing `patruljemerged` data:** closed 2026-08-17 (task 069) — the table held **zero
+  rows** when it was dropped, so there is no historical data to migrate or drop. The
+  question was moot all along.
 - **What happens to a moved member's finish?** A survivor moved into another
   patrol is still `racing` and self-carrying, so they can still finish — but with a
   team that is not the one they started with (`initialTeamId` ≠ `currentTeamId`). Does

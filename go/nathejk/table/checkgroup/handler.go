@@ -44,21 +44,21 @@ func NewControlgroupStatusHandler(con *sql.DB) http.HandlerFunc {
 		return teamIDs
 	}
 	inactiveTeamIDs := func() []types.TeamID {
-		teamIDs := []types.TeamID{}
-		rows, err := con.Query("SELECT DISTINCT m.teamId FROM patruljemerged m JOIN patruljestatus s ON m.teamId = s.teamId WHERE s.startedUts > 0 AND m.teamId > 2022000")
-		if err != nil {
-			log.Fatal(err)
-		}
-		defer rows.Close()
-
-		var teamID types.TeamID
-		for rows.Next() {
-			if err := rows.Scan(&teamID); err != nil {
-				log.Fatal(err)
-			}
-			teamIDs = append(teamIDs, teamID)
-		}
-		return teamIDs
+		// Was: SELECT DISTINCT m.teamId FROM patruljemerged m JOIN patruljestatus s
+		//      ON m.teamId = s.teamId WHERE s.startedUts > 0 AND m.teamId > 2022000
+		//
+		// The patruljemerged table is gone (PRD 006, task 069). Teams are no longer
+		// merged and split; members are moved, and a team that started and has no
+		// racing members left is discontinued — readable as
+		// patrulje.activeMemberCount = 0 AND patrulje.signupStatus = 'STARTED'.
+		//
+		// Returning empty rather than rewriting the query, because this whole handler
+		// is unreachable: it is only wired from the commented-out /api/cgstatus route
+		// in cmd/api/routes.go, and everything checkgroup-related is explicitly out of
+		// scope for PRD 006 (§4). Whoever revives this screen should use the predicate
+		// above — and note the "and started" half is not optional: without it every
+		// team in a year that has not raced yet counts as inactive.
+		return []types.TeamID{}
 	}
 	type scan struct {
 		TeamID         types.TeamID

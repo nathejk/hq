@@ -48,7 +48,6 @@ import (
 	"nathejk.dk/nathejk/table/checkpoint"
 	"nathejk.dk/nathejk/table/lok"
 	"nathejk.dk/nathejk/table/patrulje"
-	"nathejk.dk/nathejk/table/patruljemerged"
 	"nathejk.dk/nathejk/table/patruljenumber"
 	"nathejk.dk/nathejk/table/personnel"
 	"nathejk.dk/nathejk/table/scan"
@@ -173,7 +172,6 @@ func main() {
 	klantable := klan.New(publisher, writer, reader)
 	seniortable := senior.New(writer, db.DB())
 	patruljetable := patrulje.New(writer, db.DB())
-	patruljemergedtable := patruljemerged.New(writer, db.DB())
 	personneltable := personnel.New(writer, db.DB())
 	paymenttable := payment.New(publisher, writer, db.DB(), currentYear)
 	spejdertable := spejder.New(writer, db.DB())
@@ -265,7 +263,6 @@ func main() {
 		checkpoint,
 		checkpersonnel,
 		scantable,
-		patruljemergedtable,
 		loktable,
 		year,
 		sectiontable,
