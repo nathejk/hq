@@ -1,6 +1,7 @@
 package sos
 
 import (
+	"encoding/json"
 	"log"
 	"time"
 
@@ -44,6 +45,13 @@ func (c *consumer) Consumes() []stream.Subject {
 		subject.FromStr("NATHEJK:*.sos.*.deleted"),
 		subject.FromStr("NATHEJK:*.sos.*.team.associated"),
 		subject.FromStr("NATHEJK:*.sos.*.team.disassociated"),
+
+		// The member lifecycle summaries (PRD 006). One per operation; the per-member
+		// events go to the spejderstatus projection on the member's own subject.
+		subject.FromStr("NATHEJK:*.sos.*.member.status.changed"),
+		subject.FromStr("NATHEJK:*.sos.*.member.moved"),
+		subject.FromStr("NATHEJK:*.sos.*.team.collected"),
+
 		subject.FromStr("NATHEJK:*.sos.section.*.assignable"),
 	}
 }
@@ -223,10 +231,65 @@ func (c *consumer) HandleMessage(msg stream.Message) error {
 			return err
 		}
 		return c.appendActivity(msg, ActivityTeamDisassociated, string(body.TeamID), "", "")
+
+	// --- The member lifecycle summaries (PRD 006) ---
+	//
+	// Each is one timeline entry for one operation, with the whole summary stored as
+	// JSON in the entry's value column. No schema change: PRD 001 built this table to
+	// be extended exactly here, and `value` is TEXT.
+	//
+	// The case row itself is only touched, never updated: a member changing status is
+	// activity *on* the case, not a change *to* it. It still has to advance
+	// lastActivityAt, because the list sorts by that and an operator's eye should land
+	// on the case where somebody just left the race.
+	case msg.Subject().Match("NATHEJK.*.sos.*.member.status.changed"):
+		var body MemberStatusChanged
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		return c.appendSummary(msg, ActivityMemberStatusChanged, body)
+
+	case msg.Subject().Match("NATHEJK.*.sos.*.team.collected"):
+		var body TeamCollected
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		return c.appendSummary(msg, ActivityTeamCollected, body)
+
+	case msg.Subject().Match("NATHEJK.*.sos.*.member.moved"):
+		var body MembersMoved
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		return c.appendSummary(msg, ActivityMembersMoved, body)
 	}
 
 	log.Printf("sos consumer: unhandled subject %q", msg.Subject().Subject())
 	return nil
+}
+
+// appendSummary writes one timeline entry whose value is a JSON summary of an
+// operation.
+//
+// The existing entries store a bare string — a headline, a severity, a team id —
+// because one event changed one thing. A member operation changes several members at
+// once and the line has to name them, so the payload is structured. Marshalling it
+// rather than adding columns keeps `sos_activity` a log of *what happened* instead of
+// a widening union of every event's fields, which is what PRD 001 had in mind when it
+// required the table to be extensible without a schema change.
+func (c *consumer) appendSummary(msg stream.Message, t ActivityType, summary any) error {
+	if err := c.touch(msg); err != nil {
+		return err
+	}
+	value, err := json.Marshal(summary)
+	if err != nil {
+		// The event is in the log and cannot be un-published, so failing here would
+		// wedge the replay on every restart from now on. Log and skip the entry: a
+		// missing timeline line is recoverable, a projection that cannot finish is not.
+		log.Printf("sos consumer: cannot marshal %s summary for case %q: %v", t, c.sosID(msg), err)
+		return nil
+	}
+	return c.appendActivity(msg, t, string(value), "", "")
 }
 
 // update applies fields to the case row and advances lastActivityAt, which every

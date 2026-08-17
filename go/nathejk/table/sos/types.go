@@ -98,6 +98,13 @@ const (
 	ActivityTeamAssociated     ActivityType = "team.associated"
 	ActivityTeamDisassociated  ActivityType = "team.disassociated"
 	ActivityDeleted            ActivityType = "deleted"
+
+	// The member lifecycle summaries (PRD 006). One entry per *operation*, not per
+	// member: collecting a patrol of three changes three members and reads as one
+	// line.
+	ActivityMemberStatusChanged ActivityType = "member.status.changed"
+	ActivityMembersMoved        ActivityType = "member.moved"
+	ActivityTeamCollected       ActivityType = "team.collected"
 )
 
 // Actor is who performed an action.

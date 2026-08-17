@@ -204,3 +204,133 @@ func TestUnknownSubjectIsIgnored(t *testing.T) {
 		t.Errorf("unknown subject wrote %d statements, want 0: %v", len(w.stmts), w.stmts)
 	}
 }
+
+// --- the member lifecycle summaries (PRD 006) ---
+
+// One operation, one timeline entry — however many members it touched.
+//
+// This is the property the whole N-events-plus-one-summary design exists to get: the
+// member events are per member because that is the grain the projection works at, and
+// the case entry is per operation because that is the grain an operator reads at.
+func TestTeamCollectedIsOneEntryForThreeMembers(t *testing.T) {
+	w := &recordingWriter{}
+	c := &consumer{w: w}
+
+	handle(t, c, msg("NATHEJK.2026.sos.sos-1.team.collected", 42, TeamCollected{
+		SosID:    "sos-1",
+		TeamID:   "team-1",
+		TeamName: "Ulvene",
+		Members: []MemberChange{
+			{MemberID: "m-1", Name: "Ida", From: "racing", To: "waiting"},
+			{MemberID: "m-2", Name: "Bo", From: "racing", To: "waiting"},
+			{MemberID: "m-3", Name: "Sol", From: "racing", To: "waiting"},
+		},
+		TeamStrength: 0,
+	}))
+
+	var entries int
+	for _, s := range w.stmts {
+		if strings.Contains(s, "sos_activity") {
+			entries++
+		}
+	}
+	if entries != 1 {
+		t.Fatalf("got %d timeline entries for one collection, want 1: %v", entries, w.stmts)
+	}
+
+	all := strings.Join(w.stmts, "\n")
+	if !strings.Contains(all, string(ActivityTeamCollected)) {
+		t.Errorf("entry is not typed team.collected: %s", all)
+	}
+	// All three members must be named in the stored summary, or the line cannot say
+	// who left without a join.
+	for _, name := range []string{"Ida", "Bo", "Sol"} {
+		if !strings.Contains(all, name) {
+			t.Errorf("member %q missing from the summary: %s", name, all)
+		}
+	}
+	if !strings.Contains(all, "lastActivityAt") {
+		t.Errorf("case was not touched, so the list would show it as untouched: %s", all)
+	}
+}
+
+// The summary is self-contained: statuses, names and the resulting strength are all
+// stored, so the line never has to be re-derived from current state.
+//
+// This is the property that keeps a timeline honest. Storing ids only would mean a
+// member moved twice has their *first* move described using their second team — an
+// entry that changes meaning after the fact, which is worse than no entry.
+func TestMemberSummaryStoresEverythingNeededToRenderIt(t *testing.T) {
+	w := &recordingWriter{}
+	c := &consumer{w: w}
+
+	handle(t, c, msg("NATHEJK.2026.sos.sos-1.member.status.changed", 43, MemberStatusChanged{
+		SosID:    "sos-1",
+		TeamID:   "team-1",
+		TeamName: "Ulvene",
+		Members: []MemberChange{
+			{MemberID: "m-1", Name: "Ida", From: "racing", To: "waiting"},
+		},
+		TeamStrength: 2,
+	}))
+
+	all := strings.Join(w.stmts, "\n")
+	for _, want := range []string{"Ida", "racing", "waiting", "Ulvene", `\"teamStrength\":2`} {
+		if !strings.Contains(all, want) {
+			t.Errorf("summary is missing %s: %s", want, all)
+		}
+	}
+}
+
+// Members moved in one operation may have different destinations.
+func TestMembersMovedRecordsPerMemberDestinations(t *testing.T) {
+	w := &recordingWriter{}
+	c := &consumer{w: w}
+
+	handle(t, c, msg("NATHEJK.2026.sos.sos-1.member.moved", 44, MembersMoved{
+		SosID:        "sos-1",
+		FromTeamID:   "team-1",
+		FromTeamName: "Ulvene",
+		Members: []MemberMove{
+			{MemberID: "m-1", Name: "Ida", ToTeamID: "team-2", ToTeamName: "Bj\u00f8rnene"},
+			{MemberID: "m-2", Name: "Bo", ToTeamID: "team-3", ToTeamName: "Ravnene"},
+		},
+		FromTeamStrength: 0,
+	}))
+
+	all := strings.Join(w.stmts, "\n")
+	if !strings.Contains(all, string(ActivityMembersMoved)) {
+		t.Errorf("entry is not typed member.moved: %s", all)
+	}
+	// Two different destinations in one entry — the case the flow must not flatten.
+	if !strings.Contains(all, "team-2") || !strings.Contains(all, "team-3") {
+		t.Errorf("per-member destinations lost: %s", all)
+	}
+}
+
+// Replaying a summary lands on the same row, like every other entry: the stream
+// sequence is the key.
+func TestMemberSummaryReplayIsIdempotent(t *testing.T) {
+	w := &recordingWriter{}
+	c := &consumer{w: w}
+
+	m := msg("NATHEJK.2026.sos.sos-1.member.status.changed", 43, MemberStatusChanged{
+		SosID: "sos-1", TeamID: "team-1",
+		Members: []MemberChange{{MemberID: "m-1", From: "racing", To: "waiting"}},
+	})
+	handle(t, c, m)
+	handle(t, c, m)
+
+	var entries []string
+	for _, s := range w.stmts {
+		if strings.Contains(s, "sos_activity") {
+			entries = append(entries, s)
+		}
+	}
+	if len(entries) != 2 || entries[0] != entries[1] {
+		t.Errorf("replay is not idempotent:\n%v", entries)
+	}
+	if !strings.Contains(entries[0], "43") {
+		t.Errorf("entry is not keyed by the stream sequence: %s", entries[0])
+	}
+}

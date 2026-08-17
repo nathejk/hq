@@ -106,3 +106,93 @@ type SectionAssignableSet struct {
 	SectionSlug types.Slug `json:"sectionSlug"`
 	Assignable  bool       `json:"assignable"`
 }
+
+// --- The member lifecycle summaries (PRD 006) ---
+//
+// A member-changing operation publishes one event on the *member's* subject per
+// affected member, and then one of these on the case's subject summarising the
+// whole operation. The member events drive the spejderstatus projection; these
+// drive the timeline. Neither is redundant: they say different things to different
+// readers, and only the member events can be published by the future car and
+// shelter interfaces, which know nothing about cases.
+//
+// # Why one entry per operation rather than per member
+//
+// sos_activity is keyed by stream sequence, so N member events would produce N
+// rows. Collecting a patrol of three is one thing an operator did, and a handover
+// log that renders it as three lines is a log somebody has to reassemble in their
+// head at 3am.
+//
+// # Why these payloads are fat
+//
+// Every field needed to render the line is on the event, including names and the
+// resulting team strength. The alternative — store ids, join to current state when
+// rendering — would show *today's* truth on yesterday's line: a member moved twice
+// would have their first move described using their second team. A timeline whose
+// entries change meaning after the fact is worse than no timeline, so these carry
+// what they mean and never look it up again.
+
+// MemberChange is one member's transition inside an operation.
+type MemberChange struct {
+	MemberID types.MemberID `json:"memberId"`
+	Name     string         `json:"name"`
+
+	// From is the status the member was in before. Recorded rather than derived so
+	// the line can read "fra racing til waiting" forever, whatever happens later.
+	From types.MemberStatus `json:"from"`
+	To   types.MemberStatus `json:"to"`
+}
+
+// MemberStatusChanged summarises an operation that changed one or more members'
+// statuses on this case: a withdrawal request, a resume, or a correction.
+//
+// TeamStrength is the team's racing count *after* the operation, which is what makes
+// a below-strength breach legible on the timeline rather than only in the live view.
+type MemberStatusChanged struct {
+	SosID        types.SosID    `json:"sosId"`
+	TeamID       types.TeamID   `json:"teamId"`
+	TeamName     string         `json:"teamName,omitempty"`
+	Members      []MemberChange `json:"members"`
+	TeamStrength int            `json:"teamStrength"`
+}
+
+// TeamCollected is every remaining racing member of a patrol going to waiting in one
+// action — the team leaves together.
+//
+// A distinct type from MemberStatusChanged despite the identical shape, because it is
+// a distinct act: the operator decided the patrol is done, not that these three
+// individuals each wanted to stop. The timeline says "hele patruljen hentes" rather
+// than listing three withdrawals, and after it TeamStrength is zero, which is what
+// makes the patrol discontinued.
+type TeamCollected struct {
+	SosID        types.SosID    `json:"sosId"`
+	TeamID       types.TeamID   `json:"teamId"`
+	TeamName     string         `json:"teamName,omitempty"`
+	Members      []MemberChange `json:"members"`
+	TeamStrength int            `json:"teamStrength"`
+}
+
+// MemberMove is one member's move to another patrol.
+type MemberMove struct {
+	MemberID   types.MemberID `json:"memberId"`
+	Name       string         `json:"name"`
+	ToTeamID   types.TeamID   `json:"toTeamId"`
+	ToTeamName string         `json:"toTeamName,omitempty"`
+}
+
+// MembersMoved summarises moving one or more members off a patrol.
+//
+// Members may go to *different* destinations in one operation — uncommon, but the
+// field is per member for exactly that reason, so the flow is not forced to pretend
+// a group has one destination.
+//
+// FromTeamStrength is the origin team's racing count afterwards. Zero means the
+// patrol has been emptied and is now discontinued, which is what the legacy
+// patrulje.merged event was clumsily expressing.
+type MembersMoved struct {
+	SosID            types.SosID  `json:"sosId"`
+	FromTeamID       types.TeamID `json:"fromTeamId"`
+	FromTeamName     string       `json:"fromTeamName,omitempty"`
+	Members          []MemberMove `json:"members"`
+	FromTeamStrength int          `json:"fromTeamStrength"`
+}

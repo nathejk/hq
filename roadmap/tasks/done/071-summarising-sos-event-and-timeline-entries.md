@@ -1,11 +1,11 @@
 # 071 — Summarising sos event per operation, and its timeline entries
 
-**Status:** open
+**Status:** done
 **Priority:** high
 **Created:** 2026-08-17
-**Picked up by:**
-**Started:**
-**Completed:**
+**Picked up by:** agent session
+**Started:** 2026-08-17
+**Completed:** 2026-08-17
 
 ## Description
 
@@ -60,15 +60,15 @@ consumer needs no new subject pattern and no knowledge of the member domain.
 
 ## Acceptance Criteria
 
-- [ ] Summarising event bodies defined in `table/sos/messages.go`, one per operation kind
-- [ ] Payload self-contained: actor, affected members, from/to status, resulting strength
-- [ ] `table/sos/consumer.go` appends one `sos_activity` row per summary and advances
+- [x] Summarising event bodies defined in `table/sos/messages.go`, one per operation kind
+- [x] Payload self-contained: actor, affected members, from/to status, resulting strength
+- [x] `table/sos/consumer.go` appends one `sos_activity` row per summary and advances
       `lastActivityAt`
-- [ ] New `type` values only — no `sos_activity` schema change
-- [ ] Replay idempotent (test handles the same message twice)
-- [ ] Consumer tests cover each new subject
-- [ ] No `nathejk.dk/...` import in the `sos` package (its `lift_test.go` still passes)
-- [ ] `go test ./nathejk/table/sos/`, `go vet`, `gofmt -l` clean
+- [x] New `type` values only — no `sos_activity` schema change
+- [x] Replay idempotent (test handles the same message twice)
+- [x] Consumer tests cover each new subject
+- [x] No `nathejk.dk/...` import in the `sos` package (its `lift_test.go` still passes)
+- [x] `go test ./nathejk/table/sos/`, `go vet`, `gofmt -l` clean
 
 ## Progress Log
 
@@ -76,3 +76,34 @@ consumer needs no new subject pattern and no knowledge of the member domain.
 
 - 2026-08-17 — Created from PRD 006. Write-side bodies and read-side projection kept in one
   task: they are the same package, and an event nothing projects is not verifiable.
+- 2026-08-17 — Picked up. Three bodies (`MemberStatusChanged`, `TeamCollected`,
+  `MembersMoved`), three `ActivityType` values, three consumer cases, three subjects.
+- 2026-08-17 — **The summary is stored as JSON in the existing `value TEXT` column**, via a
+  new `appendSummary` helper. The existing entries store a bare string because one event
+  changed one thing; a member operation changes several members and the line has to name
+  them. Marshalling keeps `sos_activity` a log of *what happened* rather than a widening
+  union of every event's fields — which is what PRD 001 meant by requiring the table to be
+  extensible without a schema change. Confirmed: no migration, only new `type` values.
+- 2026-08-17 — `TeamCollected` is a **separate type from `MemberStatusChanged` despite an
+  identical shape**, because it is a distinct act: the operator decided the patrol is done,
+  not that three individuals each wanted to stop. Collapsing them would save a struct and
+  lose the only thing the timeline needed to say.
+- 2026-08-17 — `MembersMoved` carries the destination **per member**, not once per operation.
+  Two survivors may go to two different patrols; making that representable in one entry is
+  what stops the flow flattening it later. There is a test.
+- 2026-08-17 — A marshalling failure logs and skips the entry rather than returning an
+  error. The event is already in the log and cannot be un-published, so returning an error
+  would wedge the replay on **every** restart from then on. A missing timeline line is
+  recoverable; a projection that cannot finish is not.
+- 2026-08-17 — Summaries `touch` the case rather than `update` it: a member changing status
+  is activity *on* a case, not a change *to* it. But it must still advance
+  `lastActivityAt`, or the list would show a case as untouched while somebody was leaving
+  the race from it.
+- 2026-08-17 — 4 new tests. The two that carry weight: one operation touching three members
+  produces **exactly one** timeline entry, and the stored summary contains every field
+  needed to render the line (names, from/to, strength). The second is the anti-regression
+  for the subtlest property here — storing ids and joining at render time would describe a
+  member's *first* move using their *second* team, i.e. an entry that changes meaning after
+  the fact.
+- 2026-08-17 — ✅ All criteria met. Full `go build`, `go vet`, `gofmt -l`, `go test ./...`
+  clean; the sos package's own lift guard still passes. Moving to done.
