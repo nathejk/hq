@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import { activityLabel, severityLabel } from '@/composables/sos'
+import {
+  activityLabel,
+  severityLabel,
+  isMemberSummaryType,
+  parseMemberSummary,
+  memberStatusPhrase,
+} from '@/composables/sos'
 
 // The content of one timeline entry.
 //
@@ -42,6 +48,49 @@ const emit = defineEmits<{
 // itself, and fading those makes the timeline harder to follow rather than quieter.
 const isComment = computed(() => props.activity.type === 'commented')
 
+// The member lifecycle summaries (PRD 006) carry JSON rather than a bare string, because
+// one operation can touch several members and the line has to name them.
+//
+// Everything rendered comes from the stored summary — names, statuses, resulting strength
+// — and nothing is looked up. That is the point: a member moved twice would otherwise have
+// their *first* move described using their *second* team, and a timeline whose entries
+// change meaning after the fact is worse than no timeline.
+const memberSummary = computed(() =>
+  isMemberSummaryType(props.activity.type) ? parseMemberSummary(props.activity.value) : null,
+)
+
+// Per-member phrases, shaped by what the operation was.
+const memberLines = computed(() => {
+  const s = memberSummary.value
+  if (!s?.members?.length) return []
+  return s.members.map((m) => {
+    const who = m.name || m.memberId
+    if (props.activity.type === 'member.moved') {
+      return `${who} → ${m.toTeamName || m.toTeamId}`
+    }
+    // A status change reads as a transition, because "venter" alone does not say what
+    // changed and a handover is read backwards from the latest entry.
+    if (m.from && m.to) return `${who}: ${memberStatusPhrase(m.from)} → ${memberStatusPhrase(m.to)}`
+    return who
+  })
+})
+
+// The team's strength after the operation — the fact that makes a breach legible on the
+// timeline rather than only in the live view. Zero is meaningful (the patrol is
+// discontinued), so this checks for undefined rather than falsiness.
+const strengthAfter = computed(() => {
+  const s = memberSummary.value
+  if (!s) return null
+  const value = props.activity.type === 'member.moved' ? s.fromTeamStrength : s.teamStrength
+  return value === undefined ? null : value
+})
+
+const summaryTeamName = computed(() => {
+  const s = memberSummary.value
+  if (!s) return ''
+  return (props.activity.type === 'member.moved' ? s.fromTeamName : s.teamName) ?? ''
+})
+
 // What an entry's value means depends on its type, so it is rendered rather than
 // dumped: a severity becomes its Danish label, and a team id is not shown at all
 // because the patrol is listed by name in the team card beside it.
@@ -55,7 +104,9 @@ const detail = computed(() => {
     case 'team.disassociated':
       return ''
     default:
-      return value
+      // A member summary that failed to parse falls through to the raw value rather
+      // than rendering nothing — unreadable beats absent on a handover log.
+      return memberSummary.value ? '' : value
   }
 })
 
@@ -93,7 +144,22 @@ const draftValue = computed({
 
   <div v-else class="text-sm text-gray-400">
     <span>{{ activityLabel(activity.type) }}</span>
+    <span v-if="summaryTeamName" class="text-gray-500">: {{ summaryTeamName }}</span>
     <span v-if="detail" class="text-gray-500">: {{ detail }}</span>
+
+    <!--
+      One entry, however many members the operation touched — which is the whole reason
+      the backend publishes a single summarising event per operation rather than one per
+      member. Rendered as a nested list so "hele patruljen hentes" reads as one thing that
+      happened to four people, not four things.
+    -->
+    <ul v-if="memberLines.length" class="mt-0.5 ml-3 list-none text-gray-500">
+      <li v-for="line in memberLines" :key="line">{{ line }}</li>
+    </ul>
+    <div v-if="strengthAfter !== null" class="ml-3 text-gray-500">
+      <span v-if="strengthAfter === 0">Patruljen er udgået — ingen tilbage i løbet</span>
+      <span v-else>{{ strengthAfter }} tilbage i løbet</span>
+    </div>
   </div>
 </template>
 

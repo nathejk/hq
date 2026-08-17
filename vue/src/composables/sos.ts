@@ -74,9 +74,85 @@ const activityLabels: Record<string, string> = {
   'team.associated': 'Patrulje tilknyttet',
   'team.disassociated': 'Patrulje fjernet',
   deleted: 'Sag slettet',
+
+  // The member lifecycle summaries (PRD 006). One entry per *operation*, so
+  // "team.collected" is one line however many members it took out of the race.
+  'member.status.changed': 'Deltagerstatus ændret',
+  'member.moved': 'Deltagere flyttet',
+  'team.collected': 'Hele patruljen hentes',
 }
 
 export const activityLabel = (type: string) => activityLabels[type] ?? type
+
+// --- the member lifecycle summaries (PRD 006) ---
+
+const memberStatusLabels: Record<string, string> = {
+  '': 'ikke startet',
+  registered: 'tilmeldt',
+  seated: 'har plads',
+  racing: 'i løbet',
+  finished: 'gennemført',
+  waiting: 'venter på at blive hentet',
+  transit: 'i bil',
+  sheltered: 'på HQ',
+  reunited: 'genforenet med patruljen',
+  released: 'hentet af forældre',
+}
+
+// Lower-case here, unlike the backend's picker labels, because these appear mid-sentence
+// ("Ida: i løbet → venter") rather than as a standalone tag.
+export const memberStatusPhrase = (slug: string) => memberStatusLabels[slug] ?? slug
+
+export interface MemberChangeSummary {
+  memberId: string
+  name?: string
+  from?: string
+  to?: string
+}
+
+export interface MemberMoveSummary {
+  memberId: string
+  name?: string
+  toTeamId: string
+  toTeamName?: string
+}
+
+export interface MemberOperationSummary {
+  teamId?: string
+  teamName?: string
+  fromTeamId?: string
+  fromTeamName?: string
+  members?: (MemberChangeSummary & MemberMoveSummary)[]
+  teamStrength?: number
+  fromTeamStrength?: number
+}
+
+/**
+ * Parse a member-operation entry's stored summary.
+ *
+ * These entries carry JSON rather than a bare string, because one operation can touch
+ * several members and the line has to name them. Returns null for anything unparseable
+ * so the caller can fall back to the raw value: an entry an operator cannot fully read is
+ * much better than one missing from a handover record.
+ *
+ * The summary is deliberately self-contained — names, statuses and the resulting strength
+ * are all stored — so a line never changes meaning as the world moves on. Rendering must
+ * therefore use *only* what is in here, never a lookup of a member's current state.
+ */
+export function parseMemberSummary(value?: string): MemberOperationSummary | null {
+  if (!value) return null
+  try {
+    const parsed = JSON.parse(value)
+    return parsed && typeof parsed === 'object' ? (parsed as MemberOperationSummary) : null
+  } catch {
+    return null
+  }
+}
+
+const isMemberSummaryType = (type: string) =>
+  type === 'member.status.changed' || type === 'member.moved' || type === 'team.collected'
+
+export { isMemberSummaryType }
 
 const activityIcons: Record<string, string> = {
   created: 'pi pi-flag',
@@ -91,6 +167,9 @@ const activityIcons: Record<string, string> = {
   'team.associated': 'pi pi-users',
   'team.disassociated': 'pi pi-user-minus',
   deleted: 'pi pi-trash',
+  'member.status.changed': 'pi pi-user-edit',
+  'member.moved': 'pi pi-arrow-right-arrow-left',
+  'team.collected': 'pi pi-car',
 }
 
 export const activityIcon = (type: string) => activityIcons[type] ?? 'pi pi-circle'
