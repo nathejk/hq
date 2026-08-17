@@ -46,6 +46,15 @@ interface SosCase {
   timeline?: Activity[]
 }
 
+interface SosMember {
+  memberId: string
+  name: string
+  phone: string
+  phoneParent: string
+  status: string
+  updatedAt: string | null
+}
+
 interface SosTeam {
   teamId: string
   teamNumber: string
@@ -54,6 +63,19 @@ interface SosTeam {
   korps: string
   contactName: string
   contactPhone: string
+  // Strength on the route and the minimum expected of this team type. Both come from
+  // the server so the card neither counts members itself nor hardcodes 3 (PRD 006).
+  activeMemberCount: number
+  minMemberCount: number
+  // Whether the patrol actually started. Needed because a team that never started also
+  // has zero racing members, so strength alone cannot distinguish the two.
+  started: boolean
+  members: SosMember[]
+}
+
+interface StatusOption {
+  slug: string
+  label: string
 }
 
 // One cache entry per case, keyed by id.
@@ -63,20 +85,28 @@ interface SosTeam {
 // published on the same `sos` token and a signal for a sibling projection would
 // otherwise be missed. `immediate: false` while creating — there is nothing to
 // fetch yet.
-const resource = useLiveResource<{ case: SosCase; teams: SosTeam[] } | null>(
+const resource = useLiveResource<{ case: SosCase; teams: SosTeam[]; memberStatuses: StatusOption[] } | null>(
   `sos:${caseId.value || 'new'}`,
   async () => {
     if (!caseId.value) return null
     const response = await http.get(`/sos/${caseId.value}`)
     return response.data
   },
-  { dependsOn: caseId.value ? [`sos:${caseId.value}`, 'sos'] : ['sos'], immediate: !isNew.value },
+  // 'spejder' joins the set for PRD 006: the member rows on the team card change in
+  // response to member events, which are published on the member's own subject. Without
+  // it a colleague putting a scout into `waiting` would not appear here — and a wrong or
+  // missing token fails silently (PRD 004 §12).
+  {
+    dependsOn: caseId.value ? [`sos:${caseId.value}`, 'sos', 'spejder'] : ['sos', 'spejder'],
+    immediate: !isNew.value,
+  },
 )
 
 const { data, pending, error, refresh } = resource
 
 const sosCase = computed<SosCase | null>(() => data.value?.case ?? null)
 const teams = computed<SosTeam[]>(() => data.value?.teams ?? [])
+const memberStatuses = computed<StatusOption[]>(() => data.value?.memberStatuses ?? [])
 const timeline = computed<Activity[]>(() => sosCase.value?.timeline ?? [])
 
 // A deleted case stops resolving, so a 404 here is the expected way to learn it is
@@ -174,7 +204,10 @@ const createCase = async () => {
     // the operator would be told the case they just described does not exist.
     // Seeding means they see it at once, and the live signal replaces it with the
     // projected row a moment later.
-    seedLiveResource(`sos:${created.id}`, { case: created, teams: [] })
+    // memberStatuses is seeded empty rather than omitted: the card reads it as a prop,
+    // and a freshly created case has no teams yet, so there is nothing to label until
+    // the first refresh brings the real list.
+    seedLiveResource(`sos:${created.id}`, { case: created, teams: [], memberStatuses: [] })
     await router.push({ name: 'sos', params: { id: created.id } })
   } catch {
     // The axios plugin already surfaces failures as a toast.
@@ -484,7 +517,7 @@ watch(error, (err) => {
         </small>
       </div>
 
-      <SosTeamCard :sos-id="caseId" :teams="teams" @changed="refresh" />
+      <SosTeamCard :sos-id="caseId" :teams="teams" :statuses="memberStatuses" @changed="refresh" />
     </aside>
   </div>
 

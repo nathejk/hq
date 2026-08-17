@@ -2,16 +2,20 @@
 import { computed, ref } from 'vue'
 import { http } from '@/plugins/axios'
 import { useLiveResource } from '@/composables/useLiveResource'
+import { hhmm } from '@/composables/datefilters'
 
-// The patrols associated with a case.
+// The patrols associated with a case, and their members.
 //
-// PRD 001 ships this card with each patrol's **identity and contact only** — number,
-// name, group, korps, contact phone — which is what an operator needs mid-call.
-// There are deliberately no member rows: PRD 006 introduces them together with each
-// member's status and the actions that make them useful, and a list of names with
-// nothing next to them would read as a broken feature. Leave room below for that.
+// PRD 001 shipped this card with identity and contact only, deliberately leaving room
+// here: a list of names with nothing next to them reads as a broken feature. PRD 006
+// fills that room with the member rows *and* the actions that give them a purpose.
+//
+// What is deliberately **not** here: the status override. That is a correction, not part
+// of the call an operator is on, and it lives on the patrol page (task 084). Being a
+// different screen is a stronger separation than a differently-styled button would be.
 const props = defineProps<{
   sosId: string
+  statuses: { slug: string; label: string }[]
   teams: {
     teamId: string
     teamNumber: string
@@ -20,6 +24,17 @@ const props = defineProps<{
     korps: string
     contactName: string
     contactPhone: string
+    activeMemberCount: number
+    minMemberCount: number
+    started: boolean
+    members: {
+      memberId: string
+      name: string
+      phone: string
+      phoneParent: string
+      status: string
+      updatedAt: string | null
+    }[]
   }[]
 }>()
 
@@ -76,6 +91,69 @@ const disassociate = async (teamId: string) => {
     // surfaced by the axios plugin
   }
 }
+
+// --- member rows (PRD 006) ---
+
+// Labels come from the backend, so this view holds no map of its own. Two screens show
+// these strings and they are persisted values; a copy in each is how they drift until
+// one says "waiting" to an operator at 3am.
+const statusLabel = (slug: string) =>
+  props.statuses.find((s) => s.slug === slug)?.label ?? (slug || 'Ikke startet')
+
+const statusSeverity = (slug: string) => {
+  switch (slug) {
+    case 'racing':
+      return 'success'
+    case 'waiting':
+      return 'danger' // the only state that blocks a whole patrol
+    case 'transit':
+    case 'sheltered':
+      return 'warn'
+    case 'reunited':
+    case 'released':
+      return 'secondary'
+    default:
+      return 'contrast'
+  }
+}
+
+// A member is self-carrying up to and including `waiting`: they have covered every
+// metre on their own legs. Those are the transitions this screen owns. From `transit`
+// onwards the row is read-only, because the car and shelter interfaces record what
+// happens next and this card must not pretend to.
+const canWithdraw = (status: string) => status === 'racing'
+const canResume = (status: string) => status === 'waiting'
+
+// Pending per member rather than one flag for the card: an operator mid-call may act on
+// two members in quick succession, and a single spinner would lock the second row while
+// the first was in flight.
+const pending = ref<Record<string, boolean>>({})
+
+const act = async (memberId: string, path: 'waiting' | 'racing') => {
+  pending.value = { ...pending.value, [memberId]: true }
+  try {
+    await http.put(`/member/${memberId}/${path}`, { sosId: props.sosId })
+    emit('changed')
+  } catch {
+    // surfaced by the axios plugin; the row stays as it was, which is the honest
+    // outcome for the resume the server may legitimately reject ("allerede hentet")
+  } finally {
+    pending.value = { ...pending.value, [memberId]: false }
+  }
+}
+
+// Strength and discontinuation are the same number, read two ways (PRD 006 §11).
+const belowStrength = (team: { started: boolean; activeMemberCount: number; minMemberCount: number }) =>
+  team.started && team.activeMemberCount < team.minMemberCount && team.activeMemberCount > 0
+
+// **The "started" half is not optional.** A team that never started also has zero racing
+// members, so the count alone conflates *left the route* with *never on it* — without
+// this, every patrol of a year that has not raced yet would be badged Udgået, which on
+// the dev data is all 310 of them.
+const discontinued = (team: { started: boolean; activeMemberCount: number }) =>
+  team.started && team.activeMemberCount === 0
+
+const since = (value: string | null) => (value ? hhmm(value) : '')
 </script>
 
 <template>
@@ -88,6 +166,16 @@ const disassociate = async (teamId: string) => {
           <router-link :to="{ name: 'patrulje', params: { teamId: team.teamId } }" class="font-semibold">
             <span v-if="team.teamNumber">{{ team.teamNumber }} — </span>{{ team.name || team.teamId }}
           </router-link>
+          <!--
+            Strength beside the name, because it is the number that decides whether the
+            conversation the operator is having changes. Only shown once the patrol has
+            started: before that it is 0 and means nothing.
+          -->
+          <span v-if="team.started" class="ml-2 text-sm text-gray-600">
+            {{ team.activeMemberCount }}/{{ team.minMemberCount }} i løbet
+          </span>
+          <Tag v-if="discontinued(team)" value="Udgået" severity="contrast" class="ml-2" />
+          <Tag v-else-if="belowStrength(team)" value="Under styrke" severity="danger" class="ml-2" />
           <div class="text-sm text-gray-500">
             {{ team.group }}<span v-if="team.korps"> · {{ team.korps }}</span>
           </div>
@@ -99,6 +187,43 @@ const disassociate = async (teamId: string) => {
         </div>
         <Button icon="pi pi-times" text rounded size="small" severity="secondary"
                 @click="disassociate(team.teamId)" />
+      </div>
+
+      <!--
+        Member rows. Each shows where the member is and offers only the transitions this
+        screen owns — from `transit` onwards the row is deliberately read-only, because
+        the car and shelter interfaces record those and this card must not pretend to.
+      -->
+      <div v-for="member in team.members" :key="member.memberId"
+           class="flex items-center justify-between gap-2 py-1 pl-3 text-sm">
+        <div class="min-w-0">
+          <span class="font-medium">{{ member.name || member.memberId }}</span>
+          <a v-if="member.phone" :href="`tel:${member.phone}`" class="ml-2 underline">{{ member.phone }}</a>
+          <a v-if="member.phoneParent" :href="`tel:${member.phoneParent}`" class="ml-2 underline text-gray-500">
+            {{ member.phoneParent }}
+          </a>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <Tag :value="statusLabel(member.status)" :severity="statusSeverity(member.status)" />
+          <span v-if="member.updatedAt && member.status" class="text-gray-500">
+            {{ since(member.updatedAt) }}
+          </span>
+          <Button v-if="canWithdraw(member.status)" label="Ønsker at udgå" size="small" severity="danger"
+                  outlined :loading="pending[member.memberId]"
+                  @click="act(member.memberId, 'waiting')" />
+          <!--
+            Prominent rather than tucked into a menu: a scout getting their breath back
+            is an ordinary outcome and saves a car being sent. Not optimistic — the
+            server may legitimately reject it if a car has already collected them, so it
+            shows as pending and lets the server answer.
+          -->
+          <Button v-if="canResume(member.status)" label="Fortsætter selv" size="small" severity="success"
+                  :loading="pending[member.memberId]"
+                  @click="act(member.memberId, 'racing')" />
+        </div>
+      </div>
+      <div v-if="team.members.length === 0" class="pl-3 py-1 text-sm text-gray-500">
+        Ingen deltagere registreret.
       </div>
     </div>
 

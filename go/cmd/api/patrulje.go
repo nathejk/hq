@@ -27,6 +27,31 @@ type TeamConfig struct {
 	TShirtSizes    []SlugLabel `json:"tshirtSizes"`
 }
 
+// MemberStatuses is the member lifecycle with Danish labels, served to the SPA rather
+// than hardcoded in a view (PRD 006 §6).
+//
+// Serving them is not ceremony. The strings are persisted values — changing one is a
+// data migration, not a rename — and two screens show them (the case card and the
+// patrol page's correction row). A label map in each view is how those two drift apart
+// until one of them says "waiting" to an operator at 3am.
+//
+// Order is lifecycle order, so a picker reads as the journey rather than
+// alphabetically. `finished` is deliberately absent: no correction may confer it, since
+// only walking the route unaided earns it (types.MemberStatus.CanFinish), so offering it
+// in a picker would invite the one edit the domain refuses.
+func MemberStatuses() []SlugLabel {
+	return []SlugLabel{
+		{Slug: string(types.MemberStatusRegistered), Label: "Tilmeldt"},
+		{Slug: string(types.MemberStatusSeated), Label: "Har plads"},
+		{Slug: string(types.MemberStatusRacing), Label: "I løbet"},
+		{Slug: string(types.MemberStatusWaiting), Label: "Venter på at blive hentet"},
+		{Slug: string(types.MemberStatusTransit), Label: "I bil"},
+		{Slug: string(types.MemberStatusSheltered), Label: "På HQ"},
+		{Slug: string(types.MemberStatusReunited), Label: "Genforenet med patruljen"},
+		{Slug: string(types.MemberStatusReleased), Label: "Hentet af forældre"},
+	}
+}
+
 func Korps() []SlugLabel {
 	return []SlugLabel{
 		{Slug: "dds", Label: "Det Danske Spejderkorps"},

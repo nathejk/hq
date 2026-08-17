@@ -9,7 +9,9 @@ import (
 	"github.com/nathejk/shared-go/tables"
 	"github.com/nathejk/shared-go/types"
 	jsonapi "nathejk.dk/cmd/api/app"
+	"nathejk.dk/internal/data"
 	"nathejk.dk/nathejk/table/sos"
+	"nathejk.dk/nathejk/table/spejderstatus"
 )
 
 // Handlers for the nødtelefon (PRD 001): SOS cases, their timeline and the
@@ -71,6 +73,9 @@ func (app *application) showSosHandler(w http.ResponseWriter, r *http.Request) {
 	envelope := jsonapi.Envelope{
 		"case":  c,
 		"teams": app.sosTeams(r, c),
+		// The lifecycle with Danish labels, so the card renders a status without a
+		// label map of its own (PRD 006 §6).
+		"memberStatuses": MemberStatuses(),
 	}
 	if err := app.WriteJSON(w, http.StatusOK, envelope, nil); err != nil {
 		app.ServerErrorResponse(w, r, err)
@@ -86,12 +91,44 @@ type sosTeam struct {
 	Korps        string            `json:"korps"`
 	ContactName  string            `json:"contactName"`
 	ContactPhone types.PhoneNumber `json:"contactPhone"`
+
+	// ActiveMemberCount is the patrol's strength on the route, and MinMemberCount the
+	// number it is expected to keep (3 for patruljer). Both are served so the card can
+	// show "under styrke" without a second request and without hardcoding 3.
+	//
+	// Started matters for one reason and it is not obvious: a team that never started
+	// also has zero racing members, so strength alone cannot tell *left the route* from
+	// *never on it*. Without this the Udgået badge would appear on every patrol of a year
+	// that has not raced yet — see PRD 006 §11.
+	ActiveMemberCount int  `json:"activeMemberCount"`
+	MinMemberCount    int  `json:"minMemberCount"`
+	Started           bool `json:"started"`
+
+	Members []sosMember `json:"members"`
+}
+
+// sosMember is one member of an associated patrol, as the operator needs them
+// mid-call: who they are, how to reach them, and where they are in the lifecycle.
+type sosMember struct {
+	MemberID    types.MemberID     `json:"memberId"`
+	Name        string             `json:"name"`
+	Phone       string             `json:"phone"`
+	PhoneParent string             `json:"phoneParent"`
+	Status      types.MemberStatus `json:"status"`
+
+	// UpdatedAt is when the status last changed, so a row can say "venter siden 21:40".
+	// Nil for a member with no status row — one who has not started — rather than a zero
+	// time, which the SPA would render as 1970.
+	UpdatedAt *time.Time `json:"updatedAt"`
 }
 
 func (app *application) sosTeams(r *http.Request, c *sos.Sos) []sosTeam {
 	teams := make([]sosTeam, 0, len(c.Teams))
 	for _, t := range c.Teams {
-		team := sosTeam{TeamID: t.TeamID}
+		// 3 for patruljer. A per-team-type constant rather than configuration: nothing
+		// branches on it, it is displayed so an operator can apply it, and no command
+		// enforces it (PRD 006 §11, task 074).
+		team := sosTeam{TeamID: t.TeamID, MinMemberCount: 3}
 		// A patrol that cannot be found still shows as an associated row: losing the
 		// association because the projection is behind would hide the fact that the
 		// case is about somebody.
@@ -102,10 +139,81 @@ func (app *application) sosTeams(r *http.Request, c *sos.Sos) []sosTeam {
 			team.Korps = p.Korps
 			team.ContactName = p.ContactName
 			team.ContactPhone = p.ContactPhone
+			team.ActiveMemberCount = p.ActiveMemberCount
+			team.Started = p.SignupStatus == types.SignupStatusStarted
 		}
+		team.Members = app.sosTeamMembers(r, t.TeamID)
 		teams = append(teams, team)
 	}
 	return teams
+}
+
+// sosTeamMembers assembles a patrol's members with their lifecycle status.
+//
+// Two sources, joined here: the roster and contact details come from the spejder read
+// model, the status and its timestamp from spejderstatus. They are separate reads rather
+// than one join because the two entities are owned by different packages — and
+// spejderstatus is keyed on *currentTeamId*, which is the point: a member moved into this
+// patrol belongs on its card, and one moved away does not, even though the roster still
+// lists them under the team they signed up with.
+//
+// Members with no status row are included with an empty status. A patrol whose case is
+// opened before the race has members who simply have no lifecycle yet, and leaving them
+// out would make the card look like it had lost people.
+func (app *application) sosTeamMembers(r *http.Request, teamID types.TeamID) []sosMember {
+	members := []sosMember{}
+
+	statuses := map[types.MemberID]spejderstatus.SpejderStatus{}
+	if rows, err := app.models.SpejderStatus.GetByTeam(r.Context(), spejderstatus.Filter{
+		YearSlug: app.YearSlug(r),
+		TeamID:   teamID,
+	}); err == nil {
+		for _, s := range rows {
+			statuses[s.MemberID] = s
+		}
+	}
+
+	roster, _, err := app.models.Members.GetSpejdere(data.Filters{TeamID: teamID})
+	if err != nil {
+		return members
+	}
+	seen := map[types.MemberID]bool{}
+	for _, m := range roster {
+		// Skip a member the roster still lists here but who has been moved to another
+		// patrol: they are that patrol's business now.
+		if s, ok := statuses[m.MemberID]; ok && s.CurrentTeamID != teamID {
+			continue
+		}
+		seen[m.MemberID] = true
+		member := sosMember{
+			MemberID:    m.MemberID,
+			Name:        m.Name,
+			Phone:       m.Phone,
+			PhoneParent: m.PhoneParent,
+		}
+		if s, ok := statuses[m.MemberID]; ok {
+			member.Status = s.Status
+			updated := s.UpdatedAt
+			member.UpdatedAt = &updated
+		}
+		members = append(members, member)
+	}
+	// A member moved *into* this patrol is not on its roster, so they would otherwise be
+	// missing from the card that now owns them — which is exactly the case the move
+	// feature creates. Their name comes from their own team's roster.
+	for id, s := range statuses {
+		if seen[id] {
+			continue
+		}
+		updated := s.UpdatedAt
+		members = append(members, sosMember{
+			MemberID:  id,
+			Name:      app.memberName(id, s.InitialTeamID),
+			Status:    s.Status,
+			UpdatedAt: &updated,
+		})
+	}
+	return members
 }
 
 // createSosHandler opens a case. Headline and description are both required.
