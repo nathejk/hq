@@ -1,11 +1,11 @@
 # PRD 006 — Member lifecycle, team strength & discontinuation
 
-**Status:** doing
+**Status:** done
 **Author:** agent session
 **Created:** 2026-08-10
 **Last updated:** 2026-08-17
 **Approved:** 2026-08-17
-**Shipped:**
+**Shipped:** 2026-08-17
 **Status note:** split out of PRD 001 on 2026-08-10; member lifecycle settled
 against shared-go `v0.0.0-20260815075712-35c10e0f6942`. Revised 2026-08-17: the
 merged-team concept is deprecated in favour of a member-focused model, team
@@ -1210,3 +1210,79 @@ shelter PRDs will answer. All four originally-blocking questions are decided abo
   pickup rather than only warn. That request is the one piece that might belong in the
   nødtelefon interface rather than the dashboard, so it is worth deciding when that PRD is
   written.
+
+## 12. Closure
+
+**Closed as completed 2026-08-17**, after tasks 063–085 (22 tasks; 074 and 082 closed by
+decision without code).
+
+### What shipped
+
+| Half | Delivered |
+|---|---|
+| BFF (`go/nathejk/table/spejderstatus/`) | the member lifecycle as a package written to shared-go's guidelines — seven event bodies behind a `MemberEvent` interface, the legacy status mapping, the projection deriving `racing` from `patrulje.*.started`, `activeMemberCount` maintained on the team, queries for one member / a team / in-our-care, five commands, and a lift-readiness guard |
+| BFF (`go/nathejk/table/sos/`) | three summarising event bodies and `ActivityType`s, projected as one timeline entry per operation; `AssociateTeamAt` for a just-minted case |
+| BFF (`go/cmd/api/`) | six member routes, the composition layer that publishes member events then the case summary, `MemberStatuses()` served to the SPA, the minted-and-closed correction case, and `activeMemberCount` on every patrol payload |
+| Removed | the `patruljemerged` projection, table and its two dead readers; `GetSpejdere`'s invented `'started'`/`'paid'` statuses; `PatruljeView`'s hardcoded status tag and its dead demo severity function |
+| Frontend (`vue/src/`) | member rows with the self-carrying actions on `SosTeamCard`, strength and Udgået badges, the below-strength panel with collect-all and the move dialog, the **I vores varetægt** counter, three timeline entry types, the real status column on the patrol page, and the correction interface in its expanded row |
+
+Verification: 72 Go tests across the two packages (45 in `spejderstatus`, 27 in `sos`) plus
+the existing suites, `go vet` and `gofmt` clean, 91 frontend tests, no new TypeScript errors
+(106 before and after — measured by stashing, because this repo has a pre-existing baseline),
+and **every endpoint exercised against the running dev stack on real 2025 and 2026 data**,
+including all rejection paths.
+
+The projection was reconciled against the real event stream rather than trusted: **686
+member rows for 2025 against a `SUM(memberCount)` of 686 over started patrols, with zero
+teams disagreeing.** Both are derived from the same event, so any disagreement would have
+meant the projection read `body.Members` differently from the patrulje consumer.
+
+And — the part PRD 004 §12 called the one that mattered — **live updates confirmed in the
+browser by the product owner, 2026-08-17**, for the `spejder` token this feature introduced.
+
+### Deliberately not done
+
+1. **Lifting the package to shared-go** — task 083, explicitly post-stabilisation, exactly as
+   task 055 is for PRD 001. Its whole purpose is that the schema has stopped changing. It
+   also unblocks `spejder.GetInactive` and therefore the dead `/ude` **Udgået** nav link.
+2. **The `waiting` alarm** — deferred to the dispatch dashboard PRD (task 082). Nothing here
+   resolves a `waiting` member, so an alarm would fire for everybody and stay firing.
+   `oldestWaitingAt` is already projected and served for the day something can act on it.
+3. **A `finished` producer** — there is no finish flow in hq at all. `CanFinish()` guards a
+   flow that arrives later, and §5 records the trap that arrives with it.
+4. **The acceptor on a member row** — nothing stores it, and the only event that would carry
+   it (`PickupAccepted.Car`) has no producer. **The car interface's PRD needs a
+   `spejderstatus` column for it.**
+5. **A test for the discontinuation-reversal guarantee** at HTTP level. The property is
+   verified by hand and the bug that broke it is fixed, but nothing would catch a
+   regression.
+
+### What this PRD got wrong, for the next one
+
+Every defect found during implementation came from **querying or using the running system**,
+not from reading code or specifications. Four were mine and three were in the specification
+itself:
+
+- **The discontinued predicate was wrong twice over.** `activeMemberCount == 0` conflates
+  *left the route* with *never on it* — on real data that is all 310 teams of the current
+  event. And the finished-team collision §5 called "the single highest-risk detail" turned
+  out to be **vacuous**, because no producer sets `finished`. A specification can be
+  confidently wrong in both directions about the same predicate.
+- **I walked into the trap §8 warns about, one task later.** "Confirm which path is live at
+  runtime" — then `activeMemberCount` was added to a querier the detail endpoint does not
+  call. Caught by checking the HTTP payload, not the build.
+- **A UI convenience became a domain rule.** Requiring a move destination to still have
+  racing members made discontinuation impossible to undo, breaking a guarantee §5 states
+  outright. Found while *cleaning up after* a test, not by running one.
+- **Two endpoints asserted a relationship they never verified.** `…/team/:teamId/collect`
+  emptied a patrol that was never on the case. Its tests all passed; a broken test script
+  exposed it.
+- **A stub nearly gave a false pass.** `GetByMemberID` returned the same member for every
+  id, so the bulk-move strength assertions were satisfied for the wrong reason.
+- **The two traps that hid working live updates** — the stream's year filter defaulting to
+  the current year, and module-level client state surviving HMR — are recorded in §8. Verify
+  the server half with `curl -N '/api/stream?year=…'` before suspecting the client.
+
+The pattern worth carrying forward: **the properties this PRD asserted in prose and did not
+test are exactly the ones that broke.** Reversibility, association, "the resulting
+strength". Where a document says a thing is guaranteed, that sentence is a missing test.
