@@ -55,7 +55,33 @@ func New(p stream.Publisher, w cqrs.Writer, r *sql.DB) *table {
 	if err := w.Consume(t.CreateTableSql()); err != nil {
 		log.Printf("Error creating table %q", err)
 	}
+	for _, stmt := range schemaMigrations {
+		if err := w.Consume(stmt); err != nil {
+			log.Printf("Error migrating spejderstatus tables %q", err)
+		}
+	}
 	return t
+}
+
+// schemaMigrations brings an existing database up to the current shape, because
+// CREATE TABLE IF NOT EXISTS is a no-op wherever the table already exists — so editing
+// table.sql alone only ever affects databases that get cleared before deploy.
+//
+// The one entry here fixes a key that was wrong for a few minutes and would have stayed
+// wrong forever. `spejderstatuslog` was first written with PRIMARY KEY (seq), and the dev
+// container's hot-reload created it in the window before the member id was added to the
+// key. The consequence was invisible and specific: **one event can concern many members**
+// — a patrol starting puts its whole roster into `racing` from a single message — so with a
+// seq-only key the first member written inserted and every other silently hit
+// ON CONFLICT DO NOTHING. Members simply had no "startede løbet" line in their history,
+// with nothing logged anywhere.
+//
+// Written as DROP + ADD in one statement so it is idempotent: run against the broken shape
+// it fixes it, run against the correct shape it rebuilds the same key. That costs a key
+// rebuild per boot on a table of a few thousand rows, which is cheaper than a schema that
+// heals only on databases somebody remembered to drop.
+var schemaMigrations = []string{
+	`ALTER TABLE spejderstatuslog DROP PRIMARY KEY, ADD PRIMARY KEY (seq, id)`,
 }
 
 //go:embed table.sql
