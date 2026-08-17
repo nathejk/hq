@@ -90,34 +90,8 @@ func (app *application) moveMemberTeamHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	target, err := app.models.Teams.GetPatrulje(ctx.input.TeamID)
-	if err != nil {
-		if errors.Is(err, data.ErrRecordNotFound) {
-			app.FailedValidationResponse(w, r, map[string]string{"teamId": "ukendt patrulje"})
-			return
-		}
-		app.ServerErrorResponse(w, r, err)
-		return
-	}
-	// The destination must be a patrol that **started**. Deliberately *not* "and still
-	// has racing members".
-	//
-	// That extra condition was here first and it broke a guarantee PRD 006 §5 makes
-	// explicitly: moving a member back into a team with nobody left makes it active
-	// again — the reversibility the legacy `.splited` event had. A team emptied to zero is
-	// discontinued, and requiring `activeMemberCount > 0` meant **discontinuation could
-	// never be undone**, because the only action that reverses it was refused for the only
-	// teams that needed it. Found by trying to undo a test (task 077).
-	//
-	// The *picker* still offers only racing patrols, which is right for the survivors
-	// flow — but a UI convenience must not become a domain rule.
-	//
-	// `started` remains required: a patrol that never started has nobody on the route to
-	// join, so moving somebody into it would record a fiction.
-	if target.SignupStatus != types.SignupStatusStarted {
-		app.FailedValidationResponse(w, r, map[string]string{
-			"teamId": "patruljen er ikke startet",
-		})
+	target, ok := app.moveTarget(w, r, ctx.input.TeamID)
+	if !ok {
 		return
 	}
 
@@ -183,26 +157,11 @@ func (app *application) collectTeamHandler(w http.ResponseWriter, r *http.Reques
 	// that has nothing to do with it — and the summary would land on a timeline whose team
 	// card does not even list them, making it invisible where it matters.
 	//
-	// This is the one member operation that needs the check: the others act on a member
-	// the operator is looking at, whereas this one acts on a *set* derived from a team id
-	// alone, which is the difference between a mistake affecting one row and one emptying
-	// a patrol.
-	case_, err := app.models.Sos.GetByID(r.Context(), sosID)
-	if err != nil {
-		app.handleSosError(w, r, err)
-		return
-	}
-	associated := false
-	for _, t := range case_.Teams {
-		if t.TeamID == teamID {
-			associated = true
-			break
-		}
-	}
-	if !associated {
-		app.FailedValidationResponse(w, r, map[string]string{
-			"teamId": "patruljen er ikke tilknyttet sagen",
-		})
+	// This and the bulk move are the two operations that need the check: the others act on
+	// a member the operator is looking at, whereas these act on a *set* derived from a team
+	// id alone, which is the difference between a mistake affecting one row and one
+	// emptying a patrol.
+	if !app.teamOnCase(w, r, sosID, teamID) {
 		return
 	}
 
@@ -254,6 +213,154 @@ func (app *application) collectTeamHandler(w http.ResponseWriter, r *http.Reques
 	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"collected": changes}, nil); err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}
+}
+
+// moveMembersHandler moves several members of one patrol to another in a single
+// operation.
+//
+// One request rather than one per member, for the reason the collect endpoint exists: N
+// calls from the browser can half-succeed, and an operator told only "something failed"
+// cannot see which member is where. It also makes the operation one timeline entry, which
+// is what it is — one decision about a below-strength patrol's remnants.
+//
+// The per-member endpoint remains for the single-row action and for corrections; this is
+// the bulk case, not a replacement.
+func (app *application) moveMembersHandler(w http.ResponseWriter, r *http.Request) {
+	sosID := types.SosID(app.ReadNamedParam(r, "id"))
+	teamID := types.TeamID(app.ReadNamedParam(r, "teamId"))
+	if sosID == "" || teamID == "" {
+		app.NotFoundResponse(w, r)
+		return
+	}
+	var input struct {
+		MemberIDs []types.MemberID `json:"memberIds"`
+		ToTeamID  types.TeamID     `json:"toTeamId"`
+	}
+	if err := app.ReadJSON(w, r, &input); err != nil {
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+	if len(input.MemberIDs) == 0 {
+		app.FailedValidationResponse(w, r, map[string]string{"memberIds": "must not be empty"})
+		return
+	}
+	if input.ToTeamID == "" {
+		app.FailedValidationResponse(w, r, map[string]string{"toTeamId": "must be provided"})
+		return
+	}
+	year := app.YearSlug(r)
+
+	// The origin team must be on the case, as for collect: this is a case-scoped action on
+	// a set derived from a team id, so a stale id would move somebody else's patrol.
+	if !app.teamOnCase(w, r, sosID, teamID) {
+		return
+	}
+
+	target, ok := app.moveTarget(w, r, input.ToTeamID)
+	if !ok {
+		return
+	}
+
+	moves, err := app.commands.Member.MoveMembers(r.Context(), app.memberActor(r), year, input.MemberIDs, input.ToTeamID)
+	if err != nil {
+		app.memberCommandError(w, r, err)
+		return
+	}
+	if len(moves) == 0 {
+		if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"moves": []any{}}, nil); err != nil {
+			app.ServerErrorResponse(w, r, err)
+		}
+		return
+	}
+
+	origin, _ := app.models.Teams.GetPatrulje(moves[0].FromTeamID)
+	originName := ""
+	if origin != nil {
+		originName = origin.Name
+	}
+	// One roster read for the whole operation rather than one per member.
+	names := map[types.MemberID]string{}
+	if members, _, err := app.models.Members.GetSpejdere(data.Filters{TeamID: moves[0].FromTeamID}); err == nil {
+		for _, m := range members {
+			names[m.MemberID] = m.Name
+		}
+	}
+
+	summary := sos.MembersMoved{
+		SosID:            sosID,
+		FromTeamID:       moves[0].FromTeamID,
+		FromTeamName:     originName,
+		FromTeamStrength: moves[0].FromTeamStrength,
+	}
+	for _, m := range moves {
+		summary.Members = append(summary.Members, sos.MemberMove{
+			MemberID:   m.MemberID,
+			Name:       names[m.MemberID],
+			ToTeamID:   m.ToTeamID,
+			ToTeamName: target.Name,
+		})
+	}
+	if err := app.commands.Sos.RecordMembersMoved(r.Context(), app.actor(r), year, summary); err != nil {
+		log.Printf("sos summary for member operation failed: %v", err)
+	}
+	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"moves": moves}, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
+// teamOnCase reports whether the patrol is associated with the case, answering the client
+// itself when it is not.
+//
+// Extracted when the bulk move needed the same guard the collect endpoint had grown: both
+// act on a *set* derived from a team id alone, which is what makes a stale id dangerous
+// rather than merely wrong.
+func (app *application) teamOnCase(w http.ResponseWriter, r *http.Request, sosID types.SosID, teamID types.TeamID) bool {
+	c, err := app.models.Sos.GetByID(r.Context(), sosID)
+	if err != nil {
+		app.handleSosError(w, r, err)
+		return false
+	}
+	for _, t := range c.Teams {
+		if t.TeamID == teamID {
+			return true
+		}
+	}
+	app.FailedValidationResponse(w, r, map[string]string{
+		"teamId": "patruljen er ikke tilknyttet sagen",
+	})
+	return false
+}
+
+// moveTarget validates a move destination, answering the client itself when it is invalid.
+//
+// Required to have **started**, and deliberately *not* required to still have racing
+// members. That extra condition was here first and it broke a guarantee PRD 006 §5 makes
+// explicitly: moving a member back into a team with nobody left makes it active again — the
+// reversibility the legacy `.splited` event had. A team emptied to zero is discontinued,
+// and requiring `activeMemberCount > 0` meant **discontinuation could never be undone**,
+// because the only action that reverses it was refused for exactly the teams that needed
+// it. Found by trying to undo a test (task 077).
+//
+// The *picker* still offers only racing patrols, which is right for the survivors flow —
+// but a UI convenience must not become a domain rule.
+//
+// `started` remains required: a patrol that never started has nobody on the route to join,
+// so moving somebody into it would record a fiction.
+func (app *application) moveTarget(w http.ResponseWriter, r *http.Request, teamID types.TeamID) (*data.Patrulje, bool) {
+	target, err := app.models.Teams.GetPatrulje(teamID)
+	if err != nil {
+		if errors.Is(err, data.ErrRecordNotFound) {
+			app.FailedValidationResponse(w, r, map[string]string{"teamId": "ukendt patrulje"})
+			return nil, false
+		}
+		app.ServerErrorResponse(w, r, err)
+		return nil, false
+	}
+	if target.SignupStatus != types.SignupStatusStarted {
+		app.FailedValidationResponse(w, r, map[string]string{"teamId": "patruljen er ikke startet"})
+		return nil, false
+	}
+	return target, true
 }
 
 // memberContext is everything a member handler needs after validation.

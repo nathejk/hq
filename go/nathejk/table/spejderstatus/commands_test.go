@@ -52,15 +52,27 @@ func (m *recordedMessage) SetSubject(s stream.Subject) { m.subject = s }
 func (m *recordedMessage) SetTime(time.Time) error     { return nil }
 
 // stubQueries serves one member and their team, which is all any command reads.
+//
+// GetByMemberID resolves the **requested** id against the team rows when it can, falling
+// back to the single `member` field. That matters for the bulk commands: a stub that
+// returned the same member for every id would make a per-member loop look like it was
+// handling one member three times, and the strength assertions would pass for the wrong
+// reason.
 type stubQueries struct {
 	member *SpejderStatus
 	team   []SpejderStatus
 	err    error
 }
 
-func (q stubQueries) GetByMemberID(context.Context, types.YearSlug, types.MemberID) (*SpejderStatus, error) {
+func (q stubQueries) GetByMemberID(_ context.Context, _ types.YearSlug, id types.MemberID) (*SpejderStatus, error) {
 	if q.err != nil {
 		return nil, q.err
+	}
+	for i := range q.team {
+		if q.team[i].MemberID == id {
+			found := q.team[i]
+			return &found, nil
+		}
 	}
 	return q.member, nil
 }
@@ -267,6 +279,113 @@ func TestMoveToSameTeamIsRefused(t *testing.T) {
 	}
 }
 
+// --- moving several members at once ---
+
+// One event per member, published from the server so a partial failure is a failure rather
+// than a patrol split between two teams with nobody told which members went.
+func TestMoveMembersPublishesOneEventPerMember(t *testing.T) {
+	team := []SpejderStatus{racing("m-1", "t-1"), racing("m-2", "t-1"), racing("m-3", "t-1")}
+	c, p := newCommander(&SpejderStatus{MemberID: "m-1", CurrentTeamID: "t-1", Status: types.MemberStatusRacing}, team)
+
+	moves, err := c.MoveMembers(context.Background(), Actor{}, "2026", []types.MemberID{"m-1", "m-2"}, "t-2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(moves) != 2 {
+		t.Fatalf("got %d moves, want 2", len(moves))
+	}
+	if len(p.subjects) != 2 {
+		t.Fatalf("published %v, want one per member", p.subjects)
+	}
+	for _, s := range p.subjects {
+		if !strings.HasSuffix(s, ".team.moved") {
+			t.Errorf("unexpected subject %q", s)
+		}
+	}
+}
+
+// **The strength reported is the state after the whole operation, not after each member.**
+//
+// This is the reason the bulk command computes strengths itself rather than calling the
+// per-member path in a loop. Moving three members out one at a time would report the origin
+// at 3, then 2, then 1 — three different "resulting strengths" for what is a single step to
+// 0, and the timeline entry would name whichever came last.
+func TestMoveMembersReportsStrengthForTheWholeOperation(t *testing.T) {
+	// Four racing; three of them are leaving.
+	team := []SpejderStatus{
+		racing("m-1", "t-1"), racing("m-2", "t-1"), racing("m-3", "t-1"), racing("m-4", "t-1"),
+	}
+	c, _ := newCommander(&SpejderStatus{MemberID: "m-1", CurrentTeamID: "t-1", Status: types.MemberStatusRacing}, team)
+
+	moves, err := c.MoveMembers(context.Background(), Actor{}, "2026", []types.MemberID{"m-1", "m-2", "m-3"}, "t-2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, m := range moves {
+		if m.FromTeamStrength != 1 {
+			t.Errorf("FromTeamStrength = %d, want 1 (four racing minus the three leaving)", m.FromTeamStrength)
+		}
+	}
+	// Every move in one operation reports the same pair, because they describe one step.
+	for _, m := range moves[1:] {
+		if m.FromTeamStrength != moves[0].FromTeamStrength || m.ToTeamStrength != moves[0].ToTeamStrength {
+			t.Errorf("strengths differ within one operation: %+v vs %+v", moves[0], m)
+		}
+	}
+}
+
+// Emptying a patrol reports zero, which is what makes it discontinued — and the summary
+// carries that number, so the timeline can say so.
+func TestMoveMembersReportsZeroWhenThePatrolIsEmptied(t *testing.T) {
+	team := []SpejderStatus{racing("m-1", "t-1"), racing("m-2", "t-1")}
+	c, _ := newCommander(&SpejderStatus{MemberID: "m-1", CurrentTeamID: "t-1", Status: types.MemberStatusRacing}, team)
+
+	moves, err := c.MoveMembers(context.Background(), Actor{}, "2026", []types.MemberID{"m-1", "m-2"}, "t-2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if moves[0].FromTeamStrength != 0 {
+		t.Errorf("FromTeamStrength = %d, want 0", moves[0].FromTeamStrength)
+	}
+}
+
+// Validation happens for **every** member before anything is published, so an operation
+// that cannot legally complete publishes nothing at all. Discovering the problem mid-loop
+// is the failure this command exists to avoid.
+func TestMoveMembersValidatesEverybodyBeforePublishing(t *testing.T) {
+	// The stub serves the same member for every id, and that member is already on t-1 —
+	// so a move to t-1 must be refused before any event goes out.
+	c, p := newCommander(&SpejderStatus{MemberID: "m-1", CurrentTeamID: "t-1", Status: types.MemberStatusRacing}, nil)
+
+	if _, err := c.MoveMembers(context.Background(), Actor{}, "2026", []types.MemberID{"m-1", "m-2"}, "t-1"); !errors.Is(err, ErrSameTeam) {
+		t.Errorf("err = %v, want ErrSameTeam", err)
+	}
+	if len(p.subjects) != 0 {
+		t.Errorf("published %v despite refusing the operation", p.subjects)
+	}
+}
+
+// An empty list is a no-op rather than an error, matching the collect command: a double
+// click must not produce a second timeline entry.
+func TestMoveMembersWithNoMembersIsANoOp(t *testing.T) {
+	c, p := newCommander(nil, nil)
+	moves, err := c.MoveMembers(context.Background(), Actor{}, "2026", nil, "t-2")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(moves) != 0 || len(p.subjects) != 0 {
+		t.Errorf("moves=%v published=%v, want neither", moves, p.subjects)
+	}
+}
+
+func TestMoveMembersRequiresADestination(t *testing.T) {
+	c, _ := newCommander(nil, nil)
+	if _, err := c.MoveMembers(context.Background(), Actor{}, "2026", []types.MemberID{"m-1"}, ""); !errors.Is(err, ErrRecordNotFound) {
+		t.Errorf("err = %v, want ErrRecordNotFound", err)
+	}
+}
+
+// --- collecting a whole team ---
 // --- subjects ---
 
 // Events go on the member's subject, which is what makes `spejder` the live token and

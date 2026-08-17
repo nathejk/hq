@@ -46,6 +46,7 @@ type Commands interface {
 	CancelWithdrawal(ctx context.Context, actor Actor, year types.YearSlug, id types.MemberID) (*Change, error)
 	OverrideStatus(ctx context.Context, actor Actor, year types.YearSlug, id types.MemberID, to types.MemberStatus) (*Change, error)
 	MoveTeam(ctx context.Context, actor Actor, year types.YearSlug, id types.MemberID, to types.TeamID) (*Move, error)
+	MoveMembers(ctx context.Context, actor Actor, year types.YearSlug, ids []types.MemberID, to types.TeamID) ([]Move, error)
 	CollectTeam(ctx context.Context, actor Actor, year types.YearSlug, team types.TeamID) ([]Change, error)
 }
 
@@ -254,6 +255,113 @@ func (c commander) MoveTeam(ctx context.Context, actor Actor, year types.YearSlu
 		FromTeamStrength: from,
 		ToTeamStrength:   dest,
 	}, nil
+}
+
+// MoveMembers moves several members to the same patrol in one operation.
+//
+// # Why this exists alongside MoveTeam
+//
+// Moving is per member — two survivors may end up in two different patrols — so the
+// per-member command stays the primitive and this is not a replacement for it. What this
+// adds is the *operation*: when an operator moves the remnants of a below-strength patrol
+// to one destination, that is one decision, and it should be one line on the timeline and
+// one thing that either happened or did not.
+//
+// The alternative, which shipped first (task 077), was N requests from the browser. It
+// records the same data but has the flaw task 073 rejected for collection: if the second
+// of two calls fails, one member has moved and one has not, and the operator is told only
+// that something went wrong.
+//
+// # Partial failure
+//
+// A failure part-way through returns the error and discards the moves so far, so no
+// summary claims an operation that did not finish. Whatever was already published stays
+// published — the log is the record and cannot be rewritten — but the caller learns the
+// operation is incomplete rather than seeing a success that half happened.
+//
+// Strengths are computed **as the whole operation lands**, not per member: moving three
+// members out one at a time would otherwise report the origin's strength as 3, then 2,
+// then 1 for what is a single step to 0.
+func (c commander) MoveMembers(ctx context.Context, actor Actor, year types.YearSlug, ids []types.MemberID, to types.TeamID) ([]Move, error) {
+	if to == "" {
+		return nil, ErrRecordNotFound
+	}
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	// Read every member first, so the operation is rejected before anything is published
+	// if one of them cannot legally move. Half-validating and then discovering the problem
+	// mid-loop is the failure this whole command exists to avoid.
+	current := make([]*SpejderStatus, 0, len(ids))
+	for _, id := range ids {
+		m, err := c.q.GetByMemberID(ctx, year, id)
+		if err != nil {
+			return nil, err
+		}
+		if m.CurrentTeamID == to {
+			return nil, ErrSameTeam
+		}
+		current = append(current, m)
+	}
+
+	// The origin loses all of them at once and the destination gains all of them at once,
+	// so both strengths are the state after the operation rather than after each step.
+	moving := make(map[types.MemberID]bool, len(current))
+	for _, m := range current {
+		moving[m.MemberID] = true
+	}
+	origin := current[0].CurrentTeamID
+	fromStrength, err := c.strengthWithout(ctx, year, origin, moving)
+	if err != nil {
+		return nil, err
+	}
+	toStrength, err := c.strengthWithout(ctx, year, to, nil)
+	if err != nil {
+		return nil, err
+	}
+	// Everyone moved in is racing, and none of them was counted in the destination before.
+	toStrength += len(current)
+
+	moves := make([]Move, 0, len(current))
+	for _, m := range current {
+		body := &TeamMoved{MemberID: m.MemberID, FromTeamID: m.CurrentTeamID, ToTeamID: to, Actor: actor}
+		if err := c.publish(actor, year, m.MemberID, "team.moved", body); err != nil {
+			return nil, err
+		}
+		moves = append(moves, Move{
+			MemberID:         m.MemberID,
+			FromTeamID:       m.CurrentTeamID,
+			ToTeamID:         to,
+			FromTeamStrength: fromStrength,
+			ToTeamStrength:   toStrength,
+		})
+	}
+	return moves, nil
+}
+
+// strengthWithout counts a team's racing members, ignoring any that are about to leave it.
+//
+// Same reason as strengthAfter: the projection has not seen the events yet, so
+// patrulje.activeMemberCount still holds the pre-operation number.
+func (c commander) strengthWithout(ctx context.Context, year types.YearSlug, teamID types.TeamID, leaving map[types.MemberID]bool) (int, error) {
+	if teamID == "" {
+		return 0, nil
+	}
+	members, err := c.q.GetByTeam(ctx, Filter{YearSlug: year, TeamID: teamID})
+	if err != nil {
+		return 0, err
+	}
+	strength := 0
+	for _, m := range members {
+		if leaving[m.MemberID] {
+			continue
+		}
+		if m.Status == types.MemberStatusRacing {
+			strength++
+		}
+	}
+	return strength, nil
 }
 
 // CollectTeam takes every remaining racing member of a patrol out of the race in one

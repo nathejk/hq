@@ -74,6 +74,9 @@ func (app *application) routes() http.Handler {
 	// Collecting a whole patrol is one action on the *case*, not four on members:
 	// three separate calls could half-succeed and split a team across two states.
 	router.HandlerFunc(http.MethodPost, "/api/sos/:id/team/:teamId/collect", app.collectTeamHandler)
+	// Likewise moving a below-strength patrol's remnants: one decision, one request, one
+	// timeline entry.
+	router.HandlerFunc(http.MethodPost, "/api/sos/:id/team/:teamId/move", app.moveMembersHandler)
 	router.HandlerFunc(http.MethodGet, "/api/mail/recipients", app.mailRecipientsHandler)
 
 	// Nødtelefon / SOS (PRD 001)

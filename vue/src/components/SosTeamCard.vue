@@ -274,11 +274,18 @@ const submitMove = async () => {
   if (!d || !d.target || d.selected.size === 0) return
   moveDlg.value = { ...d, submitting: true }
   try {
-    // One request per member, because a move is per member: two survivors may end up in
-    // two different patrols, and the server has no notion of moving a group.
-    for (const memberId of d.selected) {
-      await http.put(`/member/${memberId}/team`, { sosId: props.sosId, teamId: d.target.teamId })
-    }
+    // One request for the whole operation, not one per member. N calls from here could
+    // half-succeed, leaving some survivors moved and some not, with the operator told only
+    // that something failed — from a dialog whose selection had already gone. It also makes
+    // this one timeline entry, which is what it is: one decision about one patrol's
+    // remnants.
+    //
+    // The per-member endpoint is still what the single row action uses; this is the bulk
+    // case (task 085).
+    await http.post(`/sos/${props.sosId}/team/${d.team.teamId}/move`, {
+      memberIds: [...d.selected],
+      toTeamId: d.target.teamId,
+    })
     moveDlg.value = null
     emit('changed')
   } catch {
