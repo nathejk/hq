@@ -28,7 +28,7 @@ const toast = useToast();
 // in this same payload, so the card needs no resource of its own — only this token,
 // which is also type-level because a case opened for this patrol has an id this
 // client has never seen.
-const { data, pending, error } = useLiveResource(
+const { data, pending, error, refresh } = useLiveResource(
   `patrulje:detail:${props.teamId}`,
   async () => {
     const response = await http.get('/patrulje/' + props.teamId);
@@ -98,6 +98,55 @@ const onRowCollapse = (event) => {
   //  toast.add({ severity: 'success', summary: 'Row Group Collapsed', detail: 'Value: ' + event.data, life: 3000 });
 };
 
+// --- the correction interface (PRD 006, task 084) ---
+//
+// When reality and the record disagree — a member was driven in and nobody wrote it down,
+// a status was set on the wrong person — this is where it gets put right.
+//
+// Deliberately *not* on the SOS case card: a correction is not part of the call an
+// operator is on, and being a different screen is a stronger separation than a
+// differently-styled button would be. It is also why this is tucked into the expanded row
+// rather than offered as a column action.
+const correcting = ref({});
+const correctionDraft = ref({});
+
+// `finished` is absent from the backend's list, so it cannot be offered here either: only
+// walking the route unaided earns it, and no correction may confer it.
+const correctionOptions = computed(() => config.value.memberStatuses ?? []);
+
+const startCorrection = (member) => {
+  correctionDraft.value = { ...correctionDraft.value, [member.memberId]: member.status || '' };
+  correcting.value = { ...correcting.value, [member.memberId]: true };
+};
+
+const cancelCorrection = (memberId) => {
+  correcting.value = { ...correcting.value, [memberId]: false };
+};
+
+const savingCorrection = ref({});
+
+// No sosId is sent: the server mints a case for the correction and closes it immediately,
+// so the change is documented without the operator having to open one by hand. It surfaces
+// in the "Kontakt med nødtelefon" card below.
+const saveCorrection = async (member) => {
+  const to = correctionDraft.value[member.memberId];
+  if (to === undefined || to === member.status) {
+    cancelCorrection(member.memberId);
+    return;
+  }
+  savingCorrection.value = { ...savingCorrection.value, [member.memberId]: true };
+  try {
+    await http.put(`/member/${member.memberId}/status`, { status: to });
+    correcting.value = { ...correcting.value, [member.memberId]: false };
+    await refresh();
+  } catch {
+    // surfaced by the axios plugin; the row stays open so the operator can see what they
+    // chose rather than having to find the member again
+  } finally {
+    savingCorrection.value = { ...savingCorrection.value, [member.memberId]: false };
+  }
+};
+
 const linkToSignUp = () => {
     window.open("http://tilmelding.nathejk.dk/patrulje/" + patrulje.value.id, '_blank')
 }
@@ -133,8 +182,46 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
                 </template>
             </Column>
             <template #expansion="{data}">
-                <div class="">
-                    {{ data }}
+                <!--
+                  The correction interface (PRD 006, task 084). This row used to render
+                  `{{ data }}`, which is why there was room here.
+                -->
+                <div class="pl-2 py-1 text-sm">
+                    <div class="mb-2">
+                        <span class="text-gray-600">Status:</span>
+                        <Tag class="ml-2" :value="memberStatusLabel(data.status)"
+                             :severity="memberStatusSeverity(data.status)" />
+                        <span v-if="data.updatedAt" class="ml-2 text-gray-500">
+                            ændret {{ formatDateTime(data.updatedAt) }}
+                        </span>
+                        <span v-if="data.currentTeamId && data.currentTeamId !== data.teamId"
+                              class="ml-2 text-gray-500">
+                            — flyttet til anden patrulje
+                        </span>
+                    </div>
+
+                    <div v-if="!correcting[data.memberId]">
+                        <Button label="Ret status manuelt" size="small" severity="secondary"
+                                outlined icon="pi pi-wrench"
+                                @click="startCorrection(data)" />
+                        <div class="mt-1 text-gray-500">
+                            Brug kun når virkeligheden ikke passer med det registrerede —
+                            rettelsen dokumenteres automatisk som en sag.
+                        </div>
+                    </div>
+
+                    <div v-else class="flex flex-wrap items-center gap-2">
+                        <Select :model-value="correctionDraft[data.memberId]"
+                                :options="correctionOptions" option-label="label"
+                                option-value="slug" placeholder="Vælg status"
+                                class="w-64"
+                                @update:model-value="correctionDraft = { ...correctionDraft, [data.memberId]: $event }" />
+                        <Button label="Gem rettelse" size="small"
+                                :loading="savingCorrection[data.memberId]"
+                                @click="saveCorrection(data)" />
+                        <Button label="Annuller" size="small" severity="secondary" text
+                                @click="cancelCorrection(data.memberId)" />
+                    </div>
                 </div>
             </template>
         </DataTable>

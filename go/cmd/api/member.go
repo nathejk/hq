@@ -2,6 +2,7 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"net/http"
 
@@ -45,14 +46,14 @@ type memberRequest struct {
 
 // requestWaitingHandler records that a member wants to leave the race.
 func (app *application) requestWaitingHandler(w http.ResponseWriter, r *http.Request) {
-	app.memberStatusOperation(w, r, func(ctx memberContext) (*spejderstatus.Change, error) {
+	app.memberStatusOperation(w, r, false, func(ctx memberContext) (*spejderstatus.Change, error) {
 		return app.commands.Member.RequestWithdrawal(ctx.r.Context(), ctx.actor, ctx.year, ctx.memberID)
 	})
 }
 
 // resumeRacingHandler puts a member who changed their mind back into the race.
 func (app *application) resumeRacingHandler(w http.ResponseWriter, r *http.Request) {
-	app.memberStatusOperation(w, r, func(ctx memberContext) (*spejderstatus.Change, error) {
+	app.memberStatusOperation(w, r, false, func(ctx memberContext) (*spejderstatus.Change, error) {
 		return app.commands.Member.CancelWithdrawal(ctx.r.Context(), ctx.actor, ctx.year, ctx.memberID)
 	})
 }
@@ -62,8 +63,13 @@ func (app *application) resumeRacingHandler(w http.ResponseWriter, r *http.Reque
 // Lenient about ordering by decision (2026-08-17): this is the out-of-sync repair
 // tool, so it accepts any valid status from any other. Rejecting racing → sheltered
 // because no pickup was logged would refuse exactly the correction it exists to make.
+//
+// **Mints its own case when the caller has none.** Every member command requires a
+// `sosId` (PRD 006 §11) and the operator making a correction is on the patrol page, not
+// in a case — so rather than carve out a case-less path, the handler opens a case, lets
+// the correction land on its timeline, and closes it immediately. See mintCorrectionCase.
 func (app *application) overrideMemberStatusHandler(w http.ResponseWriter, r *http.Request) {
-	app.memberStatusOperation(w, r, func(ctx memberContext) (*spejderstatus.Change, error) {
+	app.memberStatusOperation(w, r, true, func(ctx memberContext) (*spejderstatus.Change, error) {
 		return app.commands.Member.OverrideStatus(ctx.r.Context(), ctx.actor, ctx.year, ctx.memberID, ctx.input.Status)
 	})
 }
@@ -75,7 +81,7 @@ func (app *application) overrideMemberStatusHandler(w http.ResponseWriter, r *ht
 // members is a valid target — no proximity or size rule, because crew in the field
 // agree the destination and the operator is recording it, not choosing it.
 func (app *application) moveMemberTeamHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, ok := app.memberContext(w, r)
+	ctx, ok := app.memberContext(w, r, false)
 	if !ok {
 		return
 	}
@@ -260,7 +266,7 @@ type memberContext struct {
 }
 
 // memberContext reads and validates what every member command requires.
-func (app *application) memberContext(w http.ResponseWriter, r *http.Request) (memberContext, bool) {
+func (app *application) memberContext(w http.ResponseWriter, r *http.Request, allowMinted bool) (memberContext, bool) {
 	memberID := types.MemberID(app.ReadNamedParam(r, "memberId"))
 	if memberID == "" {
 		app.NotFoundResponse(w, r)
@@ -272,10 +278,17 @@ func (app *application) memberContext(w http.ResponseWriter, r *http.Request) (m
 		return memberContext{}, false
 	}
 	if input.SosID == "" {
-		app.FailedValidationResponse(w, r, map[string]string{
-			"sosId": "must be provided: a member does not change status without a case explaining why",
-		})
-		return memberContext{}, false
+		// The override is the one command allowed to arrive without a case, because the
+		// operator making a correction is on the patrol page rather than in one. It does
+		// not get a case-less path: the handler mints one (see mintCorrectionCase), which
+		// is what keeps "every member change has a case" true without making the patrol
+		// page open a case by hand first.
+		if !allowMinted {
+			app.FailedValidationResponse(w, r, map[string]string{
+				"sosId": "must be provided: a member does not change status without a case explaining why",
+			})
+			return memberContext{}, false
+		}
 	}
 	return memberContext{
 		r:        r,
@@ -286,13 +299,84 @@ func (app *application) memberContext(w http.ResponseWriter, r *http.Request) (m
 	}, true
 }
 
+// mintCorrectionCase opens a case for a manual correction and closes it immediately.
+//
+// # Why a case at all
+//
+// Every member command requires a `sosId`, so that "what happened to this member?" is
+// always answered by reading cases and there is no second, case-less way for a status to
+// change. An operator correcting an out-of-sync status from the patrol page has no case,
+// so one is made for them rather than punching a hole in that rule.
+//
+// # Why closed at once
+//
+// It is a record, not work: leaving it open would put a row in the nødtelefon's open list
+// that nobody needs to handle, and operators who learn to ignore entries in that list are
+// the failure this whole tool is built against. Closed, it still appears in the patrol
+// page's "Kontakt med nødtelefon" card, which is where somebody looking for it would look.
+//
+// It also makes corrections **countable** — one recognisable case each — which is what
+// PRD 006 §9's "overrides stay rare" metric needs to be a query rather than a guess.
+//
+// # Why not reuse an open case
+//
+// A correction is rarely part of the story an open case is telling, and "reuse if exactly
+// one is open" needs a rule for when two are. Predictability wins.
+func (app *application) mintCorrectionCase(r *http.Request, memberID types.MemberID, teamID types.TeamID, to types.MemberStatus) (types.SosID, error) {
+	name := app.memberName(memberID, teamID)
+	if name == "" {
+		name = string(memberID)
+	}
+	// The headline marks it as machine-made and names who was corrected, so nobody
+	// scanning the case list mistakes it for a call. Confirmed with the product owner
+	// 2026-08-17.
+	headline := fmt.Sprintf("Manuel rettelse — %s", name)
+	description := fmt.Sprintf(
+		"Status rettet manuelt til %q fra deltagerlisten. Oprettet automatisk som dokumentation.",
+		to,
+	)
+
+	actor := app.actor(r)
+	year := app.YearSlug(r)
+	id, err := app.commands.Sos.Create(r.Context(), actor, year, headline, description)
+	if err != nil {
+		return "", err
+	}
+	// Associate the patrol so the correction is reachable from the patrol page's card,
+	// which is the only place anybody would go looking for it.
+	//
+	// AssociateTeamAt rather than AssociateTeam: the case was created microseconds ago and
+	// its `created` event has not been projected yet, so the ordinary command's read-back
+	// returns not-found and skips the association silently. That is exactly what happened
+	// before this was fixed — every minted case had an empty team list and was therefore
+	// invisible on the patrol page it documented.
+	if teamID != "" {
+		if err := app.commands.Sos.AssociateTeamAt(r.Context(), actor, year, id, teamID); err != nil {
+			log.Printf("correction case %q: associating team failed: %v", id, err)
+		}
+	}
+	return id, nil
+}
+
+// closeCorrectionCase closes a minted case once the correction is on its timeline.
+//
+// Failure is logged rather than returned: the correction itself has been recorded, and
+// telling the operator their fix failed because a bookkeeping case stayed open would be
+// worse than an extra row in a list.
+func (app *application) closeCorrectionCase(r *http.Request, id types.SosID) {
+	closed := sos.StatusClosed
+	if err := app.commands.Sos.Patch(r.Context(), app.actor(r), id, sos.PatchCommand{Status: &closed}); err != nil {
+		log.Printf("correction case %q: closing failed: %v", id, err)
+	}
+}
+
 // memberStatusOperation runs a status-changing command and records it on the case.
 //
 // Shared by the three status handlers because the shape is identical and the
 // interesting part — which command — is the one line they differ by. It also keeps
 // the publish-then-summarise order in one place rather than three.
-func (app *application) memberStatusOperation(w http.ResponseWriter, r *http.Request, run func(memberContext) (*spejderstatus.Change, error)) {
-	ctx, ok := app.memberContext(w, r)
+func (app *application) memberStatusOperation(w http.ResponseWriter, r *http.Request, allowMinted bool, run func(memberContext) (*spejderstatus.Change, error)) {
+	ctx, ok := app.memberContext(w, r, allowMinted)
 	if !ok {
 		return
 	}
@@ -303,7 +387,8 @@ func (app *application) memberStatusOperation(w http.ResponseWriter, r *http.Req
 	}
 	// A no-op: the member was already in that state, so nothing was published and
 	// nothing goes on the timeline. Answered as success, because the caller's
-	// intent holds.
+	// intent holds — and deliberately before any case is minted, so a double click on a
+	// correction does not litter the record with empty cases.
 	if change == nil {
 		if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"change": nil}, nil); err != nil {
 			app.ServerErrorResponse(w, r, err)
@@ -311,27 +396,50 @@ func (app *application) memberStatusOperation(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// Mint the case now rather than earlier: only a change that actually happened is
+	// worth documenting, and the member events are already published by this point, so
+	// the summary still lands after them as the ordering requires.
+	sosID := ctx.input.SosID
+	minted := false
+	if sosID == "" {
+		id, err := app.mintCorrectionCase(r, change.MemberID, change.TeamID, change.To)
+		if err != nil {
+			// The correction is recorded; only its paper trail failed. Report success
+			// with a log rather than telling the operator their fix did not happen.
+			log.Printf("correction case for member %q could not be created: %v", change.MemberID, err)
+		} else {
+			sosID, minted = id, true
+		}
+	}
+
 	team, _ := app.models.Teams.GetPatrulje(change.TeamID)
 	teamName := ""
 	if team != nil {
 		teamName = team.Name
 	}
-	summary := sos.MemberStatusChanged{
-		SosID:    ctx.input.SosID,
-		TeamID:   change.TeamID,
-		TeamName: teamName,
-		Members: []sos.MemberChange{{
-			MemberID: change.MemberID,
-			Name:     app.memberName(change.MemberID, change.TeamID),
-			From:     change.From,
-			To:       change.To,
-		}},
-		TeamStrength: change.TeamStrength,
+	if sosID != "" {
+		summary := sos.MemberStatusChanged{
+			SosID:    sosID,
+			TeamID:   change.TeamID,
+			TeamName: teamName,
+			Members: []sos.MemberChange{{
+				MemberID: change.MemberID,
+				Name:     app.memberName(change.MemberID, change.TeamID),
+				From:     change.From,
+				To:       change.To,
+			}},
+			TeamStrength: change.TeamStrength,
+		}
+		if err := app.commands.Sos.RecordMemberStatusChanged(ctx.r.Context(), app.actor(r), ctx.year, summary); err != nil {
+			log.Printf("sos summary for member operation failed: %v", err)
+		}
 	}
-	if err := app.commands.Sos.RecordMemberStatusChanged(ctx.r.Context(), app.actor(r), ctx.year, summary); err != nil {
-		log.Printf("sos summary for member operation failed: %v", err)
+	// Closed only after the correction is on its timeline, so the case is never briefly
+	// closed-and-empty for a reader who catches it mid-flight.
+	if minted {
+		app.closeCorrectionCase(r, sosID)
 	}
-	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"change": change}, nil); err != nil {
+	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"change": change, "sosId": sosID}, nil); err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}
 }

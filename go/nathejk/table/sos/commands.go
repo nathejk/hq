@@ -28,6 +28,20 @@ type Commands interface {
 	UpdateComment(ctx context.Context, actor Actor, id types.SosID, commentID CommentID, comment string) error
 	Delete(ctx context.Context, actor Actor, id types.SosID) error
 	AssociateTeam(ctx context.Context, actor Actor, id types.SosID, teamID types.TeamID) error
+	// AssociateTeamAt associates a patrol with a case whose year the caller already
+	// knows, without reading the case back first.
+	//
+	// For one situation only: a case created moments earlier in the same request. The
+	// ordinary AssociateTeam reads the case to find its year and to make the call
+	// idempotent, which cannot work when the `created` event has not been projected yet —
+	// the read returns not-found and the association is silently skipped. That is a real
+	// race, not a theoretical one: it swallowed the association on every minted
+	// correction case until this existed (task 084).
+	//
+	// Safe here precisely because the caller minted the id and knows the year, so there
+	// is nothing to look up. Not a general-purpose escape hatch: use AssociateTeam for a
+	// case an operator chose, where the idempotency check is doing real work.
+	AssociateTeamAt(ctx context.Context, actor Actor, year types.YearSlug, id types.SosID, teamID types.TeamID) error
 	DisassociateTeam(ctx context.Context, actor Actor, id types.SosID, teamID types.TeamID) error
 	SetSectionAssignable(ctx context.Context, actor Actor, year types.YearSlug, slug types.Slug, assignable bool) error
 
@@ -238,6 +252,20 @@ func (c commander) AssociateTeam(ctx context.Context, actor Actor, id types.SosI
 		return nil
 	}
 	return c.publish(actor, current.YearSlug, id, "team.associated",
+		&TeamAssociated{SosID: id, TeamID: teamID})
+}
+
+// AssociateTeamAt publishes the association without reading the case back.
+//
+// See the interface for why this exists and when it may be used. The absent idempotency
+// check is acceptable only because the caller just minted the case, so there cannot be an
+// existing association to duplicate — and the projection's insert is itself idempotent, so
+// a repeat would be a no-op in the read model regardless.
+func (c commander) AssociateTeamAt(ctx context.Context, actor Actor, year types.YearSlug, id types.SosID, teamID types.TeamID) error {
+	if id == "" || teamID == "" {
+		return tables.ErrRecordNotFound
+	}
+	return c.publish(actor, year, id, "team.associated",
 		&TeamAssociated{SosID: id, TeamID: teamID})
 }
 
