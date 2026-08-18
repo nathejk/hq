@@ -5,6 +5,7 @@ import { FilterMatchMode } from '@primevue/core/api';
 import { http } from '@/plugins/axios';
 import { useLiveResource } from '@/composables/useLiveResource';
 import { daymonthhhmm } from '@/composables/datefilters';
+import { memberStatusBadge } from '@/composables/sos';
 
 const props = defineProps({
     teamId: {type: String, required: false},
@@ -51,34 +52,17 @@ const config = computed(() => data.value?.config ?? {});
 
 // --- member lifecycle status (PRD 006) ---
 //
-// Labels come from the backend, never a map in this view. Two screens show these strings
-// and they are persisted values, so a local copy is how the two drift apart until one says
-// "waiting" to an operator at 3am.
-const memberStatusLabel = (slug) => {
-  const found = (config.value.memberStatuses ?? []).find((s) => s.slug === slug);
-  // "Ikke startet" is the honest reading of an absent status: the member exists on the
-  // roster and the race has not claimed them yet. Before PRD 006 this column said that
-  // for *everybody*, regardless of status — which is what made the bug invisible.
-  return found?.label ?? (slug ? slug : 'Ikke startet');
-};
-
-const memberStatusSeverity = (slug) => {
-  switch (slug) {
-    case 'racing':
-    case 'finished':
-      return 'success';
-    case 'waiting':
-      return 'danger';
-    case 'transit':
-    case 'sheltered':
-      return 'warn';
-    case 'reunited':
-    case 'released':
-      return 'secondary';
-    default:
-      return 'contrast';
-  }
-};
+// Label, colour and glyph come from the one shared badge vocabulary, so this column and the
+// nødtelefon's member rows cannot describe the same status differently — the short forms are
+// what fit in a Tag, while the backend's long labels stay where an operator *chooses* a
+// status, in the correction picker below.
+//
+// "Ikke startet" for an absent status is the honest reading: the member exists on the roster
+// and the race has not claimed them yet. Before PRD 006 this column said that for
+// *everybody*, regardless of status — which is what made the bug invisible.
+const memberStatusLabel = (slug) => memberStatusBadge(slug).label;
+const memberStatusSeverity = (slug) => memberStatusBadge(slug).severity;
+const memberStatusIcon = (slug) => memberStatusBadge(slug).icon;
 
 // Whether a member is active **for this patrol**, which is not the same as being active.
 //
@@ -211,6 +195,7 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
             <Column field="status" header="Status">
                 <template #body="{data}">
                     <Tag :value="memberStatusLabel(data.status)"
+                         :icon="memberStatusIcon(data.status)"
                          :severity="memberStatusSeverity(data.status)" />
                 </template>
             </Column>
@@ -223,6 +208,7 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
                     <div class="mb-2">
                         <span class="text-gray-600">Status:</span>
                         <Tag class="ml-2" :value="memberStatusLabel(data.status)"
+                             :icon="memberStatusIcon(data.status)"
                              :severity="memberStatusSeverity(data.status)" />
                         <span v-if="data.updatedAt" class="ml-2 text-gray-500">
                             ændret {{ formatDateTime(data.updatedAt) }}

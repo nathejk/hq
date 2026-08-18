@@ -71,10 +71,7 @@ interface SosTeam {
   members: SosMember[]
 }
 
-interface StatusOption {
-  slug: string
-  label: string
-}
+
 
 // One cache entry per case, keyed by id.
 //
@@ -83,7 +80,7 @@ interface StatusOption {
 // published on the same `sos` token and a signal for a sibling projection would
 // otherwise be missed. `immediate: false` while creating — there is nothing to
 // fetch yet.
-const resource = useLiveResource<{ case: SosCase; teams: SosTeam[]; memberStatuses: StatusOption[] } | null>(
+const resource = useLiveResource<{ case: SosCase; teams: SosTeam[] } | null>(
   `sos:${caseId.value || 'new'}`,
   async () => {
     if (!caseId.value) return null
@@ -104,7 +101,6 @@ const { data, pending, error, refresh } = resource
 
 const sosCase = computed<SosCase | null>(() => data.value?.case ?? null)
 const teams = computed<SosTeam[]>(() => data.value?.teams ?? [])
-const memberStatuses = computed<StatusOption[]>(() => data.value?.memberStatuses ?? [])
 const timeline = computed<Activity[]>(() => sosCase.value?.timeline ?? [])
 
 // A deleted case stops resolving, so a 404 here is the expected way to learn it is
@@ -202,10 +198,7 @@ const createCase = async () => {
     // the operator would be told the case they just described does not exist.
     // Seeding means they see it at once, and the live signal replaces it with the
     // projected row a moment later.
-    // memberStatuses is seeded empty rather than omitted: the card reads it as a prop,
-    // and a freshly created case has no teams yet, so there is nothing to label until
-    // the first refresh brings the real list.
-    seedLiveResource(`sos:${created.id}`, { case: created, teams: [], memberStatuses: [] })
+    seedLiveResource(`sos:${created.id}`, { case: created, teams: [] })
     await router.push({ name: 'sos', params: { id: created.id } })
   } catch {
     // The axios plugin already surfaces failures as a toast.
@@ -515,7 +508,7 @@ watch(error, (err) => {
         </small>
       </div>
 
-      <SosTeamCard :sos-id="caseId" :teams="teams" :statuses="memberStatuses" @changed="refresh" />
+      <SosTeamCard :sos-id="caseId" :teams="teams" @changed="refresh" />
     </aside>
   </div>
 

@@ -3,7 +3,7 @@ import { computed, ref, watch } from 'vue'
 import { http } from '@/plugins/axios'
 import { useLiveResource } from '@/composables/useLiveResource'
 import { hhmm, parseApiDate } from '@/composables/datefilters'
-import { memberEventPhrase, formatDateTime } from '@/composables/sos'
+import { memberEventPhrase, formatDateTime, memberStatusBadge } from '@/composables/sos'
 
 // The patrols associated with a case, and their members.
 //
@@ -16,7 +16,6 @@ import { memberEventPhrase, formatDateTime } from '@/composables/sos'
 // different screen is a stronger separation than a differently-styled button would be.
 const props = defineProps<{
   sosId: string
-  statuses: { slug: string; label: string }[]
   teams: {
     teamId: string
     teamNumber: string
@@ -95,64 +94,18 @@ const disassociate = async (teamId: string) => {
 
 // --- member rows (PRD 006) ---
 
-// Labels come from the backend, so this view holds no map of its own. Two screens show
-// these strings and they are persisted values; a copy in each is how they drift until
-// one says "waiting" to an operator at 3am.
-const statusLabel = (slug: string) =>
-  props.statuses.find((s) => s.slug === slug)?.label ?? (slug || 'Ikke startet')
-
-const statusSeverity = (slug: string) => {
-  switch (slug) {
-    case 'racing':
-      return 'success'
-    case 'waiting':
-      return 'danger' // the only state that blocks a whole patrol
-    case 'transit':
-    case 'sheltered':
-      return 'warn'
-    case 'reunited':
-    case 'released':
-      return 'secondary'
-    default:
-      return 'contrast'
-  }
-}
-
-// A member row shows its status as an icon alone, with the label and any actions in a
-// popover on hover. Twelve rows of coloured word-tags read as a wall of text when what an
-// operator scans for is "is anybody not racing?", and the colour already answers that.
+// Label, colour and glyph all come from the one shared badge vocabulary, so a member row's
+// icon and the modal's Tag cannot disagree about the same status.
 //
-// The icon must therefore carry the same information the tag did, so these two maps are
-// kept beside each other rather than one being derived from the other: the colour is the
-// glanceable signal and the glyph is what disambiguates two states sharing a colour
-// (transit and sheltered are both amber).
-const statusIcon = (slug: string) => {
-  switch (slug) {
-    case 'racing':
-      return 'pi pi-directions' // on the route, under their own steam
-    case 'waiting':
-      return 'pi pi-clock' // by the trailside, and their patrol is stopped with them
-    case 'transit':
-      return 'pi pi-car'
-    case 'sheltered':
-      return 'pi pi-home'
-    case 'reunited':
-      return 'pi pi-users' // handed back to their own team
-    case 'released':
-      return 'pi pi-sign-out' // gone home with a guardian
-    case 'finished':
-      return 'pi pi-flag'
-    case 'registered':
-      return 'pi pi-user'
-    case 'seated':
-      return 'pi pi-ticket'
-    default:
-      return 'pi pi-minus-circle' // no status recorded: not started
-  }
-}
+// A member row shows the status as an icon alone. Twelve rows of coloured word-tags read as
+// a wall of text when what an operator scans for is "is anybody not racing?", and the
+// colour already answers that; the glyph is what disambiguates two states sharing a colour
+// (Udgår and Transit are both amber). The label appears in the modal, on the one member
+// being looked at.
+const statusLabel = (slug: string) => memberStatusBadge(slug).label
+const statusSeverity = (slug: string) => memberStatusBadge(slug).severity
+const statusIcon = (slug: string) => memberStatusBadge(slug).icon
 
-// Matches the severities above rather than inventing a second palette — the product owner
-// confirmed the existing colours read correctly, so only the shape changes.
 const statusColour = (slug: string) => {
   switch (statusSeverity(slug)) {
     case 'success':
@@ -161,6 +114,8 @@ const statusColour = (slug: string) => {
       return 'text-red-600'
     case 'warn':
       return 'text-amber-600'
+    case 'info':
+      return 'text-blue-500'
     case 'secondary':
       return 'text-gray-500'
     default:
@@ -659,16 +614,31 @@ const submitMove = async () => {
       surface.
     -->
     <Dialog v-if="detail" :visible="true" modal :style="{ width: '32rem' }"
-            :header="detailData?.member.name || detailMember?.name || 'Deltager'"
             @update:visible="closeMember">
-      <div v-if="detailMember" class="mb-3 flex items-center gap-2">
-        <i :class="[statusIcon(detailMember.status), statusColour(detailMember.status)]" class="text-lg" />
-        <span class="font-medium">{{ statusLabel(detailMember.status) }}</span>
-        <span v-if="detailMember.updatedAt && detailMember.status" class="text-sm text-gray-500">
+      <!--
+        A titled header in the house style, like the page headings: the person is the subject
+        of this dialog, so their name is set as a heading rather than as dialog chrome. The
+        status rides in the header as a Tag because it is the one fact that changes while the
+        dialog is open, and it belongs next to the name it qualifies.
+      -->
+      <template #header>
+        <div class="inline-flex items-center gap-2 text-2xl">
+          <i class="fas fa-fw fa-user"></i>
+          <h1 class="font-nathejk">
+            {{ detailData?.member.name || detailMember?.name || 'Deltager' }}
+          </h1>
+          <Tag v-if="detailMember" :icon="statusIcon(detailMember.status)"
+               :value="statusLabel(detailMember.status)"
+               :severity="statusSeverity(detailMember.status)" class="text-base" />
+        </div>
+      </template>
+
+      <div v-if="detailMember" class="mb-3 flex items-center gap-2 text-sm text-gray-500">
+        <span v-if="detailMember.updatedAt && detailMember.status">
           siden {{ since(detailMember.updatedAt) }}
         </span>
-        <span v-if="detailData?.teamName" class="text-sm text-gray-500">
-          · {{ detailData.teamName }}
+        <span v-if="detailData?.teamName">
+          <span v-if="detailMember.updatedAt && detailMember.status">· </span>{{ detailData.teamName }}
         </span>
       </div>
 
