@@ -813,19 +813,20 @@ const withdrawTeam = computed<TeamRow | null>(() => {
           questions, and "racing" reached by carrying on is a different fact from "racing"
           reached by being moved to another patrol.
         -->
-        <h3 class="font-nathejk text-lg">Statushistorik</h3>
-        <ol v-if="detailData.history.length" class="mt-1 text-sm">
-          <li v-for="entry in detailData.history" :key="entry.seq"
-              class="flex items-baseline gap-2 border-b border-gray-100 py-1 last:border-0">
-            <i :class="[statusIcon(entry.status), statusColour(entry.status)]" class="text-xs" />
-            <span class="w-28 shrink-0 text-gray-500">{{ formatDateTime(entry.createdAt) }}</span>
-            <span>{{ memberEventPhrase(entry.event) }}</span>
-            <span class="text-gray-500">→ {{ statusLabel(entry.status) }}</span>
-          </li>
-        </ol>
-        <p v-else class="mt-1 text-sm text-gray-500">
-          Ingen statusskift registreret — deltageren er ikke startet.
-        </p>
+        <Fieldset legend="Historik">
+          <ol v-if="detailData.history.length" class="text-sm">
+            <li v-for="entry in detailData.history" :key="entry.seq"
+                class="flex items-baseline gap-2 border-b border-gray-100 py-1 last:border-0">
+              <i :class="[statusIcon(entry.status), statusColour(entry.status)]" class="text-xs" />
+              <span class="w-28 shrink-0 text-gray-500">{{ formatDateTime(entry.createdAt) }}</span>
+              <span>{{ memberEventPhrase(entry.event) }}</span>
+              <span class="text-gray-500">→ {{ statusLabel(entry.status) }}</span>
+            </li>
+          </ol>
+          <p v-else class="text-sm text-gray-500">
+            Ingen statusskift registreret — deltageren er ikke startet.
+          </p>
+        </Fieldset>
       </template>
     </Dialog>
 
