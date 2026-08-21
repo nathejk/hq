@@ -901,8 +901,13 @@ const withdrawTeam = computed<TeamRow | null>(() => {
   /* Fixed and right-aligned so the timestamps form a column: "how long between these two
      things" is then read straight down the page. Wider than the case timeline's 3.5rem
      because these entries carry the date as well as the time — a member's history spans
-     the whole event, while a case is usually one evening. */
-  flex: 0 0 5.5rem;
+     the whole event, while a case is usually one evening.
+
+     nowrap because a timestamp is one token: "17.08 12:46" broken after the date reads as
+     two facts, and it wrapped at every modal width where the column was a hair too narrow.
+     The width then only has to be enough not to collide with the marker. */
+  flex: 0 0 6.5rem;
+  white-space: nowrap;
   padding-top: 0.15rem;
   text-align: right;
 }
