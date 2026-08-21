@@ -2,7 +2,7 @@
 import { computed, ref, watch } from 'vue'
 import { http } from '@/plugins/axios'
 import { useLiveResource } from '@/composables/useLiveResource'
-import { hhmm, parseApiDate } from '@/composables/datefilters'
+import { parseApiDate } from '@/composables/datefilters'
 import { memberEventPhrase, formatDateTime, memberStatusBadge } from '@/composables/sos'
 
 // The patrols associated with a case, and their members.
@@ -158,8 +158,6 @@ const belowStrength = (team: { started: boolean; activeMemberCount: number; minM
 // the dev data is all 310 of them.
 const discontinued = (team: { started: boolean; activeMemberCount: number }) =>
   team.started && team.activeMemberCount === 0
-
-const since = (value: string | null) => (value ? hhmm(value) : '')
 
 // --- member detail modal ---
 //
@@ -713,12 +711,6 @@ const withdrawTeam = computed<TeamRow | null>(() => {
                :severity="statusSeverity(detailMember.status)" class="text-base" />
         </div>
       </template>
-
-      <div v-if="detailMember" class="mb-3 flex items-center gap-2 text-sm text-gray-500">
-        <span v-if="detailMember.updatedAt && detailMember.status">
-          siden {{ since(detailMember.updatedAt) }}
-        </span>
-      </div>
 
       <div v-if="detailPending && !detailData" class="text-sm text-gray-500">Henter…</div>
 
