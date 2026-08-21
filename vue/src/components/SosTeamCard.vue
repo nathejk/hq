@@ -172,6 +172,15 @@ const since = (value: string | null) => (value ? hhmm(value) : '')
 // `props.teams`, which the case resource keeps current, so watching that row's status is
 // enough to know when the history has changed and reload it. That reuses the live channel
 // already in place instead of introducing a resource whose key would have to vary.
+// A patrol as the member modal names it: enough to identify and link to it. Deliberately
+// not the card's team row, which also carries strength and contact details — the member's
+// current patrol may not be on this case at all, so those are not available for it.
+interface TeamRef {
+  teamId: string
+  teamNumber: string
+  name: string
+}
+
 const detail = ref<{ memberId: string; team: TeamRow } | null>(null)
 const detailData = ref<{
   member: {
@@ -184,7 +193,8 @@ const detailData = ref<{
     birthday: string | null
     status: string
   }
-  teamName: string
+  startTeam: TeamRef | null
+  currentTeam: TeamRef | null
   history: { seq: number; status: string; event: string; createdAt: string }[]
 } | null>(null)
 const detailPending = ref(false)
@@ -339,7 +349,7 @@ const moveDlg = ref<{
   team: TeamRow
   offered: MemberRow[]
   selected: Set<string>
-  target: { teamId: string; teamNumber: string; name: string } | null
+  target: TeamRef | null
   query: string
   submitting: boolean
 } | null>(null)
@@ -373,23 +383,28 @@ const toggleMember = (memberId: string) => {
 // operator is recording it, not choosing it (PRD 006 §11). So there is no candidate
 // endpoint: this filters the patrol list the SPA already holds live, exactly as the
 // association picker above does.
-const moveTargets = computed(() => {
-  const d = moveDlg.value
-  if (!d) return []
-  const q = d.query.trim().toLowerCase()
+//
+// Shared by the bulk move and the single member's "Skift", so the two cannot come to offer
+// different destinations for the same decision.
+const destinations = (query: string, excludeTeamId: string) => {
+  const q = query.trim().toLowerCase()
   if (q.length < 2) return []
   return (patruljeData.value ?? [])
     .filter((p: { teamId: string; signupStatus?: string; activeMemberCount?: number }) =>
       // Still racing: a team that never started has nobody on the route to join, and one
       // that has been emptied is itself discontinued. Moving somebody into either would
       // be recording a fiction.
-      p.teamId !== d.team.teamId && p.signupStatus === 'STARTED' && (p.activeMemberCount ?? 0) > 0,
+      p.teamId !== excludeTeamId && p.signupStatus === 'STARTED' && (p.activeMemberCount ?? 0) > 0,
     )
     .filter((p: { teamNumber?: string; name?: string; group?: string }) =>
       [p.teamNumber, p.name, p.group].some((f) => (f ?? '').toLowerCase().includes(q)),
     )
     .slice(0, 10)
-})
+}
+
+const moveTargets = computed(() =>
+  moveDlg.value ? destinations(moveDlg.value.query, moveDlg.value.team.teamId) : [],
+)
 
 const submitMove = async () => {
   const d = moveDlg.value
@@ -416,6 +431,71 @@ const submitMove = async () => {
     // was selected rather than having to reconstruct it
   }
 }
+
+// --- switching one member's patrol, from the member modal ---
+//
+// The per-member endpoint, not the bulk one the below-strength panel posts to: that route is
+// scoped to a team on the case and derives the origin from it, while this member's current
+// patrol may be one they were moved *into* and which the case has never heard of.
+//
+// A separate dialog from the bulk move for the same reason it is a separate request: there is
+// no selection to make. Offering one checkbox, pre-ticked, would be a question with one
+// answer.
+const switchDlg = ref<{
+  memberId: string
+  name: string
+  fromTeamId: string
+  target: TeamRef | null
+  query: string
+  submitting: boolean
+} | null>(null)
+
+const switchTargets = computed(() =>
+  switchDlg.value ? destinations(switchDlg.value.query, switchDlg.value.fromTeamId) : [],
+)
+
+const openSwitch = () => {
+  const member = detailMember.value
+  if (!member) return
+  switchDlg.value = {
+    memberId: member.memberId,
+    name: detailData.value?.member.name || member.name,
+    // The patrol they are actually with, which is what they are being moved *from* and what
+    // must be excluded from the destinations. For a member who moved in, that is not the
+    // team whose card was clicked.
+    fromTeamId: detailData.value?.currentTeam?.teamId || detail.value?.team.teamId || '',
+    target: null,
+    query: '',
+    submitting: false,
+  }
+}
+
+const submitSwitch = async () => {
+  const d = switchDlg.value
+  if (!d || !d.target) return
+  switchDlg.value = { ...d, submitting: true }
+  try {
+    await http.put(`/member/${d.memberId}/team`, { sosId: props.sosId, teamId: d.target.teamId })
+    switchDlg.value = null
+    // The modal stays open on purpose: the operator is still on the phone about this member,
+    // and the two patrol lines they just changed are the confirmation.
+    await loadDetail()
+    emit('changed')
+  } catch {
+    switchDlg.value = switchDlg.value ? { ...switchDlg.value, submitting: false } : null
+    // surfaced by the axios plugin; the chosen destination stays on screen
+  }
+}
+
+// The team a withdrawal is measured against is the member's *current* patrol, not the card
+// the modal was opened from: those differ for somebody who was moved, and warning about the
+// wrong patrol's strength would send a car to the wrong place. Falls back to the opened card
+// when the current patrol is not on this case, which is the only strength figure available.
+const withdrawTeam = computed<TeamRow | null>(() => {
+  const currentId = detailData.value?.currentTeam?.teamId
+  const onCase = currentId ? props.teams.find((t) => t.teamId === currentId) : undefined
+  return onCase ?? detail.value?.team ?? null
+})
 </script>
 
 <template>
@@ -637,68 +717,105 @@ const submitMove = async () => {
         <span v-if="detailMember.updatedAt && detailMember.status">
           siden {{ since(detailMember.updatedAt) }}
         </span>
-        <span v-if="detailData?.teamName">
-          <span v-if="detailMember.updatedAt && detailMember.status">· </span>{{ detailData.teamName }}
-        </span>
       </div>
 
       <!--
-        The actions, on the member they concern. `racing` offers leaving the race; `waiting`
-        offers carrying on — an ordinary outcome that saves a car being sent, so it is a
-        primary button rather than something tucked away. From `transit` onwards there is
-        deliberately nothing to press: the car and shelter interfaces record what happens
-        next, and saying so is better than an empty space that looks unfinished.
+        The actions that are not about a patrol. `waiting` offers carrying on — an ordinary
+        outcome that saves a car being sent, so it is a primary button rather than something
+        tucked away. Leaving the race lives on the "Nuværende patrulje" line below, with the
+        patrol it takes them out of. From `transit` onwards there is deliberately nothing to
+        press: the car and shelter interfaces record what happens next, and saying so is
+        better than an empty space that looks unfinished.
       -->
       <div v-if="detailMember" class="mb-4">
-        <div v-if="canWithdraw(detailMember.status) || canResume(detailMember.status)" class="flex gap-2">
-          <Button v-if="canWithdraw(detailMember.status)" label="Ønsker at udgå" severity="danger"
-                  outlined :loading="pending[detailMember.memberId]"
-                  @click="askWithdraw(detailMember, detail.team)" />
-          <Button v-if="canResume(detailMember.status)" label="Fortsætter selv" severity="success"
-                  :loading="pending[detailMember.memberId]"
-                  @click="act(detailMember.memberId, 'racing')" />
-        </div>
-        <div v-else-if="detailMember.status" class="text-sm italic text-gray-500">
+        <Button v-if="canResume(detailMember.status)" label="Fortsætter selv" severity="success"
+                :loading="pending[detailMember.memberId]"
+                @click="act(detailMember.memberId, 'racing')" />
+        <div v-else-if="detailMember.status && !canWithdraw(detailMember.status)"
+             class="text-sm italic text-gray-500">
           Ingen handlinger herfra — bil og HQ registrerer selv de næste skridt.
         </div>
       </div>
 
       <div v-if="detailPending && !detailData" class="text-sm text-gray-500">Henter…</div>
 
+      <!--
+        The profile in a fieldset, so the modal reads as "who this is" separated from the
+        status and history around it. The two patrol lines come first because they are what an
+        operator on the phone needs before an address: which patrol the scout set out with, and
+        which one they are with now. They are always both shown, identical name and all — the
+        ordinary case is a fact worth stating, not a value to hide.
+      -->
       <template v-if="detailData">
-        <dl class="mb-4 grid grid-cols-[8rem_1fr] gap-x-3 gap-y-1 text-sm">
-          <dt class="text-gray-500">Telefon</dt>
-          <dd>
-            <!-- tel: so an operator on a phone taps to call rather than copying digits -->
-            <a v-if="detailData.member.phone" :href="`tel:${detailData.member.phone}`" class="underline">
-              {{ detailData.member.phone }}
-            </a>
-            <span v-else class="text-gray-400">—</span>
-          </dd>
+        <Fieldset legend="Oplysninger" class="mb-4">
+          <dl class="grid grid-cols-[8rem_1fr] items-baseline gap-x-3 gap-y-1 text-sm">
+            <dt class="text-gray-500">Startpatrulje</dt>
+            <dd>
+              <router-link v-if="detailData.startTeam" class="underline"
+                           :to="{ name: 'patrulje', params: { teamId: detailData.startTeam.teamId } }">
+                <span v-if="detailData.startTeam.teamNumber">{{ detailData.startTeam.teamNumber }} · </span>
+                {{ detailData.startTeam.name || 'Patrulje' }}
+              </router-link>
+              <span v-else class="text-gray-400">—</span>
+            </dd>
 
-          <dt class="text-gray-500">Kontaktperson</dt>
-          <dd>
-            <a v-if="detailData.member.phoneParent" :href="`tel:${detailData.member.phoneParent}`" class="underline">
-              {{ detailData.member.phoneParent }}
-            </a>
-            <span v-else class="text-gray-400">—</span>
-          </dd>
+            <dt class="text-gray-500">Nuværende patrulje</dt>
+            <dd class="flex flex-wrap items-center gap-2">
+              <router-link v-if="detailData.currentTeam" class="underline"
+                           :to="{ name: 'patrulje', params: { teamId: detailData.currentTeam.teamId } }">
+                <span v-if="detailData.currentTeam.teamNumber">{{ detailData.currentTeam.teamNumber }} · </span>
+                {{ detailData.currentTeam.name || 'Patrulje' }}
+              </router-link>
+              <span v-else class="text-gray-400">—</span>
 
-          <dt class="text-gray-500">Adresse</dt>
-          <dd>
-            <span v-if="detailData.member.address">
-              {{ detailData.member.address }}<br>
-              {{ detailData.member.postalCode }} {{ detailData.member.city }}
-            </span>
-            <span v-else class="text-gray-400">—</span>
-          </dd>
+              <!--
+                The two things that change a scout's patrol, on the line that states it. Both
+                are offered only while the member is on their own legs: once a car has them,
+                what happens next is recorded by the car and shelter interfaces, and a button
+                here would be this screen pretending to own a transition it does not.
+              -->
+              <span v-if="detailMember && canWithdraw(detailMember.status)" class="flex gap-1">
+                <Button label="Skift" size="small" severity="secondary" outlined
+                        @click="openSwitch" />
+                <Button label="Udgår" size="small" severity="danger" outlined
+                        :loading="pending[detailMember.memberId]"
+                        @click="withdrawTeam && askWithdraw(detailMember, withdrawTeam)" />
+              </span>
+            </dd>
 
-          <dt class="text-gray-500">Fødselsdag</dt>
-          <dd>
-            <span v-if="detailData.member.birthday">{{ birthday(detailData.member.birthday) }}</span>
-            <span v-else class="text-gray-400">—</span>
-          </dd>
-        </dl>
+            <dt class="text-gray-500">Telefon</dt>
+            <dd>
+              <!-- tel: so an operator on a phone taps to call rather than copying digits -->
+              <a v-if="detailData.member.phone" :href="`tel:${detailData.member.phone}`" class="underline">
+                {{ detailData.member.phone }}
+              </a>
+              <span v-else class="text-gray-400">—</span>
+            </dd>
+
+            <dt class="text-gray-500">Kontaktperson</dt>
+            <dd>
+              <a v-if="detailData.member.phoneParent" :href="`tel:${detailData.member.phoneParent}`" class="underline">
+                {{ detailData.member.phoneParent }}
+              </a>
+              <span v-else class="text-gray-400">—</span>
+            </dd>
+
+            <dt class="text-gray-500">Adresse</dt>
+            <dd>
+              <span v-if="detailData.member.address">
+                {{ detailData.member.address }}<br>
+                {{ detailData.member.postalCode }} {{ detailData.member.city }}
+              </span>
+              <span v-else class="text-gray-400">—</span>
+            </dd>
+
+            <dt class="text-gray-500">Fødselsdag</dt>
+            <dd>
+              <span v-if="detailData.member.birthday">{{ birthday(detailData.member.birthday) }}</span>
+              <span v-else class="text-gray-400">—</span>
+            </dd>
+          </dl>
+        </Fieldset>
 
         <!--
           The lifecycle, oldest first, because it reads as a story: started, asked to leave,
@@ -719,6 +836,48 @@ const submitMove = async () => {
         <p v-else class="mt-1 text-sm text-gray-500">
           Ingen statusskift registreret — deltageren er ikke startet.
         </p>
+      </template>
+    </Dialog>
+
+    <!--
+      Switching one member's patrol. Opened from the member modal and left on top of it, so the
+      operator keeps the person they are talking about in view while naming the destination.
+    -->
+    <Dialog v-if="switchDlg" :visible="true" modal header="Skift patrulje"
+            :style="{ width: '26rem' }" @update:visible="switchDlg = null">
+      <p class="mb-3 text-sm">
+        <strong>{{ switchDlg.name }}</strong> flyttes til en anden patrulje og bliver ved med at
+        være i løbet. Startpatruljen ændres ikke.
+      </p>
+
+      <div v-if="switchDlg.target" class="mb-2 flex items-center gap-2">
+        <strong>
+          <span v-if="switchDlg.target.teamNumber">{{ switchDlg.target.teamNumber }} · </span>
+          {{ switchDlg.target.name }}
+        </strong>
+        <Button label="Skift" text size="small" @click="switchDlg.target = null" />
+      </div>
+      <div v-else>
+        <InputText v-model="switchDlg.query" class="w-full"
+                   placeholder="Søg patrulje (nummer, navn, gruppe)" />
+        <div v-for="c in switchTargets" :key="c.teamId"
+             class="flex items-center justify-between gap-2 border-b border-gray-100 py-1 last:border-0">
+          <span class="text-sm">
+            <span v-if="c.teamNumber">{{ c.teamNumber }} · </span>
+            {{ c.name }}
+            <span class="text-gray-500">{{ c.group }}</span>
+          </span>
+          <Button label="Vælg" size="small" @click="switchDlg.target = c" />
+        </div>
+        <small v-if="switchDlg.query.trim().length === 1" class="text-gray-500">Skriv mindst to tegn</small>
+      </div>
+
+      <template #footer>
+        <div class="flex justify-end gap-2">
+          <Button label="Annuller" severity="secondary" text @click="switchDlg = null" />
+          <Button label="Flyt" :disabled="!switchDlg.target" :loading="switchDlg.submitting"
+                  @click="submitSwitch" />
+        </div>
       </template>
     </Dialog>
   </div>

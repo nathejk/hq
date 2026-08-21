@@ -669,23 +669,59 @@ func (app *application) showMemberHandler(w http.ResponseWriter, r *http.Request
 		history = []spejderstatus.StatusEvent{}
 	}
 
-	// The member's own team, named, so the modal can say which patrol they are with now
-	// without a second request.
-	teamName := ""
-	if team, err := app.models.Teams.GetPatrulje(teamID); err == nil && team != nil {
-		teamName = team.Name
+	// The member's teams, named, so the modal can say both where they set out from and
+	// where they are now without a second request.
+	//
+	// Both are served even when they are the same team, so the client renders one shape
+	// rather than branching: "Startpatrulje" and "Nuværende patrulje" showing the same name
+	// is the ordinary case and reads as a fact, not as a missing value.
+	startTeamID := teamID
+	currentTeamID := teamID
+	if status != nil {
+		if status.InitialTeamID != "" {
+			startTeamID = status.InitialTeamID
+		}
+		if status.CurrentTeamID != "" {
+			currentTeamID = status.CurrentTeamID
+		}
 	}
 
 	envelope := jsonapi.Envelope{
 		"member":         member,
-		"teamId":         teamID,
-		"teamName":       teamName,
+		"startTeam":      app.patruljeRef(startTeamID),
+		"currentTeam":    app.patruljeRef(currentTeamID),
 		"history":        history,
 		"memberStatuses": MemberStatuses(),
 	}
 	if err := app.WriteJSON(w, http.StatusOK, envelope, nil); err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}
+}
+
+// memberTeamRef is a patrol as the member modal needs it: enough to name it and to link
+// to it, and nothing more. The full team payload belongs to the case card, which reads
+// strength and contact details from it.
+type memberTeamRef struct {
+	TeamID     types.TeamID `json:"teamId"`
+	TeamNumber string       `json:"teamNumber"`
+	Name       string       `json:"name"`
+}
+
+// patruljeRef names a patrol, tolerating one that cannot be read.
+//
+// A missing name is not an error worth failing the modal for: the id is still true and
+// still links, and an operator with a case open needs the rest of the member's details
+// more than they need the patrol's name.
+func (app *application) patruljeRef(id types.TeamID) *memberTeamRef {
+	if id == "" {
+		return nil
+	}
+	ref := &memberTeamRef{TeamID: id}
+	if team, err := app.models.Teams.GetPatrulje(id); err == nil && team != nil {
+		ref.Name = team.Name
+		ref.TeamNumber = team.Number
+	}
+	return ref
 }
 
 // showMemberCareHandler serves the count of members Nathejk is currently
