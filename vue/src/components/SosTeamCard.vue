@@ -693,7 +693,8 @@ const withdrawTeam = computed<TeamRow | null>(() => {
       them — which is where they live now that the row is an index rather than a control
       surface.
     -->
-    <Dialog v-if="detail" :visible="true" modal :style="{ width: '32rem' }"
+    <Dialog v-if="detail" :visible="true" modal
+            :style="{ width: '48rem' }" :breakpoints="{ '768px': '95vw' }"
             @update:visible="closeMember">
       <!--
         A titled header in the house style, like the page headings: the person is the subject
