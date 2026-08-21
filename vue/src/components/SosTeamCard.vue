@@ -812,17 +812,32 @@ const withdrawTeam = computed<TeamRow | null>(() => {
           carried on. Both the status and the event are shown — they answer different
           questions, and "racing" reached by carrying on is a different fact from "racing"
           reached by being moved to another patrol.
+
+          A Timeline rather than a list because that is what it is: the connector carries the
+          sequence, which a row of bordered lines only implied, and the marker gives the status
+          icon a place of its own instead of it competing with the text for the first column.
         -->
         <Fieldset legend="Historik">
-          <ol v-if="detailData.history.length" class="text-sm">
-            <li v-for="entry in detailData.history" :key="entry.seq"
-                class="flex items-baseline gap-2 border-b border-gray-100 py-1 last:border-0">
-              <i :class="[statusIcon(entry.status), statusColour(entry.status)]" class="text-xs" />
-              <span class="w-28 shrink-0 text-gray-500">{{ formatDateTime(entry.createdAt) }}</span>
-              <span>{{ memberEventPhrase(entry.event) }}</span>
-              <span class="text-gray-500">→ {{ statusLabel(entry.status) }}</span>
-            </li>
-          </ol>
+          <Timeline v-if="detailData.history.length" :value="detailData.history"
+                   class="member-timeline text-sm">
+            <template #marker="{ item }">
+              <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white">
+                <i :class="[statusIcon(item.status), statusColour(item.status)]" class="text-xs" />
+              </span>
+            </template>
+            <template #opposite="{ item }">
+              <!--
+                The time on the opposite side, which is what the timeline gives that a list did
+                not: the timestamps line up in their own column, so "how long between these two
+                things" is read down the page rather than hunted for mid-sentence.
+              -->
+              <span class="text-gray-500">{{ formatDateTime(item.createdAt) }}</span>
+            </template>
+            <template #content="{ item }">
+              <div>{{ memberEventPhrase(item.event) }}</div>
+              <div class="text-gray-500">→ {{ statusLabel(item.status) }}</div>
+            </template>
+          </Timeline>
           <p v-else class="text-sm text-gray-500">
             Ingen statusskift registreret — deltageren er ikke startet.
           </p>
@@ -873,3 +888,33 @@ const withdrawTeam = computed<TeamRow | null>(() => {
     </Dialog>
   </div>
 </template>
+
+<style>
+/*
+  The member history's rail, mirroring the case timeline's in SosView.
+
+  Unscoped deliberately: the dialog is teleported out of this component's tree, so a
+  scoped attribute never reaches it, and these rules target PrimeVue's internals rather
+  than markup of our own. The `.member-timeline` class is the scope.
+*/
+.member-timeline .p-timeline-event-opposite {
+  /* Fixed and right-aligned so the timestamps form a column: "how long between these two
+     things" is then read straight down the page. Wider than the case timeline's 3.5rem
+     because these entries carry the date as well as the time — a member's history spans
+     the whole event, while a case is usually one evening. */
+  flex: 0 0 5.5rem;
+  padding-top: 0.15rem;
+  text-align: right;
+}
+
+/* Aura sizes every event at `timeline.event.minHeight: 5rem`, which is the real source of
+   the vertical spacing. Halved via the design token rather than fought with padding, so
+   connector, marker and content shorten together and stay aligned. */
+.member-timeline {
+  --p-timeline-event-min-height: 2.75rem;
+}
+
+.member-timeline .p-timeline-event-content {
+  padding-bottom: 0.375rem;
+}
+</style>
