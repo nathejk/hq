@@ -720,24 +720,6 @@ const withdrawTeam = computed<TeamRow | null>(() => {
         </span>
       </div>
 
-      <!--
-        The actions that are not about a patrol. `waiting` offers carrying on — an ordinary
-        outcome that saves a car being sent, so it is a primary button rather than something
-        tucked away. Leaving the race lives on the "Nuværende patrulje" line below, with the
-        patrol it takes them out of. From `transit` onwards there is deliberately nothing to
-        press: the car and shelter interfaces record what happens next, and saying so is
-        better than an empty space that looks unfinished.
-      -->
-      <div v-if="detailMember" class="mb-4">
-        <Button v-if="canResume(detailMember.status)" label="Fortsætter selv" severity="success"
-                :loading="pending[detailMember.memberId]"
-                @click="act(detailMember.memberId, 'racing')" />
-        <div v-else-if="detailMember.status && !canWithdraw(detailMember.status)"
-             class="text-sm italic text-gray-500">
-          Ingen handlinger herfra — bil og HQ registrerer selv de næste skridt.
-        </div>
-      </div>
-
       <div v-if="detailPending && !detailData" class="text-sm text-gray-500">Henter…</div>
 
       <!--
@@ -770,17 +752,32 @@ const withdrawTeam = computed<TeamRow | null>(() => {
               <span v-else class="text-gray-400">—</span>
 
               <!--
-                The two things that change a scout's patrol, on the line that states it. Both
-                are offered only while the member is on their own legs: once a car has them,
-                what happens next is recorded by the car and shelter interfaces, and a button
-                here would be this screen pretending to own a transition it does not.
+                Every action a nødtelefon operator has over this member, right-aligned at the end
+                of the line they all change: two of them move the scout between patruljer and the
+                third puts them back in the race. Same size and weight for all three, because a
+                differently-shaped button in a row of three reads as "press this one" — and which
+                one is right depends on the call, not on the layout.
+
+                Which appear follows the status: `racing` can be switched or leave the race,
+                `waiting` can carry on. From `transit` onwards there is deliberately nothing to
+                press — the car and shelter interfaces record what happens next, and saying so is
+                better than an empty space that looks unfinished.
               -->
-              <span v-if="detailMember && canWithdraw(detailMember.status)" class="flex gap-1">
-                <Button label="Skift" size="small" severity="secondary" outlined
-                        @click="openSwitch" />
-                <Button label="Udgår" size="small" severity="danger" outlined
+              <span v-if="detailMember" class="ml-auto flex gap-1">
+                <template v-if="canWithdraw(detailMember.status)">
+                  <Button label="Skift" size="small" severity="secondary" outlined
+                          @click="openSwitch" />
+                  <Button label="Udgår" size="small" severity="danger" outlined
+                          :loading="pending[detailMember.memberId]"
+                          @click="withdrawTeam && askWithdraw(detailMember, withdrawTeam)" />
+                </template>
+                <Button v-else-if="canResume(detailMember.status)" label="Fortsætter selv"
+                        size="small" severity="success" outlined
                         :loading="pending[detailMember.memberId]"
-                        @click="withdrawTeam && askWithdraw(detailMember, withdrawTeam)" />
+                        @click="act(detailMember.memberId, 'racing')" />
+                <span v-else-if="detailMember.status" class="text-xs italic text-gray-500">
+                  Bil og HQ registrerer selv de næste skridt
+                </span>
               </span>
             </dd>
 
