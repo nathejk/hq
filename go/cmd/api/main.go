@@ -51,6 +51,7 @@ import (
 	"nathejk.dk/nathejk/table/patruljenumber"
 	"nathejk.dk/nathejk/table/personnel"
 	"nathejk.dk/nathejk/table/scan"
+	"nathejk.dk/nathejk/table/shelter"
 	"nathejk.dk/nathejk/table/sos"
 	"nathejk.dk/nathejk/table/spejderstatus"
 	"nathejk.dk/nathejk/table/year"
@@ -176,6 +177,10 @@ func main() {
 	paymenttable := payment.New(publisher, writer, db.DB(), currentYear)
 	spejdertable := spejder.New(writer, db.DB())
 	spejderstatustable := spejderstatus.New(publisher, writer, db.DB())
+	// Where sheltered scouts physically are (PRD 007). Consumes the same shelter events as
+	// spejderstatus and writes an independent fact, so neither projection depends on the
+	// other's ordering.
+	sheltertable := shelter.New(writer, db.DB())
 	checkgroup := checkgroup.New(publisher, writer, reader)
 	checkpoint := checkpoint.New(publisher, writer, reader)
 	checkpersonnel := checkpersonnel.New(publisher, writer, reader)
@@ -256,6 +261,7 @@ func main() {
 		patruljenumbers,
 		table.NewPatruljeStatus(writer),
 		spejderstatustable,
+		sheltertable,
 		personneltable,
 		paymenttable,
 		spejdertable,
