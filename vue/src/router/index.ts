@@ -72,6 +72,12 @@ const router = createRouter({
       props: true
     },
     {
+      // Hønsegården, the shelter crew's screen (PRD 007).
+      path: '/hoensegaard',
+      name: 'hoensegaard',
+      component: () => import('@/views/HoensegaardView.vue')
+    },
+    {
       path: '/betalinger',
       name: 'payments',
       component: () => import('@/views/PaymentListView.vue')

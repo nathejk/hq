@@ -92,6 +92,14 @@ const items = ref([
     name: 'sos-list'
   },
   {
+    // Beside the nødtelefon: both are race-night screens, and the shelter crew works from
+    // what the nødtelefon has recorded. FontAwesome Free has no chicken — the kiwi bird is
+    // the nearest thing to the hen Hønsegården is named for (PRD 007 §11).
+    label: 'Hønsegården',
+    icon: 'fas fa-kiwi-bird',
+    name: 'hoensegaard'
+  },
+  {
     label: 'Betalinger',
     icon: 'fas fa-dollar',
     name: 'payments'

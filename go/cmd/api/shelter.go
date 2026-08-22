@@ -135,13 +135,10 @@ func (app *application) showShelterHandler(w http.ResponseWriter, r *http.Reques
 	// queue first because it is the only section with somebody standing in front of it, the
 	// shelter itself second because that is what a parent at the door is answered from.
 	sections := []shelterSection{
-		{Slug: "transit", Label: "I bil — på vej hertil", Members: byStatus[types.MemberStatusTransit]},
-		{Slug: "sheltered", Label: "I Hønsegården", Members: byStatus[types.MemberStatusSheltered]},
-		{Slug: "waiting", Label: "Afventer afhentning", Members: byStatus[types.MemberStatusWaiting]},
-		{Slug: "closed", Label: "Afsluttet", Members: append(
-			append([]shelterMember{}, byStatus[types.MemberStatusReunited]...),
-			byStatus[types.MemberStatusReleased]...,
-		)},
+		{Slug: "transit", Label: "I bil — på vej hertil", Members: membersIn(byStatus, types.MemberStatusTransit)},
+		{Slug: "sheltered", Label: "I Hønsegården", Members: membersIn(byStatus, types.MemberStatusSheltered)},
+		{Slug: "waiting", Label: "Afventer afhentning", Members: membersIn(byStatus, types.MemberStatusWaiting)},
+		{Slug: "closed", Label: "Afsluttet", Members: membersIn(byStatus, types.MemberStatusReunited, types.MemberStatusReleased)},
 	}
 	counts := map[string]int{}
 	for _, s := range sections {
@@ -178,6 +175,21 @@ func (app *application) showShelterHandler(w http.ResponseWriter, r *http.Reques
 	if err := app.WriteJSON(w, http.StatusOK, envelope, nil); err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}
+}
+
+// membersIn collects the rows for one or more statuses into a section.
+//
+// Always a non-nil slice, which is the point and was found by running it rather than by
+// reading it: a nil slice marshals to `null`, and an empty section is `"members": null` on the
+// wire. Every client then has to defend against it — `section.members.length` throws on null,
+// so the screen with nobody in a car would break precisely because nothing was wrong. "None"
+// is a list of nothing, not the absence of a list, and saying so is the server's job.
+func membersIn(byStatus map[types.MemberStatus][]shelterMember, statuses ...types.MemberStatus) []shelterMember {
+	out := []shelterMember{}
+	for _, s := range statuses {
+		out = append(out, byStatus[s]...)
+	}
+	return out
 }
 
 // shelterMembers turns status rows into screen rows, grouped by status.

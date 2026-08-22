@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -219,6 +220,27 @@ func getShelter(t *testing.T, app *application) shelterResponse {
 }
 
 // --- tests ---
+
+// Every section carries a list, even when it is empty.
+//
+// Found by running the endpoint rather than by reading it: a nil slice marshals to `null`, so
+// an empty section arrived as `"members": null` and the client's `section.members.length`
+// would throw on the quiet night this screen is built for. "None" is a list of nothing.
+func TestEverySectionCarriesAListEvenWhenEmpty(t *testing.T) {
+	app := shelterApp(t, &fakeShelterStatus{}, &fakeShelterPlacements{}, &fakeShelterMembers{}, &fakeShelterPatruljer{}, &fakeShelterSos{})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/shelter", nil)
+	req.Header.Set("X-YearSlug", "2026")
+	rec := httptest.NewRecorder()
+	app.showShelterHandler(rec, req)
+
+	// Asserted on the raw JSON, because decoding into a []T turns both `null` and `[]` into a
+	// nil slice and would pass either way — which is exactly how this got shipped to a browser
+	// in the first place.
+	if strings.Contains(rec.Body.String(), `"members":null`) {
+		t.Errorf("a section serialised its members as null: %s", rec.Body.String())
+	}
+}
 
 // The sections, in the crew's working order. Transit first is not cosmetic: it is the only
 // section with somebody standing in front of it waiting to be taken in, and the order is the

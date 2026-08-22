@@ -43,6 +43,9 @@ Toasts for failures via `useToast`, following `PatruljeActiveView.vue`. A no-op 
 - [ ] Success relies on the live refetch, not local mutation
 - [ ] Failures produce a toast naming what failed
 - [ ] Double-press produces no error
+- [ ] **Carried from task 092:** verified live in two browser tabs — an acceptance in one tab
+      moves the scout between sections in the other. Could not be done in 092 because nothing
+      could yet *cause* a status change; this task is the first point at which it is possible.
 
 ## Progress Log
 
