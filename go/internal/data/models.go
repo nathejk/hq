@@ -20,6 +20,7 @@ import (
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/personnel"
 	"nathejk.dk/nathejk/table/scan"
+	"nathejk.dk/nathejk/table/shelter"
 	"nathejk.dk/nathejk/table/sos"
 	"nathejk.dk/nathejk/table/spejderstatus"
 	"nathejk.dk/nathejk/table/year"
@@ -80,10 +81,11 @@ type Models struct {
 	Vehicle        vehicle.Queries
 	Order          order.Queries
 	Sos            sos.Queries
+	Shelter        shelter.Queries
 	SpejderStatus  spejderstatus.Queries
 }
 
-func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface, sec section.Queries, crew crewmember.Queries, veh vehicle.Queries, ord order.Queries, sosq sos.Queries, memberq spejderstatus.Queries) Models {
+func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface, sec section.Queries, crew crewmember.Queries, veh vehicle.Queries, ord order.Queries, sosq sos.Queries, memberq spejderstatus.Queries, shelterq shelter.Queries) Models {
 	return Models{
 		Year:           y,
 		Teams:          TeamModel{DB: db},
@@ -104,6 +106,7 @@ func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInte
 		Vehicle:        veh,
 		Order:          ord,
 		Sos:            sosq,
+		Shelter:        shelterq,
 		SpejderStatus:  memberq,
 	}
 }

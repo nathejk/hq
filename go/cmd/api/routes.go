@@ -67,6 +67,15 @@ func (app *application) routes() http.Handler {
 	// not about a member.
 	router.HandlerFunc(http.MethodGet, "/api/members/care", app.showMemberCareHandler)
 
+	// Hønsegården, the shelter crew's screen (PRD 007).
+	//
+	// Singular `/api/shelter`, and not `/api/member/shelter`: httprouter builds one tree per
+	// method and cannot hold a static segment where a sibling holds a wildcard, so the latter
+	// would conflict with `GET /api/member/:memberId` below and panic the router at boot — the
+	// same constraint that produced the plural `/api/members/care` above. It is also the truer
+	// name: this is a view of a place, not a fact about a member.
+	router.HandlerFunc(http.MethodGet, "/api/shelter", app.showShelterHandler)
+
 	// One member in full, for the detail modal on the case card: contact details, address,
 	// birthday and the whole status history. Its own endpoint so the case payload does not
 	// carry all of that for every member of every associated patrol.
