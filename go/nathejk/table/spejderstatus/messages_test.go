@@ -26,6 +26,7 @@ func TestEventsResolveToValidStatus(t *testing.T) {
 		{"team moved", TeamMoved{}, types.MemberStatusRacing},
 		{"pickup accepted", PickupAccepted{}, types.MemberStatusTransit},
 		{"shelter accepted", ShelterAccepted{}, types.MemberStatusSheltered},
+		{"shelter placed", ShelterPlaced{}, types.MemberStatusSheltered},
 		{"override", StatusOverridden{To: types.MemberStatusSheltered}, types.MemberStatusSheltered},
 		{"handover released", HandoverCompleted{To: types.MemberStatusReleased}, types.MemberStatusReleased},
 		{"handover reunited", HandoverCompleted{To: types.MemberStatusReunited}, types.MemberStatusReunited},
@@ -60,6 +61,7 @@ func TestOnlyResumeRestoresTheAbilityToFinish(t *testing.T) {
 		"team moved":           TeamMoved{}.Status().CanFinish(),
 		"pickup accepted":      PickupAccepted{}.Status().CanFinish(),
 		"shelter accepted":     ShelterAccepted{}.Status().CanFinish(),
+		"shelter placed":       ShelterPlaced{}.Status().CanFinish(),
 	}
 	want := map[string]bool{
 		"withdrawal requested": false,
@@ -67,6 +69,7 @@ func TestOnlyResumeRestoresTheAbilityToFinish(t *testing.T) {
 		"team moved":           true, // still racing, just for a different patrol
 		"pickup accepted":      false,
 		"shelter accepted":     false,
+		"shelter placed":       false,
 	}
 	for name, got := range canFinish {
 		if got != want[name] {
@@ -91,6 +94,12 @@ func TestInOurCareSpansWaitingToSheltered(t *testing.T) {
 		{"withdrawal requested", WithdrawalRequested{}, true},
 		{"pickup accepted", PickupAccepted{}, true},
 		{"shelter accepted", ShelterAccepted{}, true},
+		// Being moved between tents keeps a member in our care, obviously — but it is
+		// worth asserting, because this is the one event that does not advance the
+		// lifecycle, and an implementation that resolved it to "no change" by returning
+		// MemberStatusNone would silently drop a sleeping child out of the count that
+		// has to reach zero.
+		{"shelter placed", ShelterPlaced{}, true},
 		{"withdrawal cancelled", WithdrawalCancelled{}, false},
 		{"team moved", TeamMoved{}, false},
 		{"handover released", HandoverCompleted{To: types.MemberStatusReleased}, false},
@@ -119,7 +128,7 @@ func TestNoEventCarriesACaseID(t *testing.T) {
 	// removed along with the field.
 	events := []MemberEvent{
 		WithdrawalRequested{}, WithdrawalCancelled{}, StatusOverridden{},
-		TeamMoved{}, PickupAccepted{}, ShelterAccepted{}, HandoverCompleted{},
+		TeamMoved{}, PickupAccepted{}, ShelterAccepted{}, ShelterPlaced{}, HandoverCompleted{},
 	}
 	for _, e := range events {
 		if _, ok := any(e).(interface{ SosID() string }); ok {

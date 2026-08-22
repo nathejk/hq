@@ -205,14 +205,49 @@ func (PickupAccepted) Status() types.MemberStatus { return types.MemberStatusTra
 // somebody is already on the way. Which of the two depends on the hour rather than
 // on anything worth tracking, so it is one state.
 //
-// Published by the future shelter interface.
+// Published by the shelter interface (PRD 007), which is also the only party that can
+// say it: the receiver confirms custody, never the party letting go.
+//
+// Placement is where in the shelter the member was put, and it is optional because the
+// two facts arrive together in the ordinary case and separately in the awkward one. A
+// crew member receiving three scouts off a car types the tent once for all of them; a
+// crew member receiving somebody at a run records the arrival now and where they ended
+// up when they get back. Requiring it would push the second case into either a lie or a
+// second screen.
 type ShelterAccepted struct {
-	MemberID types.MemberID `json:"memberId"`
-	TeamID   types.TeamID   `json:"teamId"`
-	Actor    Actor          `json:"actor"`
+	MemberID  types.MemberID `json:"memberId"`
+	TeamID    types.TeamID   `json:"teamId"`
+	Placement string         `json:"placement,omitempty"`
+	Actor     Actor          `json:"actor"`
 }
 
 func (ShelterAccepted) Status() types.MemberStatus { return types.MemberStatusSheltered }
+
+// ShelterPlaced records where in the shelter the member is — the answer to "which tent
+// is she in?", asked at 3am by a parent standing at the door.
+//
+// Its own event rather than a re-published ShelterAccepted, because moving a sleeping
+// child from one tent to another is a distinct act and reads as one on the timeline. A
+// re-publish would also claim custody was taken twice, which is exactly the fiction the
+// acceptance events exist to prevent.
+//
+// The status it resolves to is `sheltered`, unchanged: placing somebody does not move
+// them through the lifecycle. The projection's write is therefore idempotent and the
+// placement is the point — which is why the placering lives in hq's own `shelter` table
+// rather than on spejderstatus. A bed is a fact about the shelter, not about the
+// lifecycle, and this package is queued for lifting to shared-go verbatim.
+//
+// Placement is deliberately free text. The zones are not known until race start (PRD 007
+// §6), so no vocabulary can be defined here; the interface suggests what is already in
+// use and enforces nothing.
+type ShelterPlaced struct {
+	MemberID  types.MemberID `json:"memberId"`
+	TeamID    types.TeamID   `json:"teamId"`
+	Placement string         `json:"placement"`
+	Actor     Actor          `json:"actor"`
+}
+
+func (ShelterPlaced) Status() types.MemberStatus { return types.MemberStatusSheltered }
 
 // HandoverCompleted records that somebody else has taken charge of the member and
 // we no longer track them. This is what takes them out of the in-our-care count.

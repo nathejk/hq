@@ -236,7 +236,8 @@ func TestLifecycleEventsWriteTheirStatus(t *testing.T) {
 		{"NATHEJK.2026.spejder.m-1.withdrawal.requested", WithdrawalRequested{MemberID: "m-1", TeamID: "team-1"}, types.MemberStatusWaiting},
 		{"NATHEJK.2026.spejder.m-1.withdrawal.cancelled", WithdrawalCancelled{MemberID: "m-1", TeamID: "team-1"}, types.MemberStatusRacing},
 		{"NATHEJK.2026.spejder.m-1.pickup.accepted", PickupAccepted{MemberID: "m-1", TeamID: "team-1", Car: "bil-3"}, types.MemberStatusTransit},
-		{"NATHEJK.2026.spejder.m-1.shelter.accepted", ShelterAccepted{MemberID: "m-1", TeamID: "team-1"}, types.MemberStatusSheltered},
+		{"NATHEJK.2026.spejder.m-1.shelter.accepted", ShelterAccepted{MemberID: "m-1", TeamID: "team-1", Placement: "Telt 4"}, types.MemberStatusSheltered},
+		{"NATHEJK.2026.spejder.m-1.shelter.placed", ShelterPlaced{MemberID: "m-1", TeamID: "team-1", Placement: "Telt 4"}, types.MemberStatusSheltered},
 		{"NATHEJK.2026.spejder.m-1.status.overridden", StatusOverridden{MemberID: "m-1", TeamID: "team-1", To: types.MemberStatusSheltered}, types.MemberStatusSheltered},
 		{"NATHEJK.2026.spejder.m-1.handover.completed", HandoverCompleted{MemberID: "m-1", TeamID: "team-1", To: types.MemberStatusReleased}, types.MemberStatusReleased},
 	}
@@ -255,6 +256,49 @@ func TestLifecycleEventsWriteTheirStatus(t *testing.T) {
 				t.Errorf("status change did not recompute the team's strength")
 			}
 		})
+	}
+}
+
+// The placering is none of this projection's business.
+//
+// `shelter.placed` goes through the same write path as every other lifecycle event, and
+// what it must *not* do is carry the placement into spejderstatus. That table is queued for
+// lifting to shared-go verbatim (task 083), and a placering column appearing in it is
+// exactly how that lift stops being a file move. The placement lives in hq's own `shelter`
+// table, written by its own projection.
+func TestShelterPlacedDoesNotWriteThePlacering(t *testing.T) {
+	w := &recordingWriter{}
+	c := &consumer{w: w}
+	handle(t, c, msg("NATHEJK.2026.spejder.m-1.shelter.placed",
+		ShelterPlaced{MemberID: "m-1", TeamID: "team-1", Placement: "Telt 4"}))
+
+	for _, stmt := range w.stmts {
+		if strings.Contains(stmt, "Telt 4") || strings.Contains(strings.ToLower(stmt), "placement") {
+			t.Errorf("the placering reached spejderstatus: %s", stmt)
+		}
+	}
+}
+
+// A move between tents still lands on the member's timeline.
+//
+// The status write is a no-op — the member was already sheltered — so the only lasting
+// effect of this event here is the history row. If it were skipped as "nothing changed",
+// the record would show a child arriving and never moving, which is precisely the question
+// somebody asks when they cannot find them.
+func TestShelterPlacedIsRecordedInHistory(t *testing.T) {
+	w := &recordingWriter{}
+	c := &consumer{w: w}
+	handle(t, c, msg("NATHEJK.2026.spejder.m-1.shelter.placed",
+		ShelterPlaced{MemberID: "m-1", TeamID: "team-1", Placement: "Telt 4"}))
+
+	var found bool
+	for _, stmt := range w.stmts {
+		if strings.Contains(stmt, "spejderstatuslog") && strings.Contains(stmt, "shelter.placed") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("no history row named the event; statements were: %v", w.stmts)
 	}
 }
 

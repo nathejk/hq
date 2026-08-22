@@ -47,16 +47,17 @@ func (c *consumer) Consumes() []stream.Subject {
 		// be judged against members who never turned up.
 		subject.FromStr("NATHEJK:*.spejder.*.deleted"),
 
-		// The lifecycle proper. The last three are published by nobody yet: they
-		// belong to the car and shelter interfaces, and subscribing now is what
-		// makes this projection ready for them rather than something that has to
-		// be revisited when they ship.
+		// The lifecycle proper. `pickup.accepted` is still published by nobody: it
+		// belongs to the car interface, and subscribing now is what makes this
+		// projection ready for it rather than something that has to be revisited when
+		// it ships. The shelter's three arrived with PRD 007.
 		subject.FromStr("NATHEJK:*.spejder.*.withdrawal.requested"),
 		subject.FromStr("NATHEJK:*.spejder.*.withdrawal.cancelled"),
 		subject.FromStr("NATHEJK:*.spejder.*.status.overridden"),
 		subject.FromStr("NATHEJK:*.spejder.*.team.moved"),
 		subject.FromStr("NATHEJK:*.spejder.*.pickup.accepted"),
 		subject.FromStr("NATHEJK:*.spejder.*.shelter.accepted"),
+		subject.FromStr("NATHEJK:*.spejder.*.shelter.placed"),
 		subject.FromStr("NATHEJK:*.spejder.*.handover.completed"),
 	}
 }
@@ -100,6 +101,18 @@ func (c *consumer) HandleMessage(msg stream.Message) error {
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
+		return c.setStatus(msg, body)
+
+	case msg.Subject().Match("NATHEJK.*.spejder.*.shelter.placed"):
+		var body ShelterPlaced
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		// Resolves to `sheltered`, which the member already is, so this write is a
+		// no-op here by design — the placering itself belongs to hq's `shelter` table.
+		// It still goes through setStatus rather than being skipped: it puts the move
+		// between tents on the member's timeline, and it is the one path that would
+		// heal a member whose acceptance event was lost.
 		return c.setStatus(msg, body)
 
 	case msg.Subject().Match("NATHEJK.*.spejder.*.handover.completed"):
@@ -373,6 +386,8 @@ func (c *consumer) teamID(e MemberEvent) types.TeamID {
 	case PickupAccepted:
 		return v.TeamID
 	case ShelterAccepted:
+		return v.TeamID
+	case ShelterPlaced:
 		return v.TeamID
 	case HandoverCompleted:
 		return v.TeamID
