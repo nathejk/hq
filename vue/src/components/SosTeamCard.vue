@@ -166,6 +166,14 @@ const strengthSeverity = (team: { activeMemberCount: number; minMemberCount: num
     ? 'success'
     : 'warn'
 
+// What the badge counts, since a bare number does not say. The expected band is deliberately
+// not repeated here — the colour carries whether the count is a problem, and the Under styrke
+// tag beside it says so in words when it is.
+const strengthTooltip = (team: { activeMemberCount: number }) =>
+  team.activeMemberCount === 1
+    ? '1 spejder aktiv i løbet'
+    : `${team.activeMemberCount} spejdere aktive i løbet`
+
 // **The "started" half is not optional.** A team that never started also has zero racing
 // members, so the count alone conflates *left the route* with *never on it* — without
 // this, every patrol of a year that has not raced yet would be badged Udgået, which on
@@ -536,7 +544,7 @@ const withdrawTeam = computed<TeamRow | null>(() => {
           -->
           <Badge v-if="team.activeMemberCount > 0" :value="team.activeMemberCount"
                  :severity="strengthSeverity(team)" class="ml-2"
-                 v-tooltip.top="`${team.activeMemberCount} i løbet, forventet ${team.minMemberCount}–${team.maxMemberCount}`" />
+                 v-tooltip.top="strengthTooltip(team)" />
           <Tag v-if="discontinued(team)" value="Udgået" severity="contrast" class="ml-2" />
           <Tag v-else-if="belowStrength(team)" value="Under styrke" severity="danger" class="ml-2" />
           <div class="text-sm text-gray-500">
