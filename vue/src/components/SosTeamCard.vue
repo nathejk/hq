@@ -288,15 +288,20 @@ const racingMembers = (team: TeamRow) =>
 // happen to allow.
 const isActive = (member: MemberRow) => member.status === 'racing' && !member.movedAway
 
-// Dimmed rather than hidden: a member who has left the race is still the patrol's member and
-// still the person an operator may be asked about. Grey says "not counting towards strength"
-// while the status icon keeps its own colour, which says something different — a waiting
-// member is out of the race *and* urgent, and those two facts should not fight over one
-// visual channel.
+// Dimmed *and* struck through rather than hidden: a member who has left the race is still the
+// patrol's member and still the person an operator may be asked about.
+//
+// The strike says "no longer in the race with this patrol" — which is only meaningful for
+// somebody who was in it. A member of a patrol that has not started has lost nothing, so they
+// are dimmed but not struck; striking every name on a case opened before the race would read
+// as a list of casualties.
 //
 // gray-500 rather than a lighter grey deliberately: these are names read off a screen at
 // three in the morning, and gray-400 on white falls below the contrast a small font needs.
-const nameClass = (member: MemberRow) => (isActive(member) ? '' : 'text-gray-500')
+const nameClass = (member: MemberRow) => [
+  isActive(member) ? '' : 'text-gray-500',
+  member.status && !isActive(member) ? 'line-through' : '',
+]
 
 // Pre-commit warning. Confirming a withdrawal that takes the team below the minimum
 // should change the conversation the operator is having on the phone *before* it is
@@ -530,15 +535,18 @@ const withdrawTeam = computed<TeamRow | null>(() => {
       </div>
 
       <!--
-        Member rows. Each shows where the member is and offers only the transitions this
-        screen owns — from `transit` onwards the row is deliberately read-only, because
-        the car and shelter interfaces record those and this card must not pretend to.
-      -->
-      <!--
-        A member row: status icon and name, nothing else. The row is the *index* — what an
-        operator scans down looking for somebody not racing — so it carries the colour that
-        answers that and the name that identifies who. Phone numbers, address, birthday and
-        the lifecycle belong to one member at a time, which is what the modal is for.
+        Member rows. The list is the union of everybody who started with this patrol and
+        everybody attached to it now — including those who left the race while they were with
+        it, since their row keeps pointing here. Two marks carry the difference:
+
+          - a struck-through name is somebody no longer in the race with this patrol, whether
+            they left it or moved on to another,
+          - a user-plus is somebody who did not start here.
+
+        No status indicator: the icon said which of eight states a member was in, on a list
+        whose question is "who is still with this patrol?". That is what the two marks answer,
+        and the status itself — with its history and the actions on it — is one member at a
+        time, which is what the modal is for.
       -->
       <div v-for="member in team.members" :key="member.memberId"
            class="flex cursor-pointer items-center gap-2 rounded py-1 pl-3 pr-2 text-sm hover:bg-gray-100"
@@ -546,21 +554,15 @@ const withdrawTeam = computed<TeamRow | null>(() => {
            @click="openMember(member, team)"
            @keydown.enter="openMember(member, team)"
            @keydown.space.prevent="openMember(member, team)">
-        <i :class="[statusIcon(member.status), statusColour(member.status)]"
-           class="text-base" :aria-label="statusLabel(member.status)" />
         <span class="font-medium" :class="nameClass(member)">{{ member.name || member.memberId }}</span>
         <!--
-          Why a member with an active status is not counted in this team's strength, said on
-          the row rather than left for the operator to work out. Both directions are worth
-          marking: one explains a racing member who does not count, the other explains a name
-          that is not on the patrol's own roster.
+          Marked rather than left to be worked out: a name that is not on this patrol's own
+          roster is otherwise indistinguishable from one that is, and "who did we put here?"
+          is a question an operator asks out loud on the phone.
         -->
-        <span v-if="member.movedAway" class="text-xs italic text-gray-500">
-          → flyttet til anden patrulje
-        </span>
-        <span v-else-if="member.movedIn" class="text-xs italic text-gray-500">
-          ← flyttet hertil
-        </span>
+        <i v-if="member.movedIn" class="pi pi-user-plus text-xs text-gray-500"
+           v-tooltip.top="'Startede i en anden patrulje'"
+           aria-label="Startede i en anden patrulje" />
       </div>
       <div v-if="team.members.length === 0" class="pl-3 py-1 text-sm text-gray-500">
         Ingen deltagere registreret.
