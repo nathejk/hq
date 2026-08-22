@@ -63,6 +63,7 @@ Two habits worth keeping, both learned the hard way on PRD 004:
 | 004 Live updates for the SPA | done | shipped 2026-08-09 (tasks 023–040); see its §12 |
 | 005 Boot gate, deployment & SPA reload | draft | skeleton; sections marked TBD |
 | 006 Member lifecycle, team strength & discontinuation | draft | split from 001; four blocking open questions; 001 has shipped, so it is unblocked |
+| 007 Hønsegården: the shelter interface | doing | approved 2026-08-23; tasks 086–098; the shelter half of the custody chain 006 deferred |
 
 Kept short on purpose, and easy to forget — the folders are authoritative if this
 table and they disagree.
