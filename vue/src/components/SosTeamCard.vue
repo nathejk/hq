@@ -26,6 +26,7 @@ const props = defineProps<{
     contactPhone: string
     activeMemberCount: number
     minMemberCount: number
+    maxMemberCount: number
     started: boolean
     members: {
       memberId: string
@@ -151,6 +152,19 @@ const act = async (memberId: string, path: 'waiting' | 'racing') => {
 // Strength and discontinuation are the same number, read two ways (PRD 006 §11).
 const belowStrength = (team: { started: boolean; activeMemberCount: number; minMemberCount: number }) =>
   team.started && team.activeMemberCount < team.minMemberCount && team.activeMemberCount > 0
+
+// The strength badge's colour, which is the whole point of showing the number as a badge: an
+// operator reads "is this patrol all right?" off it without doing arithmetic against the
+// minimum. Green inside the expected band, amber outside it in either direction — too many is
+// also worth a glance, since it means members have been moved in and the patrol is carrying
+// somebody else's people.
+//
+// Never red: below strength is not an error, it is a situation the operator is already
+// handling, and the Under styrke tag beside it says so in words.
+const strengthSeverity = (team: { activeMemberCount: number; minMemberCount: number; maxMemberCount: number }) =>
+  team.activeMemberCount >= team.minMemberCount && team.activeMemberCount <= team.maxMemberCount
+    ? 'success'
+    : 'warn'
 
 // **The "started" half is not optional.** A team that never started also has zero racing
 // members, so the count alone conflates *left the route* with *never on it* — without
@@ -515,12 +529,14 @@ const withdrawTeam = computed<TeamRow | null>(() => {
           </router-link>
           <!--
             Strength beside the name, because it is the number that decides whether the
-            conversation the operator is having changes. Only shown once the patrol has
-            started: before that it is 0 and means nothing.
+            conversation the operator is having changes. A bare count in a badge: the
+            colour carries whether it is a problem, so the "/3" it used to be measured
+            against is only needed when it is one — and then the Under styrke tag says so
+            in words. Absent at zero, where the Udgået tag has already said everything.
           -->
-          <span v-if="team.started" class="ml-2 text-sm text-gray-600">
-            {{ team.activeMemberCount }}/{{ team.minMemberCount }} i løbet
-          </span>
+          <Badge v-if="team.activeMemberCount > 0" :value="team.activeMemberCount"
+                 :severity="strengthSeverity(team)" class="ml-2"
+                 v-tooltip.top="`${team.activeMemberCount} i løbet, forventet ${team.minMemberCount}–${team.maxMemberCount}`" />
           <Tag v-if="discontinued(team)" value="Udgået" severity="contrast" class="ml-2" />
           <Tag v-else-if="belowStrength(team)" value="Under styrke" severity="danger" class="ml-2" />
           <div class="text-sm text-gray-500">

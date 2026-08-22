@@ -92,9 +92,10 @@ type sosTeam struct {
 	ContactName  string            `json:"contactName"`
 	ContactPhone types.PhoneNumber `json:"contactPhone"`
 
-	// ActiveMemberCount is the patrol's strength on the route, and MinMemberCount the
-	// number it is expected to keep (3 for patruljer). Both are served so the card can
-	// show "under styrke" without a second request and without hardcoding 3.
+	// ActiveMemberCount is the patrol's strength on the route; MinMemberCount and
+	// MaxMemberCount the band it is expected to stay inside (3–7 for patruljer). All three
+	// are served so the card can show "under styrke" — and colour the strength badge —
+	// without a second request and without hardcoding the numbers.
 	//
 	// Started matters for one reason and it is not obvious: a team that never started
 	// also has zero racing members, so strength alone cannot tell *left the route* from
@@ -102,6 +103,7 @@ type sosTeam struct {
 	// that has not raced yet — see PRD 006 §11.
 	ActiveMemberCount int  `json:"activeMemberCount"`
 	MinMemberCount    int  `json:"minMemberCount"`
+	MaxMemberCount    int  `json:"maxMemberCount"`
 	Started           bool `json:"started"`
 
 	Members []sosMember `json:"members"`
@@ -136,10 +138,10 @@ type sosMember struct {
 func (app *application) sosTeams(r *http.Request, c *sos.Sos) []sosTeam {
 	teams := make([]sosTeam, 0, len(c.Teams))
 	for _, t := range c.Teams {
-		// 3 for patruljer. A per-team-type constant rather than configuration: nothing
-		// branches on it, it is displayed so an operator can apply it, and no command
-		// enforces it (PRD 006 §11, task 074).
-		team := sosTeam{TeamID: t.TeamID, MinMemberCount: 3}
+		// 3–7 for patruljer. Per-team-type constants rather than configuration: nothing
+		// branches on them, they are displayed so an operator can apply them, and no command
+		// enforces them (PRD 006 §11, task 074).
+		team := sosTeam{TeamID: t.TeamID, MinMemberCount: 3, MaxMemberCount: 7}
 		// A patrol that cannot be found still shows as an associated row: losing the
 		// association because the projection is behind would hide the fact that the
 		// case is about somebody.

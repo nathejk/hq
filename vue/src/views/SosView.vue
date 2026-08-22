@@ -65,6 +65,7 @@ interface SosTeam {
   // the server so the card neither counts members itself nor hardcodes 3 (PRD 006).
   activeMemberCount: number
   minMemberCount: number
+  maxMemberCount: number
   // Whether the patrol actually started. Needed because a team that never started also
   // has zero racing members, so strength alone cannot distinguish the two.
   started: boolean
