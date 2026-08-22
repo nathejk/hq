@@ -289,7 +289,9 @@ const racingMembers = (team: TeamRow) =>
 const isActive = (member: MemberRow) => member.status === 'racing' && !member.movedAway
 
 // Dimmed *and* struck through rather than hidden: a member who has left the race is still the
-// patrol's member and still the person an operator may be asked about.
+// patrol's member and still the person an operator may be asked about. The status icon keeps
+// its own colour either way — a waiting member is out of the race *and* urgent, and the strike
+// must not be allowed to quieten the second fact.
 //
 // The strike says "no longer in the race with this patrol" — which is only meaningful for
 // somebody who was in it. A member of a patrol that has not started has lost nothing, so they
@@ -537,16 +539,17 @@ const withdrawTeam = computed<TeamRow | null>(() => {
       <!--
         Member rows. The list is the union of everybody who started with this patrol and
         everybody attached to it now — including those who left the race while they were with
-        it, since their row keeps pointing here. Two marks carry the difference:
+        it, since their row keeps pointing here. Three marks carry the difference:
 
+          - the status icon on the left, whose colour is what an operator scans a list for — a
+            waiting member needs a car, and that must stay the loudest thing on the row even
+            though they are also struck through,
           - a struck-through name is somebody no longer in the race with this patrol, whether
             they left it or moved on to another,
           - a user-plus is somebody who did not start here.
 
-        No status indicator: the icon said which of eight states a member was in, on a list
-        whose question is "who is still with this patrol?". That is what the two marks answer,
-        and the status itself — with its history and the actions on it — is one member at a
-        time, which is what the modal is for.
+        The label, the history and the actions on a status are one member at a time, which is
+        what the modal is for. Here the icon is an index, not a control.
       -->
       <div v-for="member in team.members" :key="member.memberId"
            class="flex cursor-pointer items-center gap-2 rounded py-1 pl-3 pr-2 text-sm hover:bg-gray-100"
@@ -554,6 +557,8 @@ const withdrawTeam = computed<TeamRow | null>(() => {
            @click="openMember(member, team)"
            @keydown.enter="openMember(member, team)"
            @keydown.space.prevent="openMember(member, team)">
+        <i :class="[statusIcon(member.status), statusColour(member.status)]"
+           class="text-base" :aria-label="statusLabel(member.status)" />
         <span class="font-medium" :class="nameClass(member)">{{ member.name || member.memberId }}</span>
         <!--
           Marked rather than left to be worked out: a name that is not on this patrol's own
