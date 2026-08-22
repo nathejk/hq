@@ -81,6 +81,27 @@ func (q stubQueries) GetByTeam(context.Context, Filter) ([]SpejderStatus, error)
 	return q.team, nil
 }
 
+// GetByStatuses filters the team rows, so a command that ever starts reading by status gets
+// an answer consistent with the rest of the stub rather than an empty slice that would make
+// a bug look like an empty population. No command uses it today — it is the shelter screen's
+// query (PRD 007) — but the interface requires it.
+func (q stubQueries) GetByStatuses(_ context.Context, _ types.YearSlug, statuses []types.MemberStatus) ([]SpejderStatus, error) {
+	if q.err != nil {
+		return nil, q.err
+	}
+	wanted := map[types.MemberStatus]bool{}
+	for _, s := range statuses {
+		wanted[s] = true
+	}
+	out := []SpejderStatus{}
+	for i := range q.team {
+		if wanted[q.team[i].Status] {
+			out = append(out, q.team[i])
+		}
+	}
+	return out, nil
+}
+
 func (q stubQueries) InOurCare(context.Context, types.YearSlug) (*Care, error) {
 	return &Care{}, nil
 }

@@ -27,6 +27,7 @@ type Filter struct {
 type Queries interface {
 	GetByMemberID(context.Context, types.YearSlug, types.MemberID) (*SpejderStatus, error)
 	GetByMemberIDs(context.Context, types.YearSlug, []types.MemberID) (map[types.MemberID]SpejderStatus, error)
+	GetByStatuses(context.Context, types.YearSlug, []types.MemberStatus) ([]SpejderStatus, error)
 	GetByTeam(context.Context, Filter) ([]SpejderStatus, error)
 	GetHistory(context.Context, types.YearSlug, types.MemberID) ([]StatusEvent, error)
 	InOurCare(context.Context, types.YearSlug) (*Care, error)
@@ -87,8 +88,7 @@ func (q *querier) GetByMemberID(ctx context.Context, year types.YearSlug, id typ
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	query := `SELECT id, year, initialTeamId, currentTeamId, status, updatedAt
-		FROM spejderstatus WHERE year = ? AND id = ?`
+	query := selectSpejderStatus + ` WHERE year = ? AND id = ?`
 
 	var s SpejderStatus
 	var updatedAt time.Time
@@ -223,8 +223,7 @@ func (q *querier) GetByMemberIDs(ctx context.Context, year types.YearSlug, ids [
 		args = append(args, string(id))
 	}
 
-	query := `SELECT id, year, initialTeamId, currentTeamId, status, updatedAt
-		FROM spejderstatus
+	query := selectSpejderStatus + `
 		WHERE year = ? AND id IN (` + strings.Join(placeholders, ",") + `)`
 
 	rows, err := q.db.QueryContext(ctx, query, args...)
@@ -245,6 +244,78 @@ func (q *querier) GetByMemberIDs(ctx context.Context, year types.YearSlug, ids [
 	return out, rows.Err()
 }
 
+// selectSpejderStatus is the column list every SpejderStatus read shares, in the order
+// scanSpejderStatus expects them. Spelled once so a column added to the struct cannot be
+// added to three of the four queries.
+const selectSpejderStatus = `SELECT id, year, initialTeamId, currentTeamId, status, updatedAt
+	FROM spejderstatus`
+
+// byStatusesQuery builds the statement and arguments for GetByStatuses.
+//
+// Separated from the method so it can be tested without a database. That is not a
+// concession: what is worth pinning here is the shape of the SQL — that the statuses become
+// placeholders rather than interpolated strings, that the year is always constrained, and
+// that the ordering is the one the screen depends on. consumer_test.go asserts on emitted
+// SQL for the same reason.
+func byStatusesQuery(year types.YearSlug, statuses []types.MemberStatus) (string, []any) {
+	args := make([]any, 0, len(statuses)+1)
+	args = append(args, string(year))
+	placeholders := make([]string, 0, len(statuses))
+	for _, s := range statuses {
+		placeholders = append(placeholders, "?")
+		args = append(args, string(s))
+	}
+	// updatedAt DESC because the shelter reads the most recent arrivals first. The id is a
+	// tiebreak, not decoration: a patrol starting writes its whole roster in one second, so
+	// without it the order within a group is whatever the storage engine feels like and two
+	// consecutive loads can disagree — which on screen looks like rows shuffling by
+	// themselves.
+	query := selectSpejderStatus + `
+		WHERE year = ? AND status IN (` + strings.Join(placeholders, ",") + `)
+		ORDER BY updatedAt DESC, id`
+	return query, args
+}
+
+// GetByStatuses reads every member of the year in any of the given statuses.
+//
+// Named for what it does rather than for who asks. The obvious alternative was
+// ListNotActive(), and it would have been a mistake: the set of statuses is the caller's
+// question, and baking one screen's policy into the query is how the next caller ends up
+// with a query whose name lies about what it returns. The shelter derives its set from
+// types.MemberStatus predicates where it can (InOurCare()), so a fourth in-care state added
+// to shared-go starts appearing without this being touched.
+//
+// An empty status set returns nothing and issues no query. That is the honest answer to
+// "which members are in none of these statuses" — and the alternative matters, because
+// `status IN ()` is a syntax error in MySQL, so a caller who filtered its own list down to
+// nothing would get a database error instead of an empty screen.
+func (q *querier) GetByStatuses(ctx context.Context, year types.YearSlug, statuses []types.MemberStatus) ([]SpejderStatus, error) {
+	if len(statuses) == 0 {
+		return []SpejderStatus{}, nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	query, args := byStatusesQuery(year, statuses)
+	rows, err := q.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	members := []SpejderStatus{}
+	for rows.Next() {
+		var s SpejderStatus
+		var updatedAt time.Time
+		if err := rows.Scan(&s.MemberID, &s.YearSlug, &s.InitialTeamID, &s.CurrentTeamID, &s.Status, &updatedAt); err != nil {
+			return nil, err
+		}
+		s.UpdatedAt = updatedAt
+		members = append(members, s)
+	}
+	return members, rows.Err()
+}
+
 // GetByTeam reads every member currently attached to a team, whatever their status.
 //
 // Keyed on currentTeamId rather than initialTeamId, because the question callers
@@ -254,8 +325,7 @@ func (q *querier) GetByTeam(ctx context.Context, f Filter) ([]SpejderStatus, err
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	query := `SELECT id, year, initialTeamId, currentTeamId, status, updatedAt
-		FROM spejderstatus
+	query := selectSpejderStatus + `
 		WHERE year = ? AND currentTeamId = ?
 		ORDER BY id`
 
