@@ -41,6 +41,7 @@ interface ShelterMember {
   placement: string
   placedAt: string | null
   sosId?: string
+  teamDiscontinued: boolean
 }
 
 interface ShelterSection {
@@ -57,7 +58,7 @@ interface ShelterSection {
 // (NATHEJK.{year}.spejder.{id}.*): *not* `spejderstatus` or `shelter`, which are only the
 // projections' names, and the SPA warns in the dev console about a token nothing can emit.
 // `patrulje` is here because the rows carry patrol names and numbers.
-const { data, pending, error } = useLiveResource(
+const { data, pending, error, refresh } = useLiveResource(
   'shelter',
   async () => {
     const response = await http.get('/shelter')
@@ -121,6 +122,113 @@ watch(error, (err) => {
   if (!err) return
   toast.add({ severity: 'error', summary: 'Kunne ikke hente Hønsegården', life: 5000 })
 })
+
+// --- Actions (PRD 007, task 093) ---
+//
+// Which actions need two clicks, and which do not, is a judgement about cost rather than a
+// uniform policy:
+//
+//   Modtaget from *I bil* is one click. It is the most frequent action of the night, done with
+//   a queue of children in the doorway, and its mistake is cheap — the scout was arriving
+//   anyway, and accepting them a minute early is not wrong for long.
+//
+//   Modtaget from *Afventer afhentning* is two. It asserts an arrival the platform has no
+//   pickup for, so it is either a genuine gap in the record or the wrong row.
+//
+//   Both handovers are two, and this is the one I would defend hardest: they record that a
+//   child left our care, there is no undo, and a mis-click marks a scout released while they
+//   are asleep in a tent. That is the single worst thing this screen can do.
+//
+// Two clicks are an inline arm/confirm on the button itself rather than a modal. No
+// ConfirmationService is registered in this app, and a dialog is the wrong shape here anyway:
+// it steals focus, needs dismissing, and a volunteer holding a phone in one hand should not
+// have to chase it.
+
+/** `${memberId}:${action}`, or null. One armed button at a time, app-wide. */
+const armed = ref<string | null>(null)
+
+/** Members with a request in flight, so their buttons cannot be pressed twice. */
+const busy = ref<Set<string>>(new Set())
+
+const armKey = (member: ShelterMember, action: string) => `${member.memberId}:${action}`
+const isArmed = (member: ShelterMember, action: string) => armed.value === armKey(member, action)
+const isBusy = (member: ShelterMember) => busy.value.has(member.memberId)
+
+/** Arming one button disarms any other, so two half-pressed actions cannot sit on screen. */
+const arm = (member: ShelterMember, action: string) => {
+  armed.value = armKey(member, action)
+}
+const disarm = () => {
+  armed.value = null
+}
+
+/**
+ * The server's Danish message, or a fallback.
+ *
+ * The API answers validation failures as `{error: {field: "message"}}` and other failures as
+ * `{error: "message"}`. Those messages are written for the crew — "modtag dem først" names the
+ * button that fixes the problem — so showing them beats any generic text this view could
+ * invent.
+ */
+const errorMessage = (err: unknown, fallback: string): string => {
+  const payload = (err as { response?: { data?: { error?: unknown } } })?.response?.data?.error
+  if (typeof payload === 'string') return payload
+  if (payload && typeof payload === 'object') {
+    const first = Object.values(payload as Record<string, unknown>)[0]
+    if (typeof first === 'string') return first
+  }
+  return fallback
+}
+
+/**
+ * Run a write, then refetch.
+ *
+ * No local mutation of the cached payload: the write path and the read path must not be able to
+ * disagree about what happened, and the projection is the only thing that knows. The explicit
+ * `refresh()` is not belt-and-braces — it is what keeps the screen correct when the live stream
+ * is degraded to polling or down altogether, and `useLiveResource` collapses it into the
+ * signal-triggered revalidation when both happen at once.
+ */
+const run = async (member: ShelterMember, fallback: string, request: () => Promise<unknown>) => {
+  disarm()
+  busy.value = new Set(busy.value).add(member.memberId)
+  try {
+    await request()
+    await refresh()
+  } catch (err) {
+    toast.add({
+      severity: 'error',
+      closable: true,
+      life: 8000,
+      summary: `${member.name}: handlingen blev afvist`,
+      detail: errorMessage(err, fallback),
+    })
+  } finally {
+    const next = new Set(busy.value)
+    next.delete(member.memberId)
+    busy.value = next
+  }
+}
+
+// A no-op answers 200, so pressing Modtaget on a scout another crew member has just accepted
+// produces no toast and no error — the screen simply already says what this operator wanted.
+const accept = (member: ShelterMember) =>
+  run(member, 'Kunne ikke modtage spejderen', () =>
+    http.put(`/member/${member.memberId}/shelter`, {}),
+  )
+
+const handover = (member: ShelterMember, to: 'released' | 'reunited') =>
+  run(member, 'Kunne ikke registrere afleveringen', () =>
+    http.put(`/member/${member.memberId}/handover`, { to }),
+  )
+
+// Disabled with an explanation rather than hidden: a missing button reads as a bug, and the
+// reason is worth telling — the patrol has nobody left on the route, so it will not reach the
+// finish for anybody to be reunited at. Those scouts end at `released`.
+const reuniteTooltip = (member: ShelterMember) =>
+  member.teamDiscontinued
+    ? 'Patruljen er udgået — der er ingen tilbage i løbet at blive genforenet med'
+    : 'Patruljen er nået i mål og har taget spejderen tilbage'
 </script>
 
 <template>
@@ -259,6 +367,106 @@ watch(error, (err) => {
               class="!p-0"
               @click="openCase(member)"
             />
+          </template>
+        </Column>
+
+        <!--
+          Actions in the row, not behind a menu: a tired volunteer should not have to discover
+          them. The set differs per section because the crew's next move differs — an arriving
+          scout is received, a sheltered one is handed on, and a closed row is history.
+        -->
+        <Column v-if="section.slug !== 'closed'" header="Handling">
+          <template #body="{ data: member }">
+            <div class="flex flex-wrap gap-2">
+              <!-- One click: frequent, and its mistake is cheap. -->
+              <Button
+                v-if="section.slug === 'transit'"
+                label="Modtaget"
+                icon="pi pi-check"
+                size="small"
+                :loading="isBusy(member)"
+                @click="accept(member)"
+              />
+
+              <!--
+                Two clicks: this asserts an arrival no pickup was ever recorded for, so it is
+                either a real gap in the record or the wrong row.
+              -->
+              <template v-else-if="section.slug === 'waiting'">
+                <Button
+                  v-if="!isArmed(member, 'accept')"
+                  label="Modtaget"
+                  icon="pi pi-check"
+                  size="small"
+                  severity="secondary"
+                  outlined
+                  :loading="isBusy(member)"
+                  v-tooltip.top="'Ingen bil er registreret for denne spejder — bekræft at de står i Hønsegården'"
+                  @click="arm(member, 'accept')"
+                />
+                <template v-else>
+                  <Button
+                    label="Bekræft modtaget"
+                    icon="pi pi-check"
+                    size="small"
+                    severity="warn"
+                    :loading="isBusy(member)"
+                    @click="accept(member)"
+                  />
+                  <Button label="Fortryd" size="small" text @click="disarm()" />
+                </template>
+              </template>
+
+              <!--
+                Both handovers are two clicks. They record that a child left our care, there is
+                no undo, and a mis-click marks a scout released while they are asleep in a tent.
+              -->
+              <template v-else-if="section.slug === 'sheltered'">
+                <template v-if="isArmed(member, 'released')">
+                  <Button
+                    label="Bekræft: hentet af forældre"
+                    icon="pi pi-check"
+                    size="small"
+                    severity="warn"
+                    :loading="isBusy(member)"
+                    @click="handover(member, 'released')"
+                  />
+                  <Button label="Fortryd" size="small" text @click="disarm()" />
+                </template>
+                <template v-else-if="isArmed(member, 'reunited')">
+                  <Button
+                    label="Bekræft: genforenet"
+                    icon="pi pi-check"
+                    size="small"
+                    severity="warn"
+                    :loading="isBusy(member)"
+                    @click="handover(member, 'reunited')"
+                  />
+                  <Button label="Fortryd" size="small" text @click="disarm()" />
+                </template>
+                <template v-else>
+                  <Button
+                    label="Hentet af forældre"
+                    icon="pi pi-home"
+                    size="small"
+                    outlined
+                    :loading="isBusy(member)"
+                    @click="arm(member, 'released')"
+                  />
+                  <Button
+                    label="Genforenet"
+                    icon="pi pi-users"
+                    size="small"
+                    outlined
+                    severity="secondary"
+                    :disabled="member.teamDiscontinued"
+                    :loading="isBusy(member)"
+                    v-tooltip.top="reuniteTooltip(member)"
+                    @click="arm(member, 'reunited')"
+                  />
+                </template>
+              </template>
+            </div>
           </template>
         </Column>
       </DataTable>

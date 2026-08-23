@@ -141,15 +141,16 @@ type shelterResponse struct {
 		Slug    string `json:"slug"`
 		Label   string `json:"label"`
 		Members []struct {
-			MemberID    types.MemberID     `json:"memberId"`
-			Name        string             `json:"name"`
-			Status      types.MemberStatus `json:"status"`
-			Phone       string             `json:"phone"`
-			PhoneParent string             `json:"phoneParent"`
-			Placement   string             `json:"placement"`
-			PlacedAt    *time.Time         `json:"placedAt"`
-			SosID       types.SosID        `json:"sosId"`
-			Team        *struct {
+			MemberID         types.MemberID     `json:"memberId"`
+			Name             string             `json:"name"`
+			Status           types.MemberStatus `json:"status"`
+			Phone            string             `json:"phone"`
+			PhoneParent      string             `json:"phoneParent"`
+			Placement        string             `json:"placement"`
+			PlacedAt         *time.Time         `json:"placedAt"`
+			SosID            types.SosID        `json:"sosId"`
+			TeamDiscontinued bool               `json:"teamDiscontinued"`
+			Team             *struct {
 				TeamID     types.TeamID `json:"teamId"`
 				TeamNumber string       `json:"teamNumber"`
 				Name       string       `json:"name"`
@@ -239,6 +240,30 @@ func TestEverySectionCarriesAListEvenWhenEmpty(t *testing.T) {
 	// in the first place.
 	if strings.Contains(rec.Body.String(), `"members":null`) {
 		t.Errorf("a section serialised its members as null: %s", rec.Body.String())
+	}
+}
+
+// A patrol with nobody left racing will not cross a finish line, so "genforenet med patruljen"
+// is not available for its scouts. The fact is sent rather than a permission, so the screen can
+// say why the button is disabled — and so the server is not deciding what the buttons are.
+func TestTeamDiscontinuedIsReportedFromTheStrength(t *testing.T) {
+	st := &fakeShelterStatus{rows: []spejderstatus.SpejderStatus{
+		status("m-alive", "team-1", types.MemberStatusSheltered),
+		status("m-gone", "team-2", types.MemberStatusSheltered),
+	}}
+	pa := &fakeShelterPatruljer{teams: []patrulje.Patrulje{
+		{TeamID: "team-1", Name: "Ulvene", ActiveMemberCount: 2},
+		{TeamID: "team-2", Name: "Ravnene", ActiveMemberCount: 0},
+	}}
+	got := getShelter(t, shelterApp(t, st, &fakeShelterPlacements{}, &fakeShelterMembers{}, pa, &fakeShelterSos{}))
+
+	for _, section := range got.Sections {
+		for _, m := range section.Members {
+			want := m.MemberID == "m-gone"
+			if m.TeamDiscontinued != want {
+				t.Errorf("%s: teamDiscontinued = %v, want %v", m.MemberID, m.TeamDiscontinued, want)
+			}
+		}
 	}
 }
 

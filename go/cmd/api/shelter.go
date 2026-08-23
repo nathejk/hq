@@ -76,6 +76,14 @@ type shelterMember struct {
 	Placement string     `json:"placement"`
 	PlacedAt  *time.Time `json:"placedAt"`
 
+	// TeamDiscontinued is true when the scout's patrol has nobody left racing.
+	//
+	// A **fact**, not a permission: the client uses it to disable "Genforenet med patruljen",
+	// because a patrol with nobody on the route will not cross a finish line to be reunited
+	// at. Sent as the fact rather than as `canReunite` so the screen can also explain *why*
+	// the button is disabled — and so the server is not deciding what the buttons are.
+	TeamDiscontinued bool `json:"teamDiscontinued"`
+
 	// SosID links to the open case, when there is one. There often is not: the shelter may
 	// receive a scout nobody opened a case about, which is exactly why none of this
 	// screen's write actions requires a case.
@@ -276,6 +284,12 @@ func (app *application) shelterMembers(ctx context.Context, year types.YearSlug,
 		if p, ok := placements[row.MemberID]; ok {
 			member.Placement = p.Placement
 			member.PlacedAt = p.PlacedAt
+		}
+		// Read from the patrol's strength, which the spejderstatus projection maintains. A
+		// patrol whose last racing member has left is discontinued — there is no event for it,
+		// the count reaching zero *is* the fact (PRD 006).
+		if team, ok := patrols[row.CurrentTeamID]; ok {
+			member.TeamDiscontinued = team.ActiveMemberCount == 0
 		}
 		if id, ok := cases[row.CurrentTeamID]; ok {
 			member.SosID = id
