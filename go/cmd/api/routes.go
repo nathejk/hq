@@ -91,6 +91,13 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/status", app.overrideMemberStatusHandler)
 	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/team", app.moveMemberTeamHandler)
 
+	// The shelter's write surface (PRD 007). On the member, beside the nødtelefon's own
+	// transitions, because a member's status is a fact about the member — but deliberately
+	// **without** a required sosId: the shelter may receive a scout nobody opened a case about.
+	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/shelter", app.acceptIntoShelterHandler)
+	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/placement", app.setPlacementHandler)
+	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/handover", app.completeHandoverHandler)
+
 	// Collecting a whole patrol is one action on the *case*, not four on members:
 	// three separate calls could half-succeed and split a team across two states.
 	router.HandlerFunc(http.MethodPost, "/api/sos/:id/team/:teamId/collect", app.collectTeamHandler)

@@ -131,6 +131,186 @@ func racing(id types.MemberID, team types.TeamID) SpejderStatus {
 	return SpejderStatus{MemberID: id, CurrentTeamID: team, Status: types.MemberStatusRacing}
 }
 
+// --- the shelter's acceptances (PRD 007) ---
+
+func withStatus(id types.MemberID, team types.TeamID, s types.MemberStatus) SpejderStatus {
+	return SpejderStatus{MemberID: id, CurrentTeamID: team, Status: s}
+}
+
+// The shelter accepts from every *started* status, and the two surprising ones are the point.
+//
+// `transit` is the ordinary path. `waiting` is a scout who arrived in a car nobody logged, and
+// `racing` is one whose withdrawal was never recorded at all — both look like violations of the
+// lifecycle diagram and both are why this command exists. The child is in the doorway; refusing
+// to record it would leave the read model insisting they are on the trail.
+func TestAcceptIntoShelterFromEveryStartedStatus(t *testing.T) {
+	for _, from := range []types.MemberStatus{
+		types.MemberStatusRacing,
+		types.MemberStatusWaiting,
+		types.MemberStatusTransit,
+		types.MemberStatusReunited,
+		types.MemberStatusReleased,
+	} {
+		t.Run(string(from), func(t *testing.T) {
+			member := withStatus("m-1", "team-1", from)
+			c, p := newCommander(&member, []SpejderStatus{member})
+
+			change, err := c.AcceptIntoShelter(context.Background(), Actor{}, "2026", "m-1", "Telt 4")
+			if err != nil {
+				t.Fatalf("AcceptIntoShelter from %s: %v", from, err)
+			}
+			if change == nil || change.To != types.MemberStatusSheltered {
+				t.Fatalf("expected a change to sheltered, got %+v", change)
+			}
+			if change.From != from {
+				t.Errorf("From = %q, want %q — the timeline has to say where they came from", change.From, from)
+			}
+			if len(p.subjects) != 1 || !strings.HasSuffix(p.subjects[0], ".shelter.accepted") {
+				t.Fatalf("expected one shelter.accepted, got %v", p.subjects)
+			}
+		})
+	}
+}
+
+// A member who never started is at home. An acceptance for them is a mistyped identity, and
+// honouring it would invent a child in our care who is not on site.
+func TestAcceptIntoShelterRefusesAMemberWhoNeverStarted(t *testing.T) {
+	for _, from := range []types.MemberStatus{types.MemberStatusRegistered, types.MemberStatusSeated} {
+		t.Run(string(from), func(t *testing.T) {
+			member := withStatus("m-1", "team-1", from)
+			c, p := newCommander(&member, []SpejderStatus{member})
+
+			if _, err := c.AcceptIntoShelter(context.Background(), Actor{}, "2026", "m-1", ""); !errors.Is(err, ErrNotStarted) {
+				t.Errorf("err = %v, want ErrNotStarted", err)
+			}
+			if len(p.subjects) != 0 {
+				t.Errorf("published despite refusing: %v", p.subjects)
+			}
+		})
+	}
+}
+
+// The placering travels on the acceptance, because the crew types the tent as they take the
+// scouts in — one gesture, one event.
+func TestAcceptIntoShelterCarriesThePlacering(t *testing.T) {
+	member := withStatus("m-1", "team-1", types.MemberStatusTransit)
+	c, p := newCommander(&member, []SpejderStatus{member})
+
+	if _, err := c.AcceptIntoShelter(context.Background(), Actor{}, "2026", "m-1", "Telt 4"); err != nil {
+		t.Fatalf("AcceptIntoShelter: %v", err)
+	}
+	body, ok := p.bodies[0].(*ShelterAccepted)
+	if !ok {
+		t.Fatalf("unexpected body type %T", p.bodies[0])
+	}
+	if body.Placement != "Telt 4" {
+		t.Errorf("Placement = %q, want the tent the crew typed", body.Placement)
+	}
+}
+
+// Two crew members on two laptops pressing Modtaget must not put two arrivals on the timeline,
+// and a re-press must not claim custody was taken twice.
+func TestAcceptIntoShelterIsIdempotent(t *testing.T) {
+	member := withStatus("m-1", "team-1", types.MemberStatusSheltered)
+	c, p := newCommander(&member, []SpejderStatus{member})
+
+	change, err := c.AcceptIntoShelter(context.Background(), Actor{}, "2026", "m-1", "Telt 4")
+	if err != nil {
+		t.Fatalf("expected a no-op rather than an error, got %v", err)
+	}
+	if change != nil {
+		t.Errorf("expected no change for a member already sheltered, got %+v", change)
+	}
+	if len(p.subjects) != 0 {
+		t.Errorf("a no-op published %v; it must emit no event and therefore no live signal", p.subjects)
+	}
+}
+
+// Both endings, and only those two.
+func TestCompleteHandoverAcceptsBothEndings(t *testing.T) {
+	for _, to := range []types.MemberStatus{types.MemberStatusReleased, types.MemberStatusReunited} {
+		t.Run(string(to), func(t *testing.T) {
+			member := withStatus("m-1", "team-1", types.MemberStatusSheltered)
+			c, p := newCommander(&member, []SpejderStatus{member})
+
+			change, err := c.CompleteHandover(context.Background(), Actor{}, "2026", "m-1", to)
+			if err != nil {
+				t.Fatalf("CompleteHandover(%s): %v", to, err)
+			}
+			if change == nil || change.To != to {
+				t.Fatalf("expected a change to %s, got %+v", to, change)
+			}
+			body, ok := p.bodies[0].(*HandoverCompleted)
+			if !ok {
+				t.Fatalf("unexpected body type %T", p.bodies[0])
+			}
+			// On the event rather than derived, so the record says which ending it was
+			// however the count is later recomputed.
+			if body.To != to {
+				t.Errorf("body.To = %q, want %q", body.To, to)
+			}
+		})
+	}
+}
+
+// `finished` gets its own refusal, because somebody reaching for it is reaching for the wrong
+// idea rather than making a typo: a scout who was driven in has not walked the route, however
+// close to the end they dropped out.
+func TestCompleteHandoverRefusesFinishedAndNonEndings(t *testing.T) {
+	tests := []struct {
+		to   types.MemberStatus
+		want error
+	}{
+		{types.MemberStatusFinished, ErrCannotFinish},
+		{types.MemberStatusRacing, ErrNotAnEnding},
+		{types.MemberStatusSheltered, ErrNotAnEnding},
+		{types.MemberStatusWaiting, ErrNotAnEnding},
+		{"nonsense", ErrNotAnEnding},
+	}
+	for _, tt := range tests {
+		t.Run(string(tt.to), func(t *testing.T) {
+			member := withStatus("m-1", "team-1", types.MemberStatusSheltered)
+			c, p := newCommander(&member, []SpejderStatus{member})
+
+			if _, err := c.CompleteHandover(context.Background(), Actor{}, "2026", "m-1", tt.to); !errors.Is(err, tt.want) {
+				t.Errorf("err = %v, want %v", err, tt.want)
+			}
+			if len(p.subjects) != 0 {
+				t.Errorf("published despite refusing: %v", p.subjects)
+			}
+		})
+	}
+}
+
+// A guardian can collect a scout from the roadside or straight out of the car, so a handover
+// does not require an arrival at HQ first. Insisting on `sheltered` would refuse to record a
+// handover that actually happened, and leave a child counted as ours all night.
+func TestCompleteHandoverDoesNotRequireAnArrivalFirst(t *testing.T) {
+	for _, from := range []types.MemberStatus{types.MemberStatusWaiting, types.MemberStatusTransit} {
+		t.Run(string(from), func(t *testing.T) {
+			member := withStatus("m-1", "team-1", from)
+			c, _ := newCommander(&member, []SpejderStatus{member})
+
+			if _, err := c.CompleteHandover(context.Background(), Actor{}, "2026", "m-1", types.MemberStatusReleased); err != nil {
+				t.Errorf("handover from %s was refused: %v", from, err)
+			}
+		})
+	}
+}
+
+func TestCompleteHandoverIsIdempotent(t *testing.T) {
+	member := withStatus("m-1", "team-1", types.MemberStatusReleased)
+	c, p := newCommander(&member, []SpejderStatus{member})
+
+	change, err := c.CompleteHandover(context.Background(), Actor{}, "2026", "m-1", types.MemberStatusReleased)
+	if err != nil {
+		t.Fatalf("expected a no-op rather than an error, got %v", err)
+	}
+	if change != nil || len(p.subjects) != 0 {
+		t.Errorf("a no-op produced change %+v and subjects %v", change, p.subjects)
+	}
+}
+
 // --- the self-carrying boundary ---
 
 // The rule the whole design rests on: an operator owns the transitions where the

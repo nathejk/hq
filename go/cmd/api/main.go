@@ -180,7 +180,7 @@ func main() {
 	// Where sheltered scouts physically are (PRD 007). Consumes the same shelter events as
 	// spejderstatus and writes an independent fact, so neither projection depends on the
 	// other's ordering.
-	sheltertable := shelter.New(writer, db.DB())
+	sheltertable := shelter.New(publisher, writer, db.DB(), spejderstatustable)
 	checkgroup := checkgroup.New(publisher, writer, reader)
 	checkpoint := checkpoint.New(publisher, writer, reader)
 	checkpersonnel := checkpersonnel.New(publisher, writer, reader)
@@ -305,6 +305,7 @@ func main() {
 	cmds.Vehicle = vehicletable
 	cmds.Sos = sostable
 	cmds.Member = spejderstatustable
+	cmds.Shelter = sheltertable
 
 	expvar.NewString("version").Set(version)
 	expvar.NewInt("timestamp").Set(time.Now().Unix())

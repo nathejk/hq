@@ -1,14 +1,21 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/nathejk/shared-go/types"
 	jsonapi "nathejk.dk/cmd/api/app"
 	"nathejk.dk/internal/data"
 	"nathejk.dk/nathejk/table/patrulje"
+	"nathejk.dk/nathejk/table/shelter"
 	"nathejk.dk/nathejk/table/sos"
 	"nathejk.dk/nathejk/table/spejderstatus"
 )
@@ -297,6 +304,167 @@ func shelterTeamRef(patrols map[types.TeamID]patrulje.Patrulje, id types.TeamID)
 		ref.TeamNumber = team.TeamNumber
 	}
 	return ref
+}
+
+// --- the write surface (PRD 007) ---
+//
+// None of these requires a `sosId`. The shelter may receive a scout nobody opened a case
+// about, and the acceptance events are case-free by design — so they run under
+// `caseOptional`, and no case is minted for them (see casePolicy in member.go).
+
+// shelterRequest is the body all three write endpoints share.
+//
+// `to` and `placement` are each meaningful to one endpoint only. One struct rather than three
+// because the SPA sends the same shape and the endpoints differ by verb, not by vocabulary.
+type shelterRequest struct {
+	// Placement is the placering. Optional on the acceptance — a crew member receiving
+	// somebody at a run records the arrival now and the tent when they get back — and required
+	// on the placering endpoint.
+	Placement string `json:"placement"`
+
+	// To is which ending a handover was: `released` (a guardian came) or `reunited` (their own
+	// patrol finished and took them back). Never guessed from the hour: they are different
+	// facts about who has the child.
+	To types.MemberStatus `json:"to"`
+}
+
+// acceptIntoShelterHandler records that Hønsegården has received a scout.
+//
+// @Summary     Accept a scout into Hønsegården
+// @Description Records that the shelter crew has taken charge of the scout, optionally with the placering they were put in. Valid from any started status — including `waiting` and `racing`, for the scout who arrived in a car nobody logged — because the receiving crew's word is the better evidence. Refused only for a member who never started. Requires no SOS case. A scout who is already sheltered is a no-op answered with 200; use the placering endpoint to move them.
+// @Tags        shelter
+// @Accept      json
+// @Produce     json
+// @Param       memberId path string true "Member id"
+// @Param       body body shelterRequest false "Optional placering"
+// @Success     200 {object} map[string]interface{} "envelope with \"change\" (null for a no-op) and \"sosId\""
+// @Failure     400 {object} map[string]interface{}
+// @Failure     404 {object} map[string]interface{}
+// @Failure     500 {object} map[string]interface{}
+// @Router      /api/member/{memberId}/shelter [put]
+func (app *application) acceptIntoShelterHandler(w http.ResponseWriter, r *http.Request) {
+	// The placering is read from a second decode of the body rather than being added to
+	// memberRequest: it belongs to this screen, and widening the shared nødtelefon request
+	// struct would offer a placering to every member endpoint.
+	placement := strings.TrimSpace(app.shelterInput(r).Placement)
+
+	app.memberStatusOperation(w, r, caseOptional, func(ctx memberContext) (*spejderstatus.Change, error) {
+		if len([]rune(placement)) > shelter.MaxPlacementLength {
+			return nil, shelter.ErrPlacementTooLong
+		}
+		return app.commands.Member.AcceptIntoShelter(ctx.r.Context(), ctx.actor, ctx.year, ctx.memberID, placement)
+	})
+}
+
+// setPlacementHandler records where in the shelter a scout is, or moves them.
+//
+// @Summary     Set or change a sheltered scout's placering
+// @Description Records where in Hønsegården the scout is. Free text by design — the zones are not known until race start, so the API suggests what is already in use (see GET /api/shelter) and enforces nothing beyond a 64-character limit. Valid only while the scout is sheltered; a blank placering is refused, because "nowhere" is not a fact about a child in our care. Setting the placering they already have is a no-op answered with 200. Requires no SOS case.
+// @Tags        shelter
+// @Accept      json
+// @Produce     json
+// @Param       memberId path string true "Member id"
+// @Param       body body shelterRequest true "The placering"
+// @Success     200 {object} map[string]interface{} "envelope with \"placement\""
+// @Failure     400 {object} map[string]interface{}
+// @Failure     404 {object} map[string]interface{}
+// @Failure     500 {object} map[string]interface{}
+// @Router      /api/member/{memberId}/placement [put]
+func (app *application) setPlacementHandler(w http.ResponseWriter, r *http.Request) {
+	memberID := types.MemberID(app.ReadNamedParam(r, "memberId"))
+	if memberID == "" {
+		app.NotFoundResponse(w, r)
+		return
+	}
+	var input shelterRequest
+	if err := app.ReadJSON(w, r, &input); err != nil {
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+	// Not routed through memberStatusOperation: this changes no status, so there is no Change
+	// to summarise and nothing for the strength arithmetic to do. Reusing that helper would
+	// have meant inventing a status transition to describe a scout staying exactly where they
+	// are in the lifecycle.
+	if err := app.commands.Shelter.SetPlacement(r.Context(), app.memberActor(r), app.YearSlug(r), memberID, input.Placement); err != nil {
+		app.shelterCommandError(w, r, err)
+		return
+	}
+	envelope := jsonapi.Envelope{"placement": strings.TrimSpace(input.Placement)}
+	if err := app.WriteJSON(w, http.StatusOK, envelope, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
+// completeHandoverHandler records that somebody else has taken charge of a scout.
+//
+// @Summary     Hand a scout over and take them out of our care
+// @Description Records the ending: `released` when a guardian collected them, `reunited` when their own patrol reached the finish and took them back. The two are not interchangeable and neither is `finished`, which no handover may confer — only walking the route unaided earns it. This is what takes the scout out of the in-our-care count. Does not require an arrival at HQ first, since a guardian can collect from the roadside. Requires no SOS case.
+// @Tags        shelter
+// @Accept      json
+// @Produce     json
+// @Param       memberId path string true "Member id"
+// @Param       body body shelterRequest true "Which ending"
+// @Success     200 {object} map[string]interface{} "envelope with \"change\" (null for a no-op) and \"sosId\""
+// @Failure     400 {object} map[string]interface{}
+// @Failure     404 {object} map[string]interface{}
+// @Failure     500 {object} map[string]interface{}
+// @Router      /api/member/{memberId}/handover [put]
+func (app *application) completeHandoverHandler(w http.ResponseWriter, r *http.Request) {
+	to := app.shelterInput(r).To
+
+	app.memberStatusOperation(w, r, caseOptional, func(ctx memberContext) (*spejderstatus.Change, error) {
+		return app.commands.Member.CompleteHandover(ctx.r.Context(), ctx.actor, ctx.year, ctx.memberID, to)
+	})
+}
+
+// shelterInput reads this screen's fields from the request body without consuming it.
+//
+// memberStatusOperation decodes the body itself (into memberRequest), and a request body can
+// only be read once — so the bytes are buffered and put back. The alternative was adding
+// `placement` and `to` to memberRequest, which is the nødtelefon's shared shape: every member
+// endpoint would then advertise a placering it has no use for.
+//
+// A body that will not parse is not reported here. memberStatusOperation decodes the same
+// bytes a moment later and answers 400 properly; failing twice for one malformed body would
+// mean two error paths for one mistake.
+func (app *application) shelterInput(r *http.Request) shelterRequest {
+	var input shelterRequest
+	if r.Body == nil {
+		return input
+	}
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return input
+	}
+	r.Body = io.NopCloser(bytes.NewReader(body))
+	_ = json.Unmarshal(body, &input)
+	return input
+}
+
+// shelterCommandError maps the placering command's errors onto responses.
+//
+// Each one is something the crew can act on, so each gets its own message rather than a
+// generic 400: "scouten er ikke i Hønsegården" tells them to press Modtaget first, which is
+// one button away.
+func (app *application) shelterCommandError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, shelter.ErrNotSheltered):
+		app.FailedValidationResponse(w, r, map[string]string{
+			"placement": "spejderen er ikke i Hønsegården — modtag dem først",
+		})
+	case errors.Is(err, shelter.ErrEmptyPlacement):
+		app.FailedValidationResponse(w, r, map[string]string{
+			"placement": "placering skal angives",
+		})
+	case errors.Is(err, shelter.ErrPlacementTooLong):
+		app.FailedValidationResponse(w, r, map[string]string{
+			"placement": fmt.Sprintf("placering må højst være %d tegn", shelter.MaxPlacementLength),
+		})
+	case errors.Is(err, spejderstatus.ErrRecordNotFound):
+		app.NotFoundResponse(w, r)
+	default:
+		app.ServerErrorResponse(w, r, err)
+	}
 }
 
 // openCaseFor finds the patrol's open case, if it has one.

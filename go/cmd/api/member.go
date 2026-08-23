@@ -9,6 +9,7 @@ import (
 	"github.com/nathejk/shared-go/types"
 	jsonapi "nathejk.dk/cmd/api/app"
 	"nathejk.dk/internal/data"
+	"nathejk.dk/nathejk/table/shelter"
 	"nathejk.dk/nathejk/table/sos"
 	"nathejk.dk/nathejk/table/spejderstatus"
 )
@@ -46,14 +47,14 @@ type memberRequest struct {
 
 // requestWaitingHandler records that a member wants to leave the race.
 func (app *application) requestWaitingHandler(w http.ResponseWriter, r *http.Request) {
-	app.memberStatusOperation(w, r, false, func(ctx memberContext) (*spejderstatus.Change, error) {
+	app.memberStatusOperation(w, r, caseRequired, func(ctx memberContext) (*spejderstatus.Change, error) {
 		return app.commands.Member.RequestWithdrawal(ctx.r.Context(), ctx.actor, ctx.year, ctx.memberID)
 	})
 }
 
 // resumeRacingHandler puts a member who changed their mind back into the race.
 func (app *application) resumeRacingHandler(w http.ResponseWriter, r *http.Request) {
-	app.memberStatusOperation(w, r, false, func(ctx memberContext) (*spejderstatus.Change, error) {
+	app.memberStatusOperation(w, r, caseRequired, func(ctx memberContext) (*spejderstatus.Change, error) {
 		return app.commands.Member.CancelWithdrawal(ctx.r.Context(), ctx.actor, ctx.year, ctx.memberID)
 	})
 }
@@ -69,7 +70,7 @@ func (app *application) resumeRacingHandler(w http.ResponseWriter, r *http.Reque
 // in a case — so rather than carve out a case-less path, the handler opens a case, lets
 // the correction land on its timeline, and closes it immediately. See mintCorrectionCase.
 func (app *application) overrideMemberStatusHandler(w http.ResponseWriter, r *http.Request) {
-	app.memberStatusOperation(w, r, true, func(ctx memberContext) (*spejderstatus.Change, error) {
+	app.memberStatusOperation(w, r, caseMinted, func(ctx memberContext) (*spejderstatus.Change, error) {
 		return app.commands.Member.OverrideStatus(ctx.r.Context(), ctx.actor, ctx.year, ctx.memberID, ctx.input.Status)
 	})
 }
@@ -81,7 +82,7 @@ func (app *application) overrideMemberStatusHandler(w http.ResponseWriter, r *ht
 // members is a valid target — no proximity or size rule, because crew in the field
 // agree the destination and the operator is recording it, not choosing it.
 func (app *application) moveMemberTeamHandler(w http.ResponseWriter, r *http.Request) {
-	ctx, ok := app.memberContext(w, r, false)
+	ctx, ok := app.memberContext(w, r, caseRequired)
 	if !ok {
 		return
 	}
@@ -363,6 +364,33 @@ func (app *application) moveTarget(w http.ResponseWriter, r *http.Request, teamI
 	return target, true
 }
 
+// casePolicy is how a member operation relates to an SOS case.
+//
+// It replaces the `allowMinted bool` this helper used to take. A boolean was already the
+// wrong shape for two behaviours, and PRD 007 adds a third: the shelter's acceptances are
+// case-free by design, because the shelter may receive a scout nobody opened a case about
+// (see the "No sosId, deliberately" note in spejderstatus/messages.go). Passing an empty
+// sosId through the `allowMinted` path would have worked and been a lie — the next reader
+// would conclude a case is minted for shelter operations too, and go looking for cases that
+// were never created.
+type casePolicy int
+
+const (
+	// caseRequired: no case, no change. The nødtelefon's own commands, where the case *is*
+	// the reason somebody is touching a member's status.
+	caseRequired casePolicy = iota
+
+	// caseMinted: a case is created and closed to document the change. The manual override
+	// from the patrol page, which has no case to hand but must still leave a countable trail.
+	caseMinted
+
+	// caseOptional: the operation stands on its own. The shelter's acceptances and handovers
+	// — receiving a child is a fact about custody, not about a phone call, and minting a case
+	// per arrival would bury the real calls in the nødtelefon's list. Where an open case does
+	// exist for the patrol, the operation is still summarised onto it (task 097).
+	caseOptional
+)
+
 // memberContext is everything a member handler needs after validation.
 type memberContext struct {
 	r        *http.Request
@@ -370,10 +398,15 @@ type memberContext struct {
 	year     types.YearSlug
 	memberID types.MemberID
 	input    memberRequest
+
+	// policy is carried so memberStatusOperation knows whether to mint a case for a change
+	// that arrived without one — the decision belongs to the handler that started the
+	// operation, not to a re-inspection of the input further down.
+	policy casePolicy
 }
 
 // memberContext reads and validates what every member command requires.
-func (app *application) memberContext(w http.ResponseWriter, r *http.Request, allowMinted bool) (memberContext, bool) {
+func (app *application) memberContext(w http.ResponseWriter, r *http.Request, policy casePolicy) (memberContext, bool) {
 	memberID := types.MemberID(app.ReadNamedParam(r, "memberId"))
 	if memberID == "" {
 		app.NotFoundResponse(w, r)
@@ -384,18 +417,11 @@ func (app *application) memberContext(w http.ResponseWriter, r *http.Request, al
 		app.BadRequestResponse(w, r, err)
 		return memberContext{}, false
 	}
-	if input.SosID == "" {
-		// The override is the one command allowed to arrive without a case, because the
-		// operator making a correction is on the patrol page rather than in one. It does
-		// not get a case-less path: the handler mints one (see mintCorrectionCase), which
-		// is what keeps "every member change has a case" true without making the patrol
-		// page open a case by hand first.
-		if !allowMinted {
-			app.FailedValidationResponse(w, r, map[string]string{
-				"sosId": "must be provided: a member does not change status without a case explaining why",
-			})
-			return memberContext{}, false
-		}
+	if input.SosID == "" && policy == caseRequired {
+		app.FailedValidationResponse(w, r, map[string]string{
+			"sosId": "must be provided: a member does not change status without a case explaining why",
+		})
+		return memberContext{}, false
 	}
 	return memberContext{
 		r:        r,
@@ -403,6 +429,7 @@ func (app *application) memberContext(w http.ResponseWriter, r *http.Request, al
 		year:     app.YearSlug(r),
 		memberID: memberID,
 		input:    input,
+		policy:   policy,
 	}, true
 }
 
@@ -482,8 +509,8 @@ func (app *application) closeCorrectionCase(r *http.Request, id types.SosID) {
 // Shared by the three status handlers because the shape is identical and the
 // interesting part — which command — is the one line they differ by. It also keeps
 // the publish-then-summarise order in one place rather than three.
-func (app *application) memberStatusOperation(w http.ResponseWriter, r *http.Request, allowMinted bool, run func(memberContext) (*spejderstatus.Change, error)) {
-	ctx, ok := app.memberContext(w, r, allowMinted)
+func (app *application) memberStatusOperation(w http.ResponseWriter, r *http.Request, policy casePolicy, run func(memberContext) (*spejderstatus.Change, error)) {
+	ctx, ok := app.memberContext(w, r, policy)
 	if !ok {
 		return
 	}
@@ -506,9 +533,12 @@ func (app *application) memberStatusOperation(w http.ResponseWriter, r *http.Req
 	// Mint the case now rather than earlier: only a change that actually happened is
 	// worth documenting, and the member events are already published by this point, so
 	// the summary still lands after them as the ordering requires.
+	//
+	// Only under caseMinted. A shelter acceptance without a case gets none — receiving a child
+	// is not a phone call, and a case per arrival would bury the real ones.
 	sosID := ctx.input.SosID
 	minted := false
-	if sosID == "" {
+	if sosID == "" && ctx.policy == caseMinted {
 		id, err := app.mintCorrectionCase(r, change.MemberID, change.TeamID, change.To)
 		if err != nil {
 			// The correction is recorded; only its paper trail failed. Report success
@@ -589,6 +619,17 @@ func (app *application) memberCommandError(w http.ResponseWriter, r *http.Reques
 		app.FailedValidationResponse(w, r, map[string]string{"status": "ukendt status"})
 	case errors.Is(err, spejderstatus.ErrSameTeam):
 		app.FailedValidationResponse(w, r, map[string]string{"teamId": "deltageren er allerede i patruljen"})
+
+	// The shelter's refusals (PRD 007). Both are worded as something the crew can do next
+	// rather than as a rule they broke.
+	case errors.Is(err, spejderstatus.ErrNotStarted):
+		app.FailedValidationResponse(w, r, map[string]string{"status": "deltageren er ikke startet i løbet"})
+	case errors.Is(err, spejderstatus.ErrNotAnEnding):
+		app.FailedValidationResponse(w, r, map[string]string{"to": "vælg om spejderen er hentet af forældre eller genforenet med patruljen"})
+	case errors.Is(err, shelter.ErrPlacementTooLong):
+		app.FailedValidationResponse(w, r, map[string]string{
+			"placement": fmt.Sprintf("placering må højst være %d tegn", shelter.MaxPlacementLength),
+		})
 	default:
 		app.ServerErrorResponse(w, r, err)
 	}

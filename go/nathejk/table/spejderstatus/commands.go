@@ -48,6 +48,18 @@ type Commands interface {
 	MoveTeam(ctx context.Context, actor Actor, year types.YearSlug, id types.MemberID, to types.TeamID) (*Move, error)
 	MoveMembers(ctx context.Context, actor Actor, year types.YearSlug, ids []types.MemberID, to types.TeamID) ([]Move, error)
 	CollectTeam(ctx context.Context, actor Actor, year types.YearSlug, team types.TeamID) ([]Change, error)
+
+	// The shelter's acceptances (PRD 007). Added here rather than in a package of their own
+	// because they are status transitions, and this package owns the lifecycle; the
+	// *placering* is not a status and lives in hq's own shelter package instead.
+	//
+	// Note what this does to the "self-carrying boundary" rule above: it is no longer quite
+	// true that this package publishes only the transitions a member makes on their own
+	// legs. The rule that survives, and the one that mattered, is that **custody is
+	// confirmed by the receiver**: the shelter interface calls these, and it is the
+	// receiving party. A driver's pickup is still not ours to publish.
+	AcceptIntoShelter(ctx context.Context, actor Actor, year types.YearSlug, id types.MemberID, placement string) (*Change, error)
+	CompleteHandover(ctx context.Context, actor Actor, year types.YearSlug, id types.MemberID, to types.MemberStatus) (*Change, error)
 }
 
 var (
@@ -84,6 +96,24 @@ var (
 	// on. Not an error the operator caused so much as one the UI should have
 	// prevented, but publishing it would put a meaningless line on a timeline.
 	ErrSameTeam = errors.New("member is already on that team")
+
+	// ErrNotStarted is returned when the shelter tries to accept a member who never
+	// started — one still `registered` or `seated`.
+	//
+	// The only refusal AcceptIntoShelter makes, and it is not pedantry: those members are at
+	// home, so an acceptance for one of them is a mistyped or misclicked identity, and
+	// recording it would invent a child in our care who is not on site. Every *started*
+	// status is accepted, including `racing` — see AcceptIntoShelter.
+	ErrNotStarted = errors.New("member has not started")
+
+	// ErrNotAnEnding is returned when a handover names something that is not one of the two
+	// ways a member leaves our care.
+	//
+	// `released` means a guardian came for them, `reunited` means their own patrol reached
+	// the finish and took them back. They are not interchangeable and neither is `finished`,
+	// which is why the caller must say which one rather than the command guessing from the
+	// hour.
+	ErrNotAnEnding = errors.New("handover must be to released or reunited")
 )
 
 // Change is what a status-changing command did, for the caller to summarise.
@@ -418,6 +448,95 @@ func (c commander) CollectTeam(ctx context.Context, actor Actor, year types.Year
 		})
 	}
 	return changes, nil
+}
+
+// AcceptIntoShelter records that HQ has received the member and is looking after them.
+//
+// Published by the shelter crew, because they are the receiving party and custody is always
+// confirmed by the receiver — the driver letting go cannot say it happened.
+//
+// # What it accepts, and why that is broad
+//
+// Any *started* status: `transit` is the ordinary path, `waiting` is the scout who arrived in
+// a car nobody logged, and `racing` is the scout whose withdrawal was never recorded at all.
+// The last two look like violations of the lifecycle diagram and are in fact the reason this
+// command exists: the child is standing in the doorway, and a command that refused to record
+// it because no pickup event preceded it would leave the read model claiming they are still on
+// the trail. The shelter's word is the better evidence, so it wins.
+//
+// The one refusal is a member who never started (`registered`, `seated`). They are at home, so
+// an acceptance is a mistyped identity rather than an unrecorded arrival, and honouring it
+// would invent a child in our care who is not on site.
+//
+// # Placement
+//
+// Carried on the event when the crew typed a tent while accepting, which is the ordinary
+// gesture. A member who is **already** sheltered is a no-op here — and note what that means
+// for the caller: a new placering for somebody already in the shelter is not this command's
+// business, and the handler must use shelter.SetPlacement for it. Publishing a second
+// acceptance to carry a tent would claim custody was taken twice.
+func (c commander) AcceptIntoShelter(ctx context.Context, actor Actor, year types.YearSlug, id types.MemberID, placement string) (*Change, error) {
+	current, err := c.q.GetByMemberID(ctx, year, id)
+	if err != nil {
+		return nil, err
+	}
+	if current.Status == types.MemberStatusSheltered {
+		return nil, nil
+	}
+	switch current.Status {
+	case types.MemberStatusRegistered, types.MemberStatusSeated, types.MemberStatusNone:
+		return nil, ErrNotStarted
+	}
+	change, err := c.change(ctx, year, current, types.MemberStatusSheltered)
+	if err != nil {
+		return nil, err
+	}
+	body := &ShelterAccepted{MemberID: id, TeamID: current.CurrentTeamID, Placement: placement, Actor: actor}
+	if err := c.publish(actor, year, id, "shelter.accepted", body); err != nil {
+		return nil, err
+	}
+	return change, nil
+}
+
+// CompleteHandover records that somebody else has taken charge of the member, which is what
+// takes them out of the in-our-care count.
+//
+// `to` is the caller's to state and must be `released` (a guardian came for them) or
+// `reunited` (their own patrol finished and took them back). Guessing from the hour was the
+// alternative and would have been wrong in both directions; the two are different facts about
+// who has the child, which is the one thing this whole lifecycle exists to keep straight.
+//
+// `finished` is refused with its own error rather than falling through to "not an ending":
+// somebody reaching for it is reaching for the wrong idea, not making a typo. A scout who was
+// driven in has not walked the route, however close to the end they dropped out — see
+// types.MemberStatusFinished.
+func (c commander) CompleteHandover(ctx context.Context, actor Actor, year types.YearSlug, id types.MemberID, to types.MemberStatus) (*Change, error) {
+	if to == types.MemberStatusFinished {
+		return nil, ErrCannotFinish
+	}
+	if to != types.MemberStatusReleased && to != types.MemberStatusReunited {
+		return nil, ErrNotAnEnding
+	}
+	current, err := c.q.GetByMemberID(ctx, year, id)
+	if err != nil {
+		return nil, err
+	}
+	if current.Status == to {
+		return nil, nil
+	}
+	// Deliberately not requiring `sheltered` first. A guardian can collect a scout from the
+	// roadside or out of the car, and a command that insisted on an arrival at HQ would refuse
+	// to record a handover that actually happened — leaving a child counted as ours all night.
+	// The timeline shows the route they took through the lifecycle, which is the honest record.
+	change, err := c.change(ctx, year, current, to)
+	if err != nil {
+		return nil, err
+	}
+	body := &HandoverCompleted{MemberID: id, TeamID: current.CurrentTeamID, To: to, Actor: actor}
+	if err := c.publish(actor, year, id, "handover.completed", body); err != nil {
+		return nil, err
+	}
+	return change, nil
 }
 
 // change assembles the Change for a status transition, including the team's

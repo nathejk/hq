@@ -10,6 +10,7 @@ import (
 	"nathejk.dk/nathejk/table/checkgroup"
 	"nathejk.dk/nathejk/table/checkpersonnel"
 	"nathejk.dk/nathejk/table/checkpoint"
+	"nathejk.dk/nathejk/table/shelter"
 	"nathejk.dk/nathejk/table/sos"
 	"nathejk.dk/nathejk/table/spejderstatus"
 	"nathejk.dk/nathejk/table/year"
@@ -25,6 +26,11 @@ type Commands struct {
 	Vehicle        vehicle.Commands
 	Sos            sos.Commands
 	Member         spejderstatus.Commands
+
+	// Shelter is the placering's write side, separate from Member because a command belongs
+	// with the read model it dirty-checks against — and because spejderstatus cannot import
+	// the shelter table (PRD 007; see shelter/commands.go).
+	Shelter shelter.Commands
 
 	Team interface {
 		UpdatePatrulje(types.TeamID, Patrulje, Contact, []Spejder) error

@@ -26,7 +26,10 @@ import (
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/mysql"
 	"github.com/jrgensen/cqrs"
+	"github.com/jrgensen/stream"
 	"github.com/nathejk/shared-go/types"
+
+	"nathejk.dk/nathejk/table/spejderstatus"
 
 	_ "embed"
 )
@@ -58,17 +61,22 @@ type Zone struct {
 }
 
 type table struct {
+	commander
 	consumer
 	querier
 }
 
-// New builds the projection. The writer is the consumer's, the *sql.DB the querier's; this
-// package publishes nothing, so it takes no publisher — the shelter's events are published
-// by the spejderstatus commander, which owns the lifecycle.
-func New(w cqrs.Writer, r *sql.DB) *table {
+// New builds the projection.
+//
+// It takes the publisher for the commander's sake, the writer for the consumer's and the
+// *sql.DB for the querier's — and `status` because SetPlacement has to know whether the member
+// is actually in the shelter, which this package's own table cannot tell it (see commands.go).
+func New(p stream.Publisher, w cqrs.Writer, r *sql.DB, status spejderstatus.Queries) *table {
+	q := querier{db: r, r: goqu.New("mysql", r)}
 	t := &table{
-		consumer: consumer{w: w},
-		querier:  querier{db: r, r: goqu.New("mysql", r)},
+		commander: commander{p: p, q: &q, status: status},
+		consumer:  consumer{w: w},
+		querier:   q,
 	}
 	if err := w.Consume(t.CreateTableSql()); err != nil {
 		log.Printf("Error creating table %q", err)
