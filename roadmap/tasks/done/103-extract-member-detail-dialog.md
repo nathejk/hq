@@ -85,3 +85,6 @@ never in the same diff.
   through. I cannot drive a browser, and this is the nødtelefon's most sensitive screen — saying so is
   worth more than a ticked box.
 - 2026-08-24 00:26 — Moving to done with that item flagged for the owner.
+- 2026-08-24 00:40 — Appended after completion: the owner clicked through the case card's member
+  flows and reports them working, so the criterion carried above is met. Verified by a human, which
+  is the only way it could be.
