@@ -14,6 +14,7 @@ import (
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/shelter"
 	"nathejk.dk/nathejk/table/sos"
+	"nathejk.dk/nathejk/table/spejdernote"
 	"nathejk.dk/nathejk/table/spejderstatus"
 )
 
@@ -134,6 +135,28 @@ func (f *fakeShelterSos) AssignableSections(context.Context, types.YearSlug) ([]
 	return nil, nil
 }
 
+type fakeShelterNotes struct {
+	rows map[types.MemberID]spejdernote.Summary
+}
+
+func (f *fakeShelterNotes) SummaryByMembers(_ context.Context, _ types.YearSlug, ids []types.MemberID) (map[types.MemberID]spejdernote.Summary, error) {
+	out := map[types.MemberID]spejdernote.Summary{}
+	for _, id := range ids {
+		if s, ok := f.rows[id]; ok {
+			out[id] = s
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeShelterNotes) GetByMember(context.Context, types.YearSlug, types.MemberID) ([]spejdernote.Note, error) {
+	return nil, nil
+}
+
+func (f *fakeShelterNotes) GetByID(context.Context, types.YearSlug, spejdernote.NoteID) (*spejdernote.Note, error) {
+	return nil, nil
+}
+
 // --- fixtures ---
 
 type shelterResponse struct {
@@ -150,6 +173,9 @@ type shelterResponse struct {
 			PlacedAt         *time.Time         `json:"placedAt"`
 			SosID            types.SosID        `json:"sosId"`
 			TeamDiscontinued bool               `json:"teamDiscontinued"`
+			NoteCount        int                `json:"noteCount"`
+			LatestNote       string             `json:"latestNote"`
+			LatestNoteAt     *time.Time         `json:"latestNoteAt"`
 			Team             *struct {
 				TeamID     types.TeamID `json:"teamId"`
 				TeamNumber string       `json:"teamNumber"`
@@ -188,8 +214,17 @@ func shelterApp(t *testing.T, st *fakeShelterStatus, pl *fakeShelterPlacements, 
 			Members:       me,
 			Patrulje:      pa,
 			Sos:           so,
+			// Notes default to none. The tests that care supply their own via shelterAppWithNotes.
+			Note: &fakeShelterNotes{},
 		},
 	}
+}
+
+func shelterAppWithNotes(t *testing.T, st *fakeShelterStatus, notes *fakeShelterNotes) *application {
+	t.Helper()
+	app := shelterApp(t, st, &fakeShelterPlacements{}, &fakeShelterMembers{}, &fakeShelterPatruljer{}, &fakeShelterSos{})
+	app.models.Note = notes
+	return app
 }
 
 // The handler is invoked directly rather than through app.routes().
@@ -264,6 +299,89 @@ func TestTeamDiscontinuedIsReportedFromTheStrength(t *testing.T) {
 				t.Errorf("%s: teamDiscontinued = %v, want %v", m.MemberID, m.TeamDiscontinued, want)
 			}
 		}
+	}
+}
+
+// Notes on the rows (PRD 008): the count and a snippet, so the one scout with instructions is
+// visible while scanning rather than hidden behind forty clicks.
+func TestShelterRowsCarryTheNoteSummary(t *testing.T) {
+	written := time.Date(2026, 9, 26, 1, 20, 0, 0, time.UTC)
+	st := &fakeShelterStatus{rows: []spejderstatus.SpejderStatus{
+		status("m-noted", "team-1", types.MemberStatusSheltered),
+		status("m-quiet", "team-1", types.MemberStatusSheltered),
+	}}
+	notes := &fakeShelterNotes{rows: map[types.MemberID]spejdernote.Summary{
+		"m-noted": {Count: 3, LatestNote: "Ringet til mor. Hun henter kl. 06.", LatestAt: written},
+	}}
+	got := getShelter(t, shelterAppWithNotes(t, st, notes))
+
+	for _, section := range got.Sections {
+		for _, m := range section.Members {
+			switch m.MemberID {
+			case "m-noted":
+				if m.NoteCount != 3 {
+					t.Errorf("noteCount = %d, want 3", m.NoteCount)
+				}
+				if !strings.Contains(m.LatestNote, "Ringet til mor") {
+					t.Errorf("latestNote = %q", m.LatestNote)
+				}
+				if m.LatestNoteAt == nil {
+					t.Error("latestNoteAt is nil for a scout with notes")
+				}
+			case "m-quiet":
+				// The one that would be a real incident: a note about one child appearing on
+				// another child's row.
+				if m.NoteCount != 0 || m.LatestNote != "" || m.LatestNoteAt != nil {
+					t.Errorf("a scout with no notes inherited some: %+v", m)
+				}
+			}
+		}
+	}
+}
+
+// A note may be 2000 characters; a row shows a line and a half. Truncating on the server keeps a
+// forty-scout screen from carrying 80KB of prose to render forty snippets.
+func TestLatestNoteIsTruncatedServerSide(t *testing.T) {
+	long := strings.Repeat("a", 500)
+	st := &fakeShelterStatus{rows: []spejderstatus.SpejderStatus{
+		status("m-1", "team-1", types.MemberStatusSheltered),
+	}}
+	notes := &fakeShelterNotes{rows: map[types.MemberID]spejdernote.Summary{
+		"m-1": {Count: 1, LatestNote: long},
+	}}
+	got := getShelter(t, shelterAppWithNotes(t, st, notes))
+
+	for _, section := range got.Sections {
+		for _, m := range section.Members {
+			if len([]rune(m.LatestNote)) > noteSnippetLength+1 { // +1 for the ellipsis
+				t.Errorf("snippet is %d runes, want at most %d", len([]rune(m.LatestNote)), noteSnippetLength+1)
+			}
+			if !strings.HasSuffix(m.LatestNote, "…") {
+				t.Errorf("a truncated snippet should say so: %q", m.LatestNote)
+			}
+		}
+	}
+}
+
+// Cutting UTF-8 by bytes produces a replacement glyph, and a snippet ending in ï¿½ reads as corrupted
+// data rather than as an abbreviation. Danish makes this likely rather than theoretical: æ, ø and å
+// are two bytes each.
+func TestTruncateRunesDoesNotSplitCharacters(t *testing.T) {
+	danish := strings.Repeat("æ", 200)
+
+	got := truncateRunes(danish, 10)
+
+	if got != strings.Repeat("æ", 10)+"…" {
+		t.Errorf("truncateRunes = %q", got)
+	}
+	if strings.Contains(got, "\uFFFD") {
+		t.Error("truncation split a character")
+	}
+}
+
+func TestTruncateRunesLeavesShortTextAlone(t *testing.T) {
+	if got := truncateRunes("kort", 10); got != "kort" {
+		t.Errorf("truncateRunes = %q, want the text unchanged and no ellipsis", got)
 	}
 }
 

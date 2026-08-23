@@ -267,7 +267,7 @@ show it, and the risky refactor lands on its own.
 - [x] Task: `Comment` / `UpdateComment` commands, with the note-belongs-to-member check and the
       unchanged-text dirty-check (100)
 - [x] Task: the three note endpoints with OpenAPI annotations (101)
-- [ ] Task: `noteCount` + truncated `latestNote` on the `GET /api/shelter` rows, batched (102)
+- [x] Task: `noteCount` + truncated `latestNote` on the `GET /api/shelter` rows, batched (102)
 - [ ] Task: extract `MemberDetailDialog.vue` from `SosTeamCard.vue`, behaviour-preserving, and
       make it live via `useLiveResource` (103)
 - [ ] Task: `MemberNotes.vue` — thread, add form, edit-in-place, dirty-defer (104)

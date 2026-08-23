@@ -84,6 +84,18 @@ type shelterMember struct {
 	// the button is disabled — and so the server is not deciding what the buttons are.
 	TeamDiscontinued bool `json:"teamDiscontinued"`
 
+	// The note trail, summarised (PRD 008). Notes have to be discoverable **without opening
+	// anything**, or nobody finds the one scout with instructions among forty rows — so a row
+	// carries the count and a snippet, and the thread itself is fetched only when somebody opens
+	// that scout.
+	//
+	// LatestNote is truncated here rather than in the view: a note may be 2000 characters, and a
+	// screen that lists forty scouts should not carry 80KB of prose to render forty one-line
+	// snippets.
+	NoteCount    int        `json:"noteCount"`
+	LatestNote   string     `json:"latestNote"`
+	LatestNoteAt *time.Time `json:"latestNoteAt"`
+
 	// SosID links to the open case, when there is one. There often is not: the shelter may
 	// receive a scout nobody opened a case about, which is exactly why none of this
 	// screen's write actions requires a case.
@@ -198,6 +210,29 @@ func (app *application) showShelterHandler(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// noteSnippetLength is how much of the latest note a row carries.
+//
+// 120 characters is about a line and a half on the screens the crew uses — enough to recognise
+// "Ringet til mor 01.20. Hun henter kl. 06…" without opening anything, which is the entire point of
+// putting it on the row.
+const noteSnippetLength = 120
+
+// truncateRunes shortens a string to at most n runes, marking that it was cut.
+//
+// Runes, not bytes: cutting UTF-8 mid-character produces a replacement glyph, and a snippet that
+// ends in ï¿½ looks like corrupted data rather than an abbreviation — which matters more here than
+// usual, because the text is Danish and æ/ø/å are two bytes each.
+//
+// The ellipsis is a single character rather than three dots, so the result cannot exceed the budget
+// a caller reserved for it.
+func truncateRunes(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n]) + "…"
+}
+
 // membersIn collects the rows for one or more statuses into a section.
 //
 // Always a non-nil slice, which is the point and was found by running it rather than by
@@ -262,6 +297,12 @@ func (app *application) shelterMembers(ctx context.Context, year types.YearSlug,
 		return nil, err
 	}
 
+	// The note trail, summarised for the rows (PRD 008). One batched query, like the placeringer.
+	notes, err := app.models.Note.SummaryByMembers(ctx, year, ids)
+	if err != nil {
+		return nil, err
+	}
+
 	cases := map[types.TeamID]types.SosID{}
 	for _, row := range rows {
 		member := shelterMember{
@@ -296,6 +337,12 @@ func (app *application) shelterMembers(ctx context.Context, year types.YearSlug,
 		// the count reaching zero *is* the fact (PRD 006).
 		if team, ok := patrols[row.CurrentTeamID]; ok {
 			member.TeamDiscontinued = team.ActiveMemberCount == 0
+		}
+		if summary, ok := notes[row.MemberID]; ok {
+			member.NoteCount = summary.Count
+			member.LatestNote = truncateRunes(summary.LatestNote, noteSnippetLength)
+			at := summary.LatestAt
+			member.LatestNoteAt = &at
 		}
 		if id, ok := cases[row.CurrentTeamID]; ok {
 			member.SosID = id
