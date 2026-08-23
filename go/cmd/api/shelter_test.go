@@ -267,9 +267,8 @@ func TestTeamDiscontinuedIsReportedFromTheStrength(t *testing.T) {
 	}
 }
 
-// The sections, in the crew's working order. Transit first is not cosmetic: it is the only
-// section with somebody standing in front of it waiting to be taken in, and the order is the
-// server's to decide so the SPA cannot quietly disagree.
+// The sections, in the crew's working order. "På vej" first because those scouts are the ones
+// something is about to happen to.
 func TestShelterSectionsAreOrderedForTheCrew(t *testing.T) {
 	app := shelterApp(t,
 		&fakeShelterStatus{},
@@ -280,7 +279,7 @@ func TestShelterSectionsAreOrderedForTheCrew(t *testing.T) {
 	)
 	got := getShelter(t, app)
 
-	want := []string{"transit", "sheltered", "waiting", "closed"}
+	want := []string{"onway", "sheltered", "closed"}
 	if len(got.Sections) != len(want) {
 		t.Fatalf("expected %d sections, got %d", len(want), len(got.Sections))
 	}
@@ -313,7 +312,7 @@ func TestShelterIncludesOnlyStartedAndNotActive(t *testing.T) {
 	app := shelterApp(t, st, &fakeShelterPlacements{}, &fakeShelterMembers{}, &fakeShelterPatruljer{}, &fakeShelterSos{})
 	got := getShelter(t, app)
 
-	wantCounts := map[string]int{"transit": 1, "sheltered": 1, "waiting": 1, "closed": 2}
+	wantCounts := map[string]int{"onway": 2, "sheltered": 1, "closed": 2}
 	for slug, want := range wantCounts {
 		if got.Counts[slug] != want {
 			t.Errorf("counts[%q] = %d, want %d", slug, got.Counts[slug], want)
@@ -326,6 +325,32 @@ func TestShelterIncludesOnlyStartedAndNotActive(t *testing.T) {
 				types.MemberStatusRegistered, types.MemberStatusSeated:
 				t.Errorf("%s appears in section %q but does not belong on this screen", m.Status, section.Slug)
 			}
+		}
+	}
+}
+
+// The two "not here yet" statuses share a section, and within it the arrivals come first:
+// somebody getting out of a car is acted on within minutes, somebody by a road is not. The
+// distinction is kept on the row — the status — rather than in the grouping.
+func TestOnwaySectionPutsArrivalsBeforeTheTrailside(t *testing.T) {
+	st := &fakeShelterStatus{rows: []spejderstatus.SpejderStatus{
+		status("m-waiting", "team-1", types.MemberStatusWaiting),
+		status("m-transit", "team-1", types.MemberStatusTransit),
+	}}
+	got := getShelter(t, shelterApp(t, st, &fakeShelterPlacements{}, &fakeShelterMembers{}, &fakeShelterPatruljer{}, &fakeShelterSos{}))
+
+	for _, section := range got.Sections {
+		if section.Slug != "onway" {
+			continue
+		}
+		if len(section.Members) != 2 {
+			t.Fatalf("expected both scouts in one section, got %d", len(section.Members))
+		}
+		if section.Members[0].Status != types.MemberStatusTransit {
+			t.Errorf("first row is %q, want transit — the rows that need doing belong on top", section.Members[0].Status)
+		}
+		if section.Members[1].Status != types.MemberStatusWaiting {
+			t.Errorf("second row is %q, want waiting", section.Members[1].Status)
 		}
 	}
 }

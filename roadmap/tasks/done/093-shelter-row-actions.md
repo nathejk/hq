@@ -91,3 +91,7 @@ Toasts for failures via `useToast`, following `PatruljeActiveView.vue`. A no-op 
   for the released scout's patrol (its strength is 0) and false for the others, so the Genforenet
   button is correctly disabled for exactly the patrol that will never reach the finish.
 - 2026-08-23 17:56 — `vue-tsc` clean on my files; Go suite green. Moving to done.
+- 2026-08-23 18:10 — Superseded in part (appended after completion, not edited): the sections
+  were merged into one **På vej** list (PRD 007 §6), so the actions now key off the member's
+  `status` rather than the section slug. The one-click / two-click split described above is
+  unchanged — it was always a property of the status, and the merge just made that explicit.

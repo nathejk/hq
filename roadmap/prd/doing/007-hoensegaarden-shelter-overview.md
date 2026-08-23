@@ -3,7 +3,7 @@
 **Status:** doing
 **Author:** agent session (with the Hønsegården crew's request)
 **Created:** 2026-08-23
-**Last updated:** 2026-08-23
+**Last updated:** 2026-08-23 (sections merged — see §6)
 **Approved:** 2026-08-23
 **Shipped:**
 **Target users:** organizer (Hønsegården crew), organizer (nødtelefon operator, as a reader)
@@ -102,7 +102,7 @@ the custody chain from the shelter end, which is where the count actually settle
   so I can close the case.
 
 **Happy path.** A car radios in with two scouts. The crew opens Hønsegården and sees them
-at the top of the screen under *I bil — på vej hertil*, with the patrol they started with,
+at the top of the screen under *På vej*, with the patrol they started with,
 how long they have been in the car, and the case number. The car arrives; the crew selects
 both rows, presses **Modtaget**, and types `Telt 4` — offered as a suggestion, because two
 other scouts are already there — and both move to *I Hønsegården*.
@@ -156,23 +156,28 @@ into *Afsluttet*. The other's patrol crosses the line at 06:10; the crew presses
       (they are or were on the route).
 - [ ] The list is grouped, in this order, because the groups answer different questions
       and are read at different rates:
-      - **I bil — på vej hertil** (`transit`) — the arrivals queue. This is the section a
-        crew member opens when a car pulls up: the scouts getting out of it are found here
-        and accepted from here. It is first because it is the only section with somebody
-        standing in front of it, waiting.
+      - **På vej** (`transit`, then `waiting`) — everybody who is not here yet. First, because
+        these are the scouts something is about to happen to.
       - **I Hønsegården** (`sheltered`) — who is here, with placering.
-      - **Afventer afhentning** (`waiting`) — still out on the trail. Not yet the
-        shelter's responsibility to act on, but its warning of what is coming.
-      - **Afsluttet** (`reunited`, `released`) — collapsed by default, kept for the record
-        and for the handover between shifts.
+      - **Afsluttet** (`reunited`, `released`) — collapsed by default, kept for the record and
+        for the handover between shifts.
 
-      `transit` and `waiting` are deliberately **not** one "På vej" section. They look
-      alike on a status list and mean opposite things to this crew: a scout in a car is
-      about to be their problem and is acted on within minutes, a scout by a road is
-      somebody else's problem for now. Merging them buries the actionable rows among rows
-      that must not be acted on.
+      **Revised 2026-08-23, after the crew saw it working.** These first two sections were
+      originally three: `transit` and `waiting` were deliberately kept apart, on the argument
+      that they look alike on a status list and mean opposite things — a scout in a car is acted
+      on within minutes, a scout by a road is not — so merging them would bury the actionable
+      rows. The crew's answer, from using it: to them it is one list of scouts who are not here
+      yet, and two headings for that is noise on a screen read at 3am.
+
+      Two things carry the distinction instead, which is what makes the merge safe rather than
+      merely simpler:
+      - Within *På vej*, `transit` sorts above `waiting`, so the rows that need doing are still
+        at the top.
+      - The actions key off the **member's status**, not the section. Accepting a scout out of a
+        car is still one click; accepting one the platform thinks is on the trail still asks for
+        confirmation. The status column names which is which.
 - [ ] **Accepting several scouts at once.** A car arrives with three, and they arrive
-      together. The *I bil* section supports multi-select with a single **Modtaget** action
+      together. The *På vej* section supports multi-select with a single **Modtaget** action
       over the selection and one placering applied to all of them — scouts off one car are
       normally bedded down together. One HTTP request per member is fine: unlike
       whole-team collection there is no atomicity requirement, because each acceptance is
@@ -250,19 +255,17 @@ in `components/Navigation.vue` between **Nødtelefon** and **Betalinger** — it
 race-night screen and belongs beside the other one.
 
 Layout: a header strip with the group counts and the in-our-care total, then PrimeVue
-`DataTable`s under Danish headings. **I bil — på vej hertil** first, because it is the
-arrivals queue and the only section with somebody standing in front of it; **I
-Hønsegården** second, the section a parent at the door is answered from. When *I bil* is
-empty it collapses to a single quiet line ("ingen på vej") rather than an empty table, so
-it does not push the rest of the screen down all night.
+`DataTable`s under Danish headings. **På vej** first, because those scouts are the ones something
+is about to happen to; **I Hønsegården** second, the section a parent at the door is answered
+from. When *På vej* is empty it collapses to a single quiet line ("ingen på vej") rather than an
+empty table, so it does not push the rest of the screen down all night.
 
-Row actions are buttons in the row, not a hidden menu — a tired volunteer should not have
-to discover them. The primary action per section differs: *I bil* rows offer **Modtaget**,
-both per row and over a multi-selection; *I Hønsegården* rows offer **Hentet af
-forældre** / **Genforenet med patruljen** and an inline placering field; *Afventer
-afhentning* rows offer no primary action (accepting one is possible but lives behind the
-same confirm as accepting a `racing` scout — it asserts an arrival the platform has no
-pickup for); *Afsluttet* rows offer nothing.
+Row actions are buttons in the row, not a hidden menu — a tired volunteer should not have to
+discover them. **The action set is chosen by the member's status, not by the section**, which is
+what lets *På vej* hold both kinds of scout: `transit` rows offer a one-click **Modtaget**;
+`waiting` rows offer the same behind a confirm, since it asserts an arrival the platform has no
+pickup for; `sheltered` rows offer **Hentet af forældre** / **Genforenet med patruljen** and an
+inline placering field; *Afsluttet* rows offer nothing.
 
 The placering combobox suggests the placeringer already in use tonight and accepts
 anything typed. Placing a multi-selection asks once and applies to all.
@@ -392,11 +395,12 @@ and emits no signal, and the screen would look live and never update. The entity
 stays `spejder`, since the subjects are spejder subjects.
 
 **Dependencies & risks.**
-- *The arrivals queue is only as good as its input, and its input is not ours.* **The
+- *The arrivals rows are only as good as their input, and their input is not ours.* **The
   crew's primary section is `transit`, and nothing in hq publishes `transit` except the
   nødtelefon operator's manual override.** Until the car interface exists, a car whose
   pickup nobody recorded arrives with scouts who are still `waiting` — or still `racing` —
-  and *I bil* is empty while the crew is receiving people. This is the single biggest risk
+  and nobody in *På vej* carries the `transit` status while the crew is receiving people. This is
+  the single biggest risk
   to the feature, and it is a process risk rather than a code one, so the design absorbs
   it in two ways rather than pretending it away: accepting from `waiting` and from
   `racing` is a supported action, and the search field (§6) reaches a scout in no section
@@ -431,19 +435,21 @@ stays `spejder`, since the subjects are spejder subjects.
 Sequenced so the screen is useful after the first frontend task and complete after the
 last. Backend read path first, because the write actions are worthless without the list.
 
-- [ ] Task: `spejderstatus.GetByStatuses` query + tests (086)
-- [ ] Task: `shelter` projection (table, consumer, querier incl. `DistinctPlacements`) for
+- [x] Task: `spejderstatus.GetByStatuses` query + tests (086)
+- [x] Task: `shelter` projection (table, consumer, querier incl. `DistinctPlacements`) for
       placering, wired into the `projections` slice (087)
-- [ ] Task: `ShelterPlaced` event + `Placement` on `ShelterAccepted` in
+- [x] Task: `ShelterPlaced` event + `Placement` on `ShelterAccepted` in
       `spejderstatus/messages.go` (088)
-- [ ] Task: `AcceptIntoShelter` / `CompleteHandover` / `SetPlacement` commands, with
+- [x] Task: `AcceptIntoShelter` / `CompleteHandover` / `SetPlacement` commands, with
       dirty-checks and the optional-case relaxation of `memberStatusOperation` (089)
-- [ ] Task: `GET /api/shelter` handler with OpenAPI annotations (090)
-- [ ] Task: the three write endpoints with OpenAPI annotations (091)
-- [ ] Task: `HoensegaardView.vue` — grouped read-only list with *I bil* first, live via
+      — `SetPlacement` landed on the `shelter` commander instead, because a command belongs
+      with the read model it dirty-checks against and spejderstatus cannot import it
+- [x] Task: `GET /api/shelter` handler with OpenAPI annotations (090)
+- [x] Task: the three write endpoints with OpenAPI annotations (091)
+- [x] Task: `HoensegaardView.vue` — grouped read-only list with *På vej* first, live via
       `useLiveResource`, route + nav icon (092)
-- [ ] Task: row actions (modtaget / handover) wired to the endpoints (093)
-- [ ] Task: multi-select acceptance in the *I bil* section, one placering for the selection
+- [x] Task: row actions (modtaget / handover) wired to the endpoints (093)
+- [ ] Task: multi-select acceptance in the *På vej* section, one placering for the selection
       (094)
 - [ ] Task: placering combobox — suggestions from `DistinctPlacements`, free text accepted,
       dirty-defer and the "updates paused" affordance (095)
@@ -502,7 +508,8 @@ write path is only truly testable with people arriving.
 - **`reunited` — who decides the patrol finished?** There is no patrol-finish event. Is the
   crew's judgement enough (proposed), or should this wait on a finish signal?
 - **Should the shelter be able to accept a `racing` scout?** §5 argues yes, because it
-  happens, and §8 now leans on it as the mitigation for an empty arrivals queue. It means
+  happens, and §8 now leans on it as the mitigation for nobody being in *På vej* with a
+  `transit` status. It means
   the screen can create a lifecycle jump with no withdrawal recorded. Confirm with the
   nødtelefon owners.
 - **Nav icon.** FontAwesome Free has no chicken. `fa-kiwi-bird` is the nearest bird,

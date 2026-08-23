@@ -269,11 +269,10 @@ const reuniteTooltip = (member: ShelterMember) =>
       </h2>
 
       <!--
-        An empty arrivals queue is one quiet line, not an empty table: it is empty most of the
-        night, and a table's worth of chrome would push the sections that matter off the
-        screen.
+        An empty "På vej" is one quiet line, not an empty table: it is empty most of the night,
+        and a table's worth of chrome would push the sections that matter off the screen.
       -->
-      <p v-if="section.slug === 'transit' && !section.members.length" class="text-gray-500 italic">
+      <p v-if="section.slug === 'onway' && !section.members.length" class="text-gray-500 italic">
         Ingen på vej
       </p>
 
@@ -372,15 +371,16 @@ const reuniteTooltip = (member: ShelterMember) =>
 
         <!--
           Actions in the row, not behind a menu: a tired volunteer should not have to discover
-          them. The set differs per section because the crew's next move differs — an arriving
-          scout is received, a sheltered one is handed on, and a closed row is history.
+          them. Keyed on the **member's status**, not the section — "På vej" holds both scouts in
+          a car and scouts by a road, and the two are received differently even though the crew
+          reads them as one list.
         -->
         <Column v-if="section.slug !== 'closed'" header="Handling">
           <template #body="{ data: member }">
             <div class="flex flex-wrap gap-2">
-              <!-- One click: frequent, and its mistake is cheap. -->
+              <!-- Out of a car: one click. Frequent, and its mistake is cheap. -->
               <Button
-                v-if="section.slug === 'transit'"
+                v-if="member.status === 'transit'"
                 label="Modtaget"
                 icon="pi pi-check"
                 size="small"
@@ -389,10 +389,11 @@ const reuniteTooltip = (member: ShelterMember) =>
               />
 
               <!--
-                Two clicks: this asserts an arrival no pickup was ever recorded for, so it is
-                either a real gap in the record or the wrong row.
+                Still on the trail as far as the platform knows: two clicks, because this
+                asserts an arrival no pickup was ever recorded for — either a real gap in the
+                record or the wrong row.
               -->
-              <template v-else-if="section.slug === 'waiting'">
+              <template v-else-if="member.status === 'waiting'">
                 <Button
                   v-if="!isArmed(member, 'accept')"
                   label="Modtaget"
@@ -421,7 +422,7 @@ const reuniteTooltip = (member: ShelterMember) =>
                 Both handovers are two clicks. They record that a child left our care, there is
                 no undo, and a mis-click marks a scout released while they are asleep in a tent.
               -->
-              <template v-else-if="section.slug === 'sheltered'">
+              <template v-else-if="member.status === 'sheltered'">
                 <template v-if="isArmed(member, 'released')">
                   <Button
                     label="Bekræft: hentet af forældre"

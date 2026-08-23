@@ -146,13 +146,19 @@ func (app *application) showShelterHandler(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	// The order is the crew's working order, and it is the server's to decide: the arrivals
-	// queue first because it is the only section with somebody standing in front of it, the
-	// shelter itself second because that is what a parent at the door is answered from.
+	// The order is the crew's working order, and it is the server's to decide.
+	//
+	// `transit` and `waiting` share one section (decided 2026-08-23, with the crew): to them it
+	// is one list of scouts who are not here yet. Within it the arrivals come first — somebody
+	// getting out of a car is acted on within minutes, somebody by a road is not — so the rows
+	// that need doing are at the top without the sections being split.
+	//
+	// What the merge does *not* lose is the distinction itself: the status column names it, and
+	// the actions key off the member's status rather than the section, so accepting a `waiting`
+	// scout still asks for confirmation while accepting one out of a car does not.
 	sections := []shelterSection{
-		{Slug: "transit", Label: "I bil — på vej hertil", Members: membersIn(byStatus, types.MemberStatusTransit)},
+		{Slug: "onway", Label: "På vej", Members: membersIn(byStatus, types.MemberStatusTransit, types.MemberStatusWaiting)},
 		{Slug: "sheltered", Label: "I Hønsegården", Members: membersIn(byStatus, types.MemberStatusSheltered)},
-		{Slug: "waiting", Label: "Afventer afhentning", Members: membersIn(byStatus, types.MemberStatusWaiting)},
 		{Slug: "closed", Label: "Afsluttet", Members: membersIn(byStatus, types.MemberStatusReunited, types.MemberStatusReleased)},
 	}
 	counts := map[string]int{}

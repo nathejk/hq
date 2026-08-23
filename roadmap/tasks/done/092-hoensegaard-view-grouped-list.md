@@ -111,3 +111,7 @@ click.
   belongs with 093, and PRD 004's own closing note is that ticking a box you did not verify is
   how a PRD ends up lying. Carried, not ticked.
 - 2026-08-23 14:56 — Moving to done with that one item carried to 093.
+- 2026-08-23 18:10 — Superseded in part (appended after completion, not edited): the four
+  sections above are now three. `transit` and `waiting` were merged into one **På vej** list at
+  the crew's request after they used the screen — see PRD 007 §6 for the revision and what
+  carries the distinction instead. The rest of this task stands.
