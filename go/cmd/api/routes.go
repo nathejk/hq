@@ -98,6 +98,12 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/placement", app.setPlacementHandler)
 	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/handover", app.completeHandoverHandler)
 
+	// Member notes (PRD 008). The prose trail about a scout, read and written from every screen
+	// that shows a member — no sosId, and never written to an SOS timeline.
+	router.HandlerFunc(http.MethodGet, "/api/member/:memberId/notes", app.listMemberNotesHandler)
+	router.HandlerFunc(http.MethodPost, "/api/member/:memberId/notes", app.createMemberNoteHandler)
+	router.HandlerFunc(http.MethodPatch, "/api/member/:memberId/notes/:noteId", app.updateMemberNoteHandler)
+
 	// Collecting a whole patrol is one action on the *case*, not four on members:
 	// three separate calls could half-succeed and split a team across two states.
 	router.HandlerFunc(http.MethodPost, "/api/sos/:id/team/:teamId/collect", app.collectTeamHandler)

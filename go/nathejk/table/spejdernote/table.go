@@ -31,6 +31,7 @@ import (
 	_ "github.com/doug-martin/goqu/v9/dialect/mysql"
 	"github.com/google/uuid"
 	"github.com/jrgensen/cqrs"
+	"github.com/jrgensen/stream"
 	"github.com/nathejk/shared-go/types"
 
 	_ "embed"
@@ -78,19 +79,21 @@ type Summary struct {
 }
 
 type table struct {
+	commander
 	consumer
 	querier
 }
 
 // New builds the projection.
 //
-// No publisher yet: this task is the read model, and the commands that publish notes arrive with
-// task 100, which is what will add one. Taking a publisher now and leaving it unused would be a
-// field nobody could explain.
-func New(w cqrs.Writer, r *sql.DB) *table {
+// Publisher for the commander, writer for the consumer, *sql.DB for the querier — and the querier is
+// handed to the commander, which dirty-checks corrections against it.
+func New(p stream.Publisher, w cqrs.Writer, r *sql.DB) *table {
+	q := querier{db: r, r: goqu.New("mysql", r)}
 	t := &table{
-		consumer: consumer{w: w},
-		querier:  querier{db: r, r: goqu.New("mysql", r)},
+		commander: commander{p: p, q: &q},
+		consumer:  consumer{w: w},
+		querier:   q,
 	}
 	if err := w.Consume(t.CreateTableSql()); err != nil {
 		log.Printf("Error creating table %q", err)

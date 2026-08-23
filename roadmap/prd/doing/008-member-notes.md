@@ -264,9 +264,9 @@ show it, and the risky refactor lands on its own.
 
 - [x] Task: `spejdernote` table + `Commented`/`CommentUpdated` events + projection, wired into the
       `projections` slice (099)
-- [ ] Task: `Comment` / `UpdateComment` commands, with the note-belongs-to-member check and the
+- [x] Task: `Comment` / `UpdateComment` commands, with the note-belongs-to-member check and the
       unchanged-text dirty-check (100)
-- [ ] Task: the three note endpoints with OpenAPI annotations (101)
+- [x] Task: the three note endpoints with OpenAPI annotations (101)
 - [ ] Task: `noteCount` + truncated `latestNote` on the `GET /api/shelter` rows, batched (102)
 - [ ] Task: extract `MemberDetailDialog.vue` from `SosTeamCard.vue`, behaviour-preserving, and
       make it live via `useLiveResource` (103)

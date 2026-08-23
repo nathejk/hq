@@ -12,6 +12,7 @@ import (
 	"nathejk.dk/nathejk/table/checkpoint"
 	"nathejk.dk/nathejk/table/shelter"
 	"nathejk.dk/nathejk/table/sos"
+	"nathejk.dk/nathejk/table/spejdernote"
 	"nathejk.dk/nathejk/table/spejderstatus"
 	"nathejk.dk/nathejk/table/year"
 )
@@ -31,6 +32,10 @@ type Commands struct {
 	// with the read model it dirty-checks against — and because spejderstatus cannot import
 	// the shelter table (PRD 007; see shelter/commands.go).
 	Shelter shelter.Commands
+
+	// Note is the prose trail about a scout (PRD 008). Its own package for the same reason:
+	// notes are neither a status nor a case.
+	Note spejdernote.Commands
 
 	Team interface {
 		UpdatePatrulje(types.TeamID, Patrulje, Contact, []Spejder) error

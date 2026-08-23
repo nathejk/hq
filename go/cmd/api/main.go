@@ -182,9 +182,8 @@ func main() {
 	// spejderstatus and writes an independent fact, so neither projection depends on the
 	// other's ordering.
 	sheltertable := shelter.New(publisher, writer, db.DB(), spejderstatustable)
-	// The prose trail about a scout (PRD 008). Publishes nothing yet — the commands arrive with
-	// task 100.
-	spejdernotetable := spejdernote.New(writer, db.DB())
+	// The prose trail about a scout (PRD 008).
+	spejdernotetable := spejdernote.New(publisher, writer, db.DB())
 	checkgroup := checkgroup.New(publisher, writer, reader)
 	checkpoint := checkpoint.New(publisher, writer, reader)
 	checkpersonnel := checkpersonnel.New(publisher, writer, reader)
@@ -299,7 +298,7 @@ func main() {
 		logger.PrintFatal(err, nil)
 	}
 
-	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, vehicletable, ordertable, sostable, spejderstatustable, sheltertable)
+	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, vehicletable, ordertable, sostable, spejderstatustable, sheltertable, spejdernotetable)
 	cmds := commands.New(publisher, models)
 	cmds.Year = year
 	cmds.Checkpoint = checkpoint
@@ -311,6 +310,7 @@ func main() {
 	cmds.Sos = sostable
 	cmds.Member = spejderstatustable
 	cmds.Shelter = sheltertable
+	cmds.Note = spejdernotetable
 
 	expvar.NewString("version").Set(version)
 	expvar.NewInt("timestamp").Set(time.Now().Unix())
