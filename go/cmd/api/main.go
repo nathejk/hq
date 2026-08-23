@@ -53,6 +53,7 @@ import (
 	"nathejk.dk/nathejk/table/scan"
 	"nathejk.dk/nathejk/table/shelter"
 	"nathejk.dk/nathejk/table/sos"
+	"nathejk.dk/nathejk/table/spejdernote"
 	"nathejk.dk/nathejk/table/spejderstatus"
 	"nathejk.dk/nathejk/table/year"
 )
@@ -181,6 +182,9 @@ func main() {
 	// spejderstatus and writes an independent fact, so neither projection depends on the
 	// other's ordering.
 	sheltertable := shelter.New(publisher, writer, db.DB(), spejderstatustable)
+	// The prose trail about a scout (PRD 008). Publishes nothing yet — the commands arrive with
+	// task 100.
+	spejdernotetable := spejdernote.New(writer, db.DB())
 	checkgroup := checkgroup.New(publisher, writer, reader)
 	checkpoint := checkpoint.New(publisher, writer, reader)
 	checkpersonnel := checkpersonnel.New(publisher, writer, reader)
@@ -262,6 +266,7 @@ func main() {
 		table.NewPatruljeStatus(writer),
 		spejderstatustable,
 		sheltertable,
+		spejdernotetable,
 		personneltable,
 		paymenttable,
 		spejdertable,

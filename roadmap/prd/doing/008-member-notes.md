@@ -262,7 +262,7 @@ made live; hosts wired in `HoensegaardView.vue`, `SosTeamCard.vue`, `PatruljeVie
 Backend first, then the extraction, then the hosts — so the trail exists before anything tries to
 show it, and the risky refactor lands on its own.
 
-- [ ] Task: `spejdernote` table + `Commented`/`CommentUpdated` events + projection, wired into the
+- [x] Task: `spejdernote` table + `Commented`/`CommentUpdated` events + projection, wired into the
       `projections` slice (099)
 - [ ] Task: `Comment` / `UpdateComment` commands, with the note-belongs-to-member check and the
       unchanged-text dirty-check (100)
