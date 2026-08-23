@@ -270,7 +270,7 @@ show it, and the risky refactor lands on its own.
 - [x] Task: `noteCount` + truncated `latestNote` on the `GET /api/shelter` rows, batched (102)
 - [ ] Task: extract `MemberDetailDialog.vue` from `SosTeamCard.vue`, behaviour-preserving, and
       make it live via `useLiveResource` (103)
-- [ ] Task: `MemberNotes.vue` — thread, add form, edit-in-place, dirty-defer (104)
+- [x] Task: `MemberNotes.vue` — thread, add form, edit-in-place, dirty-defer (104)
 - [ ] Task: wire the dialog and the note summary column into `HoensegaardView.vue` (105)
 - [ ] Task: wire the dialog into `SosTeamCard.vue` and `PatruljeView.vue` (106)
 
