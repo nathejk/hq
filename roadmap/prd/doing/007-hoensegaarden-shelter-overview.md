@@ -451,7 +451,7 @@ last. Backend read path first, because the write actions are worthless without t
 - [x] Task: row actions (modtaget / handover) wired to the endpoints (093)
 - [ ] Task: multi-select acceptance in the *På vej* section, one placering for the selection
       (094)
-- [ ] Task: placering combobox — suggestions from `DistinctPlacements`, free text accepted,
+- [x] Task: placering combobox — suggestions from `DistinctPlacements`, free text accepted,
       dirty-defer and the "updates paused" affordance (095)
 - [ ] Task: search field for accepting a scout not in any section (096)
 - [ ] Task: sos case summarising entry for shelter operations (reuses PRD 006's

@@ -73,15 +73,66 @@ const { data, pending, error, refresh } = useLiveResource(
   { dependsOn: ['spejder', 'patrulje'] },
 )
 
-const sections = computed<ShelterSection[]>(() => data.value?.sections ?? [])
-const counts = computed<Record<string, number>>(() => data.value?.counts ?? {})
+// --- Deferring updates while somebody is typing ---
+//
+// This screen is read-only except for one field, and that field is enough to make it an
+// editor. If a revalidation landed while a crew member was typing a tent name, PrimeVue would
+// re-render the table under them: the row can move between sections, the input loses focus
+// mid-word, and the half-typed value is gone. At 3am, with a queue at the door, that is how an
+// operator stops trusting the screen.
+//
+// So the payload is mirrored into `applied` and everything renders from there. Incoming
+// payloads are held back while an editor is open and applied when it closes — the same shape as
+// `KlanListView`, with one deliberate difference: the pause lasts only as long as a field is
+// actually open, not until somebody presses a save button. Nothing else on this page is
+// editable, so there is nothing else to protect and no reason to keep the whole night's updates
+// waiting.
+type ShelterPayload = NonNullable<typeof data.value>
+
+const applied = ref<ShelterPayload | null>(null)
+
+/**
+ * The row being edited, and the draft value. One at a time: you can only type in one field.
+ *
+ * Declared here, above the watch that reads it, and not with the rest of the editor further
+ * down — the watch below runs synchronously at setup (`immediate: true`), so a later `const`
+ * would still be in its temporal dead zone and the whole view would fail to mount.
+ */
+const editing = ref<{ memberId: string; value: string } | null>(null)
+
+/** A payload arrived while an editor was open and has not been shown yet. */
+const deferred = ref(false)
+
+watch(
+  data,
+  (payload) => {
+    if (!payload) return
+    if (editing.value) {
+      deferred.value = true
+      return
+    }
+    applied.value = payload
+    deferred.value = false
+  },
+  { immediate: true },
+)
+
+/** Show whatever arrived while the editor was open. */
+const applyDeferred = () => {
+  if (!deferred.value) return
+  if (data.value) applied.value = data.value
+  deferred.value = false
+}
+
+const sections = computed<ShelterSection[]>(() => applied.value?.sections ?? [])
+const counts = computed<Record<string, number>>(() => applied.value?.counts ?? {})
 
 // Status labels come from the server (PRD 006 §6). A label map here would be the second copy
 // of the same Danish copy, and the two drift until one of them says "waiting" to a volunteer
 // at 3am.
 const statusLabels = computed<Record<string, string>>(() => {
   const labels: Record<string, string> = {}
-  for (const s of data.value?.memberStatuses ?? []) labels[s.slug] = s.label
+  for (const s of applied.value?.memberStatuses ?? []) labels[s.slug] = s.label
   return labels
 })
 const statusLabel = (slug: string) => statusLabels.value[slug] ?? slug
@@ -93,7 +144,7 @@ const now = useNow()
 // A wrong number is worse than no number, and this is the number the organisers go home on.
 // Same argument, and the same mechanism, as the nødtelefon's in-care badge.
 const { isDisconnected } = useConnectionState()
-const careUnavailable = computed(() => isDisconnected.value || !!error.value || !data.value)
+const careUnavailable = computed(() => isDisconnected.value || !!error.value || !applied.value)
 
 // Highlighted when a scout has been waiting too long. The threshold is a placeholder and lives
 // in one place (task 082 settles it); only `waiting` is measured, because a scout in a car or
@@ -105,6 +156,69 @@ const isOverdue = (member: ShelterMember) =>
 // recorded is the crew's next job, so it must not render as an empty cell that looks like
 // nothing to do.
 const placementText = (member: ShelterMember) => member.placement || 'ikke placeret'
+
+// --- The placering editor (PRD 007 §6, task 095) ---
+//
+// The zones are not known until race start, so there is nothing to configure and no picker to
+// build from a list: the suggestions are the placeringer the crew has already typed tonight,
+// most-used first, and free text is always accepted. The first scout into a tent is typed, every
+// one after that is picked — which is what stops "Telt 4", "telt4" and "t4" becoming three
+// places without anybody setting anything up.
+//
+// `editing` itself is declared further up, next to the deferral watch that reads it.
+
+/** Suggestions currently offered, filtered as the crew types. */
+const suggestions = ref<string[]>([])
+
+const zones = computed<string[]>(() => (applied.value?.placements ?? []).map((p) => p.placement))
+
+const isEditing = (member: ShelterMember) => editing.value?.memberId === member.memberId
+
+const startEditing = (member: ShelterMember) => {
+  editing.value = { memberId: member.memberId, value: member.placement }
+  suggestions.value = zones.value
+}
+
+const cancelEditing = () => {
+  editing.value = null
+  applyDeferred()
+}
+
+// Ordered by use, not alphabetically, and unfiltered on an empty query: the tent four scouts are
+// already in is the likeliest answer for the fifth, and it should be the first thing offered.
+const completePlacement = (event: { query: string }) => {
+  const query = event.query.trim().toLowerCase()
+  suggestions.value = query
+    ? zones.value.filter((zone) => zone.toLowerCase().includes(query))
+    : zones.value
+}
+
+const savePlacement = async (member: ShelterMember) => {
+  const draft = (editing.value?.value ?? '').trim()
+  if (!draft) {
+    // The server refuses this too, but saying so here saves a round trip and phrases it as the
+    // choice it is: clearing a placering is not offered, because "nowhere" is not a fact about a
+    // child in our care. If they moved, the answer is where to.
+    toast.add({
+      severity: 'warn',
+      life: 5000,
+      summary: 'Placering mangler',
+      detail: 'Skriv hvor spejderen er — en tom placering kan ikke gemmes',
+    })
+    return
+  }
+  // Unchanged: close the editor and publish nothing. The server would answer 200 for this too
+  // (the command dirty-checks), but a request that cannot change anything is not worth making.
+  if (draft === member.placement) {
+    cancelEditing()
+    return
+  }
+  await run(member, 'Kunne ikke gemme placeringen', () =>
+    http.put(`/member/${member.memberId}/placement`, { placement: draft }),
+  )
+  editing.value = null
+  applyDeferred()
+}
 
 const filters = ref({ global: { value: null, matchMode: FilterMatchMode.CONTAINS } })
 
@@ -249,13 +363,27 @@ const reuniteTooltip = (member: ShelterMember) =>
       >
         <span class="text-sm text-gray-700">I vores varetægt</span>
         <span v-if="careUnavailable" class="text-sm italic text-gray-500">ingen forbindelse</span>
-        <span v-else class="font-nathejk text-xl">{{ data?.care?.total ?? 0 }}</span>
+        <span v-else class="font-nathejk text-xl">{{ applied?.care?.total ?? 0 }}</span>
       </div>
 
       <IconField>
         <InputIcon><i class="pi pi-search" /></InputIcon>
         <InputText v-model="filters['global'].value" placeholder="Søg efter navn..." />
       </IconField>
+    </div>
+
+    <!--
+      Said on screen, not just implied: while a placering is being typed the table is frozen, and
+      an operator who knows a car just arrived deserves to know why the list has not changed yet.
+      It disappears the moment the field closes.
+    -->
+    <div
+      v-if="editing"
+      class="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800"
+    >
+      <i class="pi pi-pause mr-2" aria-hidden="true" />
+      Skriver placering — opdateringer fra andre er sat på pause indtil du gemmer eller fortryder.
+      <span v-if="deferred" class="font-semibold">Der er nye ændringer, som vises når du er færdig.</span>
     </div>
 
     <!--
@@ -336,9 +464,58 @@ const reuniteTooltip = (member: ShelterMember) =>
 
         <Column v-if="section.slug === 'sheltered'" field="placement" header="Placering" sortable>
           <template #body="{ data: member }">
-            <span :class="member.placement ? '' : 'italic text-amber-700'">
-              {{ placementText(member) }}
-            </span>
+            <!--
+              An editable combobox: suggestions are the placeringer already in use tonight, and
+              anything typed is accepted. There is no zone list to pick from because the zones do
+              not exist until race start — they define themselves as the night goes on.
+            -->
+            <div v-if="isEditing(member)" class="flex items-center gap-1">
+              <AutoComplete
+                v-model="editing!.value"
+                :suggestions="suggestions"
+                dropdown
+                :maxlength="64"
+                size="small"
+                inputClass="!w-40"
+                placeholder="fx Telt 4"
+                autofocus
+                @complete="completePlacement"
+                @keyup.enter="savePlacement(member)"
+                @keyup.escape="cancelEditing()"
+              />
+              <Button
+                icon="pi pi-check"
+                size="small"
+                :loading="isBusy(member)"
+                v-tooltip.top="'Gem placering (Enter)'"
+                @click="savePlacement(member)"
+              />
+              <Button
+                icon="pi pi-times"
+                size="small"
+                text
+                severity="secondary"
+                v-tooltip.top="'Fortryd (Esc)'"
+                @click="cancelEditing()"
+              />
+            </div>
+
+            <!--
+              Not editing: the placering is the button. A scout with nowhere recorded shows in
+              amber, because that is the crew's next job rather than an empty cell.
+            -->
+            <Button
+              v-else
+              :label="placementText(member)"
+              :icon="member.placement ? 'pi pi-pencil' : 'pi pi-map-marker'"
+              iconPos="right"
+              link
+              size="small"
+              class="!p-0"
+              :class="member.placement ? '' : '!text-amber-700 italic'"
+              v-tooltip.top="'Sæt eller ret placering'"
+              @click="startEditing(member)"
+            />
           </template>
         </Column>
 
