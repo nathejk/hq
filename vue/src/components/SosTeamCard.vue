@@ -2,8 +2,8 @@
 import { computed, ref, watch } from 'vue'
 import { http } from '@/plugins/axios'
 import { useLiveResource } from '@/composables/useLiveResource'
-import { parseApiDate } from '@/composables/datefilters'
-import { memberEventPhrase, formatDateTime, memberStatusBadge } from '@/composables/sos'
+import { memberStatusBadge, memberStatusColour } from '@/composables/sos'
+import MemberDetailDialog from '@/components/MemberDetailDialog.vue'
 
 // The patrols associated with a case, and their members.
 //
@@ -104,25 +104,11 @@ const disassociate = async (teamId: string) => {
 // (Udgår and Transit are both amber). The label appears in the modal, on the one member
 // being looked at.
 const statusLabel = (slug: string) => memberStatusBadge(slug).label
-const statusSeverity = (slug: string) => memberStatusBadge(slug).severity
 const statusIcon = (slug: string) => memberStatusBadge(slug).icon
 
-const statusColour = (slug: string) => {
-  switch (statusSeverity(slug)) {
-    case 'success':
-      return 'text-green-600'
-    case 'danger':
-      return 'text-red-600'
-    case 'warn':
-      return 'text-amber-600'
-    case 'info':
-      return 'text-blue-500'
-    case 'secondary':
-      return 'text-gray-500'
-    default:
-      return 'text-gray-400'
-  }
-}
+// Moved to composables/sos.ts as `memberStatusColour` (task 103): the member dialog's history
+// timeline needs the same mapping, and a copy in each component is how the two would drift.
+const statusColour = memberStatusColour
 
 // A member is self-carrying up to and including `waiting`: they have covered every
 // metre on their own legs. Those are the transitions this screen owns. From `transit`
@@ -202,6 +188,11 @@ interface TeamRef {
 }
 
 const detail = ref<{ memberId: string; team: TeamRow } | null>(null)
+
+// The payload the dialog loaded, mirrored here because two things outside the dialog need facts from
+// it: the switch dialog's "from" patrol, and the strength the withdrawal warning is measured against.
+// Fed by the dialog's `loaded` event rather than fetched again — a second request for the same member
+// would give two copies that disagree the moment one revalidates.
 const detailData = ref<{
   member: {
     name: string
@@ -217,7 +208,6 @@ const detailData = ref<{
   currentTeam: TeamRef | null
   history: { seq: number; status: string; event: string; createdAt: string }[]
 } | null>(null)
-const detailPending = ref(false)
 
 // The open member as the *card* sees them — live, because props.teams is. This is what the
 // modal's status badge and action buttons read, so they cannot disagree with the row behind
@@ -229,29 +219,9 @@ const detailMember = computed<MemberRow | null>(() => {
   return team?.members.find((m) => m.memberId === d.memberId) ?? null
 })
 
-const loadDetail = async () => {
-  const d = detail.value
-  if (!d) return
-  detailPending.value = true
-  try {
-    const response = await http.get(`/member/${d.memberId}`, {
-      // The member's team, so a member with no status row yet can still be found on a
-      // roster — the endpoint cannot infer it for somebody the lifecycle has not touched.
-      params: { teamId: d.team.teamId },
-    })
-    detailData.value = response.data
-  } catch {
-    detailData.value = null
-    // surfaced by the axios plugin
-  } finally {
-    detailPending.value = false
-  }
-}
-
 const openMember = (member: MemberRow, team: TeamRow) => {
   detail.value = { memberId: member.memberId, team }
   detailData.value = null
-  void loadDetail()
 }
 
 const closeMember = () => {
@@ -259,24 +229,10 @@ const closeMember = () => {
   detailData.value = null
 }
 
-// A status change — whether this operator's or a colleague's — adds a line to the history,
-// so reload when the live row moves.
-watch(
-  () => detailMember.value?.status,
-  (next, previous) => {
-    if (detail.value && next !== undefined && previous !== undefined && next !== previous) {
-      void loadDetail()
-    }
-  },
-)
-
-// Birthday is a date, not a moment. The API serves it as an instant, so formatting it as a
-// datetime would show the day before for anybody born in the evening — a scout born on the
-// 5th at 23:00 UTC is a 5th-of-December birthday in Copenhagen, not a 4th.
-const birthday = (value: string | null) => {
-  const date = parseApiDate(value)
-  return date ? date.toLocaleDateString('da-DK', { day: 'numeric', month: 'long', year: 'numeric' }) : ''
-}
+// Reloading the detail on a status change used to be a watch here. It is now the dialog's own
+// business: it depends on `spejder:{memberId}`, so a status change or a note — this operator's or a
+// colleague's — invalidates it. That is strictly better than the watch, which only fired for changes
+// visible in *this card's* live row and so missed anything done from another screen.
 
 // --- the 3-member requirement (PRD 006, task 077) ---
 //
@@ -505,8 +461,8 @@ const submitSwitch = async () => {
     await http.put(`/member/${d.memberId}/team`, { sosId: props.sosId, teamId: d.target.teamId })
     switchDlg.value = null
     // The modal stays open on purpose: the operator is still on the phone about this member,
-    // and the two patrol lines they just changed are the confirmation.
-    await loadDetail()
+    // and the two patrol lines they just changed are the confirmation. No reload needed — the
+    // move publishes on the member's own subject, so the dialog's instance dependency refetches it.
     emit('changed')
   } catch {
     switchDlg.value = switchDlg.value ? { ...switchDlg.value, submitting: false } : null
@@ -722,159 +678,61 @@ const withdrawTeam = computed<TeamRow | null>(() => {
       them — which is where they live now that the row is an index rather than a control
       surface.
     -->
-    <Dialog v-if="detail" :visible="true" modal
-            :style="{ width: '48rem' }" :breakpoints="{ '768px': '95vw' }"
-            @update:visible="closeMember">
+    <!--
+      One member in full. Extracted to its own component in task 103 so Hønsegården and the patrol
+      page show the same thing — and so the note trail (PRD 008) has one home rather than three.
+
+      The card keeps what is the card's: which member is open, the live status the badge shows, and
+      the actions, which are the nødtelefon's own and belong to no other host.
+    -->
+    <MemberDetailDialog
+      v-if="detail"
+      :member-id="detail.memberId"
+      :team-id="detail.team.teamId"
+      :status="detailMember?.status"
+      :name="detailMember?.name"
+      @close="closeMember"
+      @loaded="detailData = $event"
+    >
       <!--
-        A titled header in the house style, like the page headings: the person is the subject
-        of this dialog, so their name is set as a heading rather than as dialog chrome. The
-        status rides in the header as a Tag because it is the one fact that changes while the
-        dialog is open, and it belongs next to the name it qualifies.
+        Every action a nødtelefon operator has over this member: two move the scout between patruljer
+        and the third puts them back in the race. Same size and weight for all three, because a
+        differently-shaped button in a row of three reads as "press this one" — and which one is right
+        depends on the call, not on the layout.
+
+        Which appear follows the status: `racing` can be switched or leave the race, `waiting` can
+        carry on. From `transit` onwards there is deliberately nothing to press — the car and shelter
+        interfaces record what happens next, and saying so is better than an empty space that looks
+        unfinished.
       -->
-      <template #header>
-        <div class="inline-flex items-center gap-2 text-2xl">
-          <i class="fas fa-fw fa-user"></i>
-          <h1 class="font-nathejk">
-            {{ detailData?.member.name || detailMember?.name || 'Deltager' }}
-          </h1>
-          <Tag v-if="detailMember" :icon="statusIcon(detailMember.status)"
-               :value="statusLabel(detailMember.status)"
-               :severity="statusSeverity(detailMember.status)" class="text-base" />
-        </div>
+      <template #actions>
+        <template v-if="detailMember">
+          <template v-if="canWithdraw(detailMember.status)">
+            <Button label="Skift" size="small" severity="secondary" outlined @click="openSwitch" />
+            <Button
+              label="Udgår"
+              size="small"
+              severity="danger"
+              outlined
+              :loading="pending[detailMember.memberId]"
+              @click="withdrawTeam && askWithdraw(detailMember, withdrawTeam)"
+            />
+          </template>
+          <Button
+            v-else-if="canResume(detailMember.status)"
+            label="Fortsætter selv"
+            size="small"
+            severity="success"
+            outlined
+            :loading="pending[detailMember.memberId]"
+            @click="act(detailMember.memberId, 'racing')"
+          />
+          <span v-else-if="detailMember.status" class="text-xs italic text-gray-500">
+            Bil og HQ registrerer selv de næste skridt
+          </span>
+        </template>
       </template>
-
-      <div v-if="detailPending && !detailData" class="text-sm text-gray-500">Henter…</div>
-
-      <!--
-        The profile in a fieldset, so the modal reads as "who this is" separated from the
-        status and history around it. The two patrol lines come first because they are what an
-        operator on the phone needs before an address: which patrol the scout set out with, and
-        which one they are with now. They are always both shown, identical name and all — the
-        ordinary case is a fact worth stating, not a value to hide.
-      -->
-      <template v-if="detailData">
-        <Fieldset legend="Oplysninger" class="mb-4">
-          <dl class="grid grid-cols-[8rem_1fr] items-baseline gap-x-3 gap-y-1 text-sm">
-            <dt class="text-gray-500">Startpatrulje</dt>
-            <dd>
-              <router-link v-if="detailData.startTeam" class="underline"
-                           :to="{ name: 'patrulje', params: { teamId: detailData.startTeam.teamId } }">
-                <span v-if="detailData.startTeam.teamNumber">{{ detailData.startTeam.teamNumber }} · </span>
-                {{ detailData.startTeam.name || 'Patrulje' }}
-              </router-link>
-              <span v-else class="text-gray-400">—</span>
-            </dd>
-
-            <dt class="text-gray-500">Nuværende patrulje</dt>
-            <dd class="flex flex-wrap items-center gap-2">
-              <router-link v-if="detailData.currentTeam" class="underline"
-                           :to="{ name: 'patrulje', params: { teamId: detailData.currentTeam.teamId } }">
-                <span v-if="detailData.currentTeam.teamNumber">{{ detailData.currentTeam.teamNumber }} · </span>
-                {{ detailData.currentTeam.name || 'Patrulje' }}
-              </router-link>
-              <span v-else class="text-gray-400">—</span>
-
-              <!--
-                Every action a nødtelefon operator has over this member, right-aligned at the end
-                of the line they all change: two of them move the scout between patruljer and the
-                third puts them back in the race. Same size and weight for all three, because a
-                differently-shaped button in a row of three reads as "press this one" — and which
-                one is right depends on the call, not on the layout.
-
-                Which appear follows the status: `racing` can be switched or leave the race,
-                `waiting` can carry on. From `transit` onwards there is deliberately nothing to
-                press — the car and shelter interfaces record what happens next, and saying so is
-                better than an empty space that looks unfinished.
-              -->
-              <span v-if="detailMember" class="ml-auto flex gap-1">
-                <template v-if="canWithdraw(detailMember.status)">
-                  <Button label="Skift" size="small" severity="secondary" outlined
-                          @click="openSwitch" />
-                  <Button label="Udgår" size="small" severity="danger" outlined
-                          :loading="pending[detailMember.memberId]"
-                          @click="withdrawTeam && askWithdraw(detailMember, withdrawTeam)" />
-                </template>
-                <Button v-else-if="canResume(detailMember.status)" label="Fortsætter selv"
-                        size="small" severity="success" outlined
-                        :loading="pending[detailMember.memberId]"
-                        @click="act(detailMember.memberId, 'racing')" />
-                <span v-else-if="detailMember.status" class="text-xs italic text-gray-500">
-                  Bil og HQ registrerer selv de næste skridt
-                </span>
-              </span>
-            </dd>
-
-            <dt class="text-gray-500">Telefon</dt>
-            <dd>
-              <!-- tel: so an operator on a phone taps to call rather than copying digits -->
-              <a v-if="detailData.member.phone" :href="`tel:${detailData.member.phone}`" class="underline">
-                {{ detailData.member.phone }}
-              </a>
-              <span v-else class="text-gray-400">—</span>
-            </dd>
-
-            <dt class="text-gray-500">Kontaktperson</dt>
-            <dd>
-              <a v-if="detailData.member.phoneParent" :href="`tel:${detailData.member.phoneParent}`" class="underline">
-                {{ detailData.member.phoneParent }}
-              </a>
-              <span v-else class="text-gray-400">—</span>
-            </dd>
-
-            <dt class="text-gray-500">Adresse</dt>
-            <dd>
-              <span v-if="detailData.member.address">
-                {{ detailData.member.address }}<br>
-                {{ detailData.member.postalCode }} {{ detailData.member.city }}
-              </span>
-              <span v-else class="text-gray-400">—</span>
-            </dd>
-
-            <dt class="text-gray-500">Fødselsdag</dt>
-            <dd>
-              <span v-if="detailData.member.birthday">{{ birthday(detailData.member.birthday) }}</span>
-              <span v-else class="text-gray-400">—</span>
-            </dd>
-          </dl>
-        </Fieldset>
-
-        <!--
-          The lifecycle, oldest first, because it reads as a story: started, asked to leave,
-          carried on. Both the status and the event are shown — they answer different
-          questions, and "racing" reached by carrying on is a different fact from "racing"
-          reached by being moved to another patrol.
-
-          A Timeline rather than a list because that is what it is: the connector carries the
-          sequence, which a row of bordered lines only implied, and the marker gives the status
-          icon a place of its own instead of it competing with the text for the first column.
-        -->
-        <Fieldset legend="Historik">
-          <Timeline v-if="detailData.history.length" :value="detailData.history"
-                   class="member-timeline text-sm">
-            <template #marker="{ item }">
-              <span class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-gray-300 bg-white">
-                <i :class="[statusIcon(item.status), statusColour(item.status)]" class="text-xs" />
-              </span>
-            </template>
-            <template #opposite="{ item }">
-              <!--
-                The time on the opposite side, which is what the timeline gives that a list did
-                not: the timestamps line up in their own column, so "how long between these two
-                things" is read down the page rather than hunted for mid-sentence.
-              -->
-              <span class="text-gray-500">{{ formatDateTime(item.createdAt) }}</span>
-            </template>
-            <template #content="{ item }">
-              <div>{{ memberEventPhrase(item.event) }}</div>
-              <div class="text-gray-500">→ {{ statusLabel(item.status) }}</div>
-            </template>
-          </Timeline>
-          <p v-else class="text-sm text-gray-500">
-            Ingen statusskift registreret — deltageren er ikke startet.
-          </p>
-        </Fieldset>
-      </template>
-    </Dialog>
+    </MemberDetailDialog>
 
     <!--
       Switching one member's patrol. Opened from the member modal and left on top of it, so the

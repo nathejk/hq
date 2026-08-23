@@ -268,7 +268,7 @@ show it, and the risky refactor lands on its own.
       unchanged-text dirty-check (100)
 - [x] Task: the three note endpoints with OpenAPI annotations (101)
 - [x] Task: `noteCount` + truncated `latestNote` on the `GET /api/shelter` rows, batched (102)
-- [ ] Task: extract `MemberDetailDialog.vue` from `SosTeamCard.vue`, behaviour-preserving, and
+- [x] Task: extract `MemberDetailDialog.vue` from `SosTeamCard.vue`, behaviour-preserving, and
       make it live via `useLiveResource` (103)
 - [x] Task: `MemberNotes.vue` — thread, add form, edit-in-place, dirty-defer (104)
 - [ ] Task: wire the dialog and the note summary column into `HoensegaardView.vue` (105)

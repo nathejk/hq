@@ -153,6 +153,30 @@ const notStartedBadge: MemberStatusBadge = {
 export const memberStatusBadge = (slug: string): MemberStatusBadge =>
   memberStatusBadges[slug] ?? (slug ? { ...notStartedBadge, label: slug } : notStartedBadge)
 
+// The status as a text colour, for places that show an icon rather than a tag: the card's member
+// rows and the history timeline in the member dialog.
+//
+// Derived from the badge's severity rather than mapping slugs a second time — so a status whose
+// colour changes changes here too, and a new status gets a sensible colour without being listed.
+// Lives here rather than in a component because two components need it, and the copy in each was how
+// they were going to drift (task 103).
+export const memberStatusColour = (slug: string) => {
+  switch (memberStatusBadge(slug).severity) {
+    case 'success':
+      return 'text-green-600'
+    case 'danger':
+      return 'text-red-600'
+    case 'warn':
+      return 'text-amber-600'
+    case 'info':
+      return 'text-blue-500'
+    case 'secondary':
+      return 'text-gray-500'
+    default:
+      return 'text-gray-400'
+  }
+}
+
 // What *happened*, as opposed to where the member ended up.
 //
 // Kept apart from the status labels because the two carry different information and a
