@@ -1,10 +1,10 @@
 # PRD 008 — Member notes: documenting what was agreed
 
-**Status:** draft
+**Status:** doing
 **Author:** agent session (with the Hønsegården crew and the nødtelefon owners)
 **Created:** 2026-08-23
 **Last updated:** 2026-08-23
-**Approved:**
+**Approved:** 2026-08-23
 **Shipped:**
 **Target users:** organizer (Hønsegården crew), organizer (nødtelefon operator)
 
