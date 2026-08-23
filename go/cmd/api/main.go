@@ -338,5 +338,13 @@ func main() {
 	}
 	logger.PrintInfo("Application initialized", nil)
 
-	logger.PrintFatal(app.Serve(fmt.Sprintf(":%d", cfg.port), app.routes()), nil)
+	// Only a failure is fatal. Serve returns nil when a SIGINT/SIGTERM shutdown completes cleanly,
+	// and passing that to PrintFatal dereferenced a nil error — so every ordinary stop ended in a
+	// segfault and exit 2 (task 107). It was harmless to the service, which had already shut down,
+	// and corrosive to the logs: with the dev container restarting on every file change, a real
+	// crash was one panic among hundreds of identical ones.
+	if err := app.Serve(fmt.Sprintf(":%d", cfg.port), app.routes()); err != nil {
+		logger.PrintFatal(err, nil)
+	}
+	logger.PrintInfo("Application stopped", nil)
 }

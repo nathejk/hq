@@ -55,12 +55,29 @@ func (l *Logger) PrintInfo(message string, properties map[string]string) {
 }
 
 func (l *Logger) PrintError(err error, properties map[string]string) {
-	l.print(LevelError, err.Error(), properties)
+	l.print(LevelError, errorMessage(err), properties)
 }
 
 func (l *Logger) PrintFatal(err error, properties map[string]string) {
-	l.print(LevelFatal, err.Error(), properties)
+	l.print(LevelFatal, errorMessage(err), properties)
 	os.Exit(1) // For entries at the FATAL level, we also terminate the application.
+}
+
+// errorMessage renders an error for a log line, tolerating a nil one.
+//
+// Both entry points above used to call err.Error() directly, which segfaults on nil — and did, on
+// every graceful shutdown of the API for months (task 107). A logger that crashes while reporting a
+// problem is the worst possible place for a nil dereference: it replaces the diagnosis with a
+// nil-pointer trace from inside the logging call, and the original problem is never printed.
+//
+// The nil case says so explicitly rather than logging an empty message, because a caller that
+// reaches here with nil has a bug of its own and an empty FATAL line would give nobody a thread to
+// pull. It is deliberately not silent for the same reason.
+func errorMessage(err error) string {
+	if err == nil {
+		return "nil error logged: the caller reported a failure without one"
+	}
+	return err.Error()
 }
 
 func (l *Logger) print(level Level, message string, properties map[string]string) (int, error) {
