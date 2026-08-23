@@ -80,3 +80,18 @@ rename tool in v1.
   give `KlanListView` and `KortView` one implementation instead of three. Not done here because a
   composable with one caller is speculative, and refactoring those two views is out of scope.
 - 2026-08-23 19:01 — Moving to done.
+- 2026-08-23 19:30 — Appended after completion: column tweaks from the crew, applied across the
+  three sections (see also PRD 007 §7).
+  1. "startede i X" moved from the Navn column to Patrulje — it is a statement about which
+     patrol, not about who.
+  2. Status column dropped in *I Hønsegården*: every row there is `sheltered`, so it was one
+     repeated word.
+  3. Telefon column dropped everywhere. The nødtelefon does the ringing; the fields are still in
+     the payload and typed, because task 096's search will want to match on them.
+  4. Sag column now only in *På vej*. A scout who is here, or handed on, is no longer what the
+     case is about.
+  5. "Siden" → "Ankommet" in *I Hønsegården*, and the cell drops the "siden" prefix with it —
+     "Ankommet: siden 21:40" reads as a mistake. New `formatAt()` beside `formatSince()`.
+  Also fixed while in there: the search box never filtered anything. PrimeVue needs
+  `globalFilterFields` when columns use custom body templates, and it was missing since 092 — so
+  the field looked functional and did nothing. Now matches name, patrol, number and placering.

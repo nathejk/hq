@@ -16,6 +16,7 @@ import { useConnectionState } from '@/composables/useConnectionState'
 import {
   useNow,
   formatSince,
+  formatAt,
   minutesSince,
   WAITING_ALARM_MINUTES,
 } from '@/composables/shelter'
@@ -34,10 +35,13 @@ interface ShelterMember {
   name: string
   status: string
   updatedAt: string
-  phone: string
-  phoneParent: string
   team: TeamRef | null
   startTeam?: TeamRef | null
+  // Carried in the payload but no longer shown (removed 2026-08-23 at the crew's request — the
+  // nødtelefon does the ringing). Kept on the type because the API still sends them and the
+  // search field in task 096 will want to match on them.
+  phone: string
+  phoneParent: string
   placement: string
   placedAt: string | null
   sosId?: string
@@ -409,6 +413,7 @@ const reuniteTooltip = (member: ShelterMember) =>
         :value="section.members"
         :loading="pending"
         :filters="filters"
+        :globalFilterFields="['name', 'team.name', 'team.teamNumber', 'placement']"
         :stripedRows="true"
         :rowClass="(row) => (isOverdue(row) ? '!bg-red-50' : '')"
         dataKey="memberId"
@@ -419,13 +424,6 @@ const reuniteTooltip = (member: ShelterMember) =>
         <Column field="name" header="Navn" sortable>
           <template #body="{ data: member }">
             <span class="font-medium">{{ member.name }}</span>
-            <!--
-              Only for a scout moved to another patrol before dropping out — the server omits
-              it otherwise, so its presence is the fact itself.
-            -->
-            <span v-if="member.startTeam" class="block text-xs text-gray-500">
-              startede i {{ member.startTeam.name || member.startTeam.teamId }}
-            </span>
           </template>
         </Column>
 
@@ -443,21 +441,40 @@ const reuniteTooltip = (member: ShelterMember) =>
               class="!p-0"
               @click="openPatrulje(member)"
             />
+            <!--
+              Only for a scout moved to another patrol before dropping out — the server omits it
+              otherwise, so its presence is the fact itself. It sits under the patrol rather than
+              under the name because it is a statement about which patrol, not about who.
+            -->
+            <span v-if="member.startTeam" class="block text-xs text-gray-500">
+              startede i {{ member.startTeam.name || member.startTeam.teamId }}
+            </span>
           </template>
         </Column>
 
-        <Column field="status" header="Status" sortable>
+        <!-- Dropped in *I Hønsegården*: every row there is `sheltered`, so the column would be
+             one repeated word. -->
+        <Column v-if="section.slug !== 'sheltered'" field="status" header="Status" sortable>
           <template #body="{ data: member }">{{ statusLabel(member.status) }}</template>
         </Column>
 
         <!--
           Both the clock time and the elapsed span: the first is what gets written on paper,
-          the second is what triggers a decision.
+          the second is what triggers a decision. In the shelter the header names the event, so
+          the cell drops the "siden" prefix.
         -->
-        <Column field="updatedAt" header="Siden" sortable>
+        <Column
+          field="updatedAt"
+          :header="section.slug === 'sheltered' ? 'Ankommet' : 'Siden'"
+          sortable
+        >
           <template #body="{ data: member }">
             <span :class="isOverdue(member) ? 'font-semibold text-red-700' : ''">
-              {{ formatSince(member.updatedAt, now) }}
+              {{
+                section.slug === 'sheltered'
+                  ? formatAt(member.updatedAt, now)
+                  : formatSince(member.updatedAt, now)
+              }}
             </span>
           </template>
         </Column>
@@ -519,20 +536,12 @@ const reuniteTooltip = (member: ShelterMember) =>
           </template>
         </Column>
 
-        <!-- What the crew actually dials. The rest of the scout's details are one click away. -->
-        <Column header="Telefon">
-          <template #body="{ data: member }">
-            <a v-if="member.phone" :href="`tel:${member.phone}`" class="block">{{ member.phone }}</a>
-            <a
-              v-if="member.phoneParent"
-              :href="`tel:${member.phoneParent}`"
-              class="block text-sm text-gray-600"
-              >{{ member.phoneParent }} (forælder)</a
-            >
-          </template>
-        </Column>
-
-        <Column header="Sag">
+        <!--
+          The case link belongs to *På vej* only. A scout who is here, or has been handed on, is
+          no longer something the nødtelefon's case is about — and the crew reaches the case from
+          the patrol page if they need it.
+        -->
+        <Column v-if="section.slug === 'onway'" header="Sag">
           <template #body="{ data: member }">
             <Button
               v-if="member.sosId"

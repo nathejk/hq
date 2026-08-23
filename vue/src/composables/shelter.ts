@@ -87,6 +87,19 @@ export const formatSince = (value: string | undefined, nowMs: number) => {
   return `siden ${clock} (${formatElapsed(value, nowMs)})`
 }
 
+/**
+ * "21:40 (2t 14m)" — the same two facts without the "siden" prefix.
+ *
+ * For a column whose header already says what the timestamp is ("Ankommet"). "Ankommet: siden
+ * 21:40" reads as a mistake, and the elapsed span is still what tells the crew how long the
+ * scout has been asleep.
+ */
+export const formatAt = (value: string | undefined, nowMs: number) => {
+  const clock = formatClock(value)
+  if (!clock) return ''
+  return `${clock} (${formatElapsed(value, nowMs)})`
+}
+
 /** Minutes since a timestamp, for deciding whether something has gone on too long. */
 export const minutesSince = (value: string | undefined, nowMs: number) => {
   if (!value) return 0
