@@ -108,3 +108,10 @@ rename tool in v1.
   One test of mine was wrong and the code was right: I asserted the whole string contained no
   period, but da-DK writes the *time* with a dot (21.40). The assertion is now on the weekday
   alone, with a comment saying why it cannot be on the whole string.
+- 2026-08-23 19:55 — Appended after completion: the "siden" prefix is gone from timestamp cells.
+  It repeated in every cell of every row what the column header already said, and cost width in a
+  table read at arm's length. Cells now read "fre 21.40 (2t 14m)" under both "Siden" and
+  "Ankommet".
+  Dropping it left `formatSince` and `formatAt` identical, so there is now one `formatTimestamp`
+  rather than two functions and a ternary in the template choosing between them. The view is
+  simpler than before the "Ankommet" rename introduced the split.

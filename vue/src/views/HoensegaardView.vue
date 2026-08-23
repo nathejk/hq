@@ -15,8 +15,7 @@ import { useLiveResource } from '@/composables/useLiveResource'
 import { useConnectionState } from '@/composables/useConnectionState'
 import {
   useNow,
-  formatSince,
-  formatAt,
+  formatTimestamp,
   minutesSince,
   WAITING_ALARM_MINUTES,
 } from '@/composables/shelter'
@@ -459,9 +458,8 @@ const reuniteTooltip = (member: ShelterMember) =>
         </Column>
 
         <!--
-          Both the clock time and the elapsed span: the first is what gets written on paper,
-          the second is what triggers a decision. In the shelter the header names the event, so
-          the cell drops the "siden" prefix.
+          Both the clock time and the elapsed span: the first is what gets read out over the radio,
+          the second is what triggers a decision. No "siden" in the cell — the header says it.
         -->
         <Column
           field="updatedAt"
@@ -470,11 +468,7 @@ const reuniteTooltip = (member: ShelterMember) =>
         >
           <template #body="{ data: member }">
             <span :class="isOverdue(member) ? 'font-semibold text-red-700' : ''">
-              {{
-                section.slug === 'sheltered'
-                  ? formatAt(member.updatedAt, now)
-                  : formatSince(member.updatedAt, now)
-              }}
+              {{ formatTimestamp(member.updatedAt, now) }}
             </span>
           </template>
         </Column>

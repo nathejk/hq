@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatAt, formatClock, formatElapsed, formatSince, minutesSince } from './shelter'
+import { formatClock, formatElapsed, formatTimestamp, minutesSince } from './shelter'
 
 // The durations on the Hønsegården screen are what tell the crew something has gone on too
 // long, so the arithmetic is worth pinning — including the awkward inputs, which is where a
@@ -35,32 +35,22 @@ describe('formatElapsed', () => {
   })
 })
 
-describe('formatSince', () => {
-  // Both halves, because they are used differently: the clock time gets written on paper and
-  // read out over the radio, the elapsed span triggers a decision.
-  it('gives the weekday, the clock time and the elapsed span together', () => {
-    const text = formatSince('2026-09-25T21:40:00Z', at('2026-09-25T23:54:00Z'))
-    expect(text).toContain('2t 14m')
-    expect(text).toMatch(/^siden [a-zæøå]{3} \d{2}[:.]\d{2} /)
-  })
-
-  it('renders nothing without a timestamp', () => {
-    expect(formatSince(undefined, Date.now())).toBe('')
-  })
-})
-
-describe('formatAt', () => {
-  // The "Ankommet" column's form: the header already names the event, so "siden" would read as a
-  // mistake.
-  it('omits the siden prefix but keeps both facts', () => {
-    const text = formatAt('2026-09-25T21:40:00Z', at('2026-09-25T23:54:00Z'))
-    expect(text).not.toContain('siden')
+describe('formatTimestamp', () => {
+  // Both facts, because they are used differently: the clock time gets written on paper and read
+  // out over the radio, the elapsed span triggers a decision.
+  it('gives the weekday, the clock time and the elapsed span', () => {
+    const text = formatTimestamp('2026-09-25T21:40:00Z', at('2026-09-25T23:54:00Z'))
     expect(text).toContain('2t 14m')
     expect(text).toMatch(/^[a-zæøå]{3} \d{2}[:.]\d{2} /)
   })
 
+  // The column header says what the timestamp is, so the cell must not say it again.
+  it('carries no "siden" prefix', () => {
+    expect(formatTimestamp('2026-09-25T21:40:00Z', Date.now())).not.toContain('siden')
+  })
+
   it('renders nothing without a timestamp', () => {
-    expect(formatAt(undefined, Date.now())).toBe('')
+    expect(formatTimestamp(undefined, Date.now())).toBe('')
   })
 })
 

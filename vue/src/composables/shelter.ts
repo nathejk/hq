@@ -92,21 +92,18 @@ export const formatElapsed = (value: string | undefined, nowMs: number) => {
   return `${Math.floor(minutes / 60)}t ${minutes % 60}m`
 }
 
-/** "siden lør 21.40 (2t 14m)", the two together, as the rows show it. */
-export const formatSince = (value: string | undefined, nowMs: number) => {
-  const clock = formatClock(value)
-  if (!clock) return ''
-  return `siden ${clock} (${formatElapsed(value, nowMs)})`
-}
-
 /**
- * "lør 21.40 (2t 14m)" — the same two facts without the "siden" prefix.
+ * "fre 21.40 (2t 14m)" — a timestamp as every cell on this screen shows it.
  *
- * For a column whose header already says what the timestamp is ("Ankommet"). "Ankommet: siden
- * lør 21.40" reads as a mistake, and the elapsed span is still what tells the crew how long the
- * scout has been asleep.
+ * The two facts are used differently, which is why both are here: the clock time is what gets
+ * read out over the radio and written on paper, the elapsed span is what triggers a decision.
+ *
+ * There is deliberately no "siden" prefix. The column header already says what the timestamp is
+ * — "Siden", "Ankommet" — so repeating it in every cell of every row was a word that added
+ * nothing and cost width in a table read at arm's length. (There were briefly two functions here,
+ * one with the prefix and one without; dropping it left them identical, so there is one.)
  */
-export const formatAt = (value: string | undefined, nowMs: number) => {
+export const formatTimestamp = (value: string | undefined, nowMs: number) => {
   const clock = formatClock(value)
   if (!clock) return ''
   return `${clock} (${formatElapsed(value, nowMs)})`
