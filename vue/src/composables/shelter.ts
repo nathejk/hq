@@ -48,17 +48,29 @@ export function useNow(): Readonly<Ref<number>> {
 }
 
 /**
- * "21:40" — the clock time a status changed.
+ * "lør 21.40" — the weekday and the clock time a status changed.
  *
- * Both this and the elapsed span are shown, because they are used differently: the clock time
- * is what gets written on paper and read out over the radio, the elapsed span is what triggers
- * a decision.
+ * The weekday is there because the race runs through a night into the next day: a scout waiting
+ * "since 21.40" is a very different problem depending on whether that was four hours ago or
+ * yesterday evening, and a bare time silently hides which. The elapsed span beside it answers
+ * the same question, but the crew reads out and writes down the clock time, so it has to stand
+ * on its own.
+ *
+ * Short weekday rather than "lørdag": three characters scan faster in a narrow column, and there
+ * are only ever two or three distinct days in play. Some ICU versions abbreviate with a trailing
+ * period ("lør.") and some do not, so it is normalised away either way — a stray period is noise
+ * in a table cell, and a format that differs between the dev container and a browser is worse.
+ *
+ * Times render as da-DK writes them, which means a dot rather than a colon (21.40). That is the
+ * Danish convention and matches the rest of the SPA (see composables/sos.ts).
  */
 export const formatClock = (value?: string) => {
   if (!value) return ''
   const date = new Date(value)
   if (Number.isNaN(date.getTime())) return ''
-  return date.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })
+  const weekday = date.toLocaleDateString('da-DK', { weekday: 'short' }).replace(/\.$/, '')
+  const time = date.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit' })
+  return `${weekday} ${time}`
 }
 
 /**
@@ -80,7 +92,7 @@ export const formatElapsed = (value: string | undefined, nowMs: number) => {
   return `${Math.floor(minutes / 60)}t ${minutes % 60}m`
 }
 
-/** "siden 21:40 (2t 14m)", the two together, as the rows show it. */
+/** "siden lør 21.40 (2t 14m)", the two together, as the rows show it. */
 export const formatSince = (value: string | undefined, nowMs: number) => {
   const clock = formatClock(value)
   if (!clock) return ''
@@ -88,10 +100,10 @@ export const formatSince = (value: string | undefined, nowMs: number) => {
 }
 
 /**
- * "21:40 (2t 14m)" — the same two facts without the "siden" prefix.
+ * "lør 21.40 (2t 14m)" — the same two facts without the "siden" prefix.
  *
  * For a column whose header already says what the timestamp is ("Ankommet"). "Ankommet: siden
- * 21:40" reads as a mistake, and the elapsed span is still what tells the crew how long the
+ * lør 21.40" reads as a mistake, and the elapsed span is still what tells the crew how long the
  * scout has been asleep.
  */
 export const formatAt = (value: string | undefined, nowMs: number) => {

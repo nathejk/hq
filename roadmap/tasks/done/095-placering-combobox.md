@@ -95,3 +95,16 @@ rename tool in v1.
   Also fixed while in there: the search box never filtered anything. PrimeVue needs
   `globalFilterFields` when columns use custom body templates, and it was missing since 092 — so
   the field looked functional and did nothing. Now matches name, patrol, number and placering.
+- 2026-08-23 19:45 — Appended after completion: timestamp cells now name the weekday —
+  "siden fre 21.40 (2t 14m)" and "fre 21.40 (2t 14m)". The race runs through a night into the
+  next day, so a bare time hid whether "21.40" was four hours ago or yesterday evening; the
+  elapsed span answered that, but the clock time is what gets read out over the radio and written
+  on paper, so it has to stand on its own. Changed in `formatClock`, so both `formatSince` and
+  `formatAt` inherit it.
+  Short weekday ("fre"), not "fredag": three characters scan faster in a narrow column and there
+  are only two or three days in play. The abbreviation period is normalised away because some ICU
+  versions add it and some do not — this Node gives "fre", a browser may give "fre." — and a
+  format that differs between dev and production is worse than either.
+  One test of mine was wrong and the code was right: I asserted the whole string contained no
+  period, but da-DK writes the *time* with a dot (21.40). The assertion is now on the weekday
+  alone, with a comment saying why it cannot be on the whole string.
