@@ -13,6 +13,7 @@ import { FilterMatchMode } from '@primevue/core/api'
 import { http } from '@/plugins/axios'
 import { useLiveResource } from '@/composables/useLiveResource'
 import { useConnectionState } from '@/composables/useConnectionState'
+import MemberDetailDialog from '@/components/MemberDetailDialog.vue'
 import {
   useNow,
   formatTimestamp,
@@ -36,15 +37,18 @@ interface ShelterMember {
   updatedAt: string
   team: TeamRef | null
   startTeam?: TeamRef | null
-  // Carried in the payload but no longer shown (removed 2026-08-23 at the crew's request — the
-  // nødtelefon does the ringing). Kept on the type because the API still sends them and the
-  // search field in task 096 will want to match on them.
-  phone: string
-  phoneParent: string
   placement: string
   placedAt: string | null
   sosId?: string
   teamDiscontinued: boolean
+  noteCount: number
+  latestNote: string
+  latestNoteAt: string | null
+  // Carried in the payload but no longer shown (removed 2026-08-23 at the crew's request — the
+  // nødtelefon does the ringing). Kept on the type because the API still sends them, and the member
+  // dialog shows both numbers where they are actually useful: in front of somebody making the call.
+  phone: string
+  phoneParent: string
 }
 
 interface ShelterSection {
@@ -103,14 +107,32 @@ const applied = ref<ShelterPayload | null>(null)
  */
 const editing = ref<{ memberId: string; value: string } | null>(null)
 
-/** A payload arrived while an editor was open and has not been shown yet. */
+/**
+ * The open member dialog, and whether its note form holds unsaved text.
+ *
+ * Same temporal-dead-zone reason for living up here: `paused` is read by the watch below.
+ */
+const openMember = ref<{ memberId: string; teamId: string; name: string; status: string } | null>(null)
+const notesDirty = ref(false)
+
+/**
+ * Whether incoming payloads are being held back.
+ *
+ * Two kinds of unsaved state qualify: a placering being typed in a row, and a note being written in
+ * the dialog. Both would be destroyed by a re-render — the placering field is inside a table row that
+ * can move between sections, and the dialog's panel rebuilds around its textarea — so both pause the
+ * list. Nothing else on this screen is editable, so nothing else pauses it.
+ */
+const paused = computed(() => editing.value !== null || notesDirty.value)
+
+/** A payload arrived while something was being edited and has not been shown yet. */
 const deferred = ref(false)
 
 watch(
   data,
   (payload) => {
     if (!payload) return
-    if (editing.value) {
+    if (paused.value) {
       deferred.value = true
       return
     }
@@ -120,12 +142,18 @@ watch(
   { immediate: true },
 )
 
-/** Show whatever arrived while the editor was open. */
+/** Show whatever arrived while an edit was in progress. */
 const applyDeferred = () => {
   if (!deferred.value) return
   if (data.value) applied.value = data.value
   deferred.value = false
 }
+
+// Closing the note form is one of the two ways a pause ends, and the host cannot know it happened
+// except by watching this — the dialog reports the state, not the transition.
+watch(paused, (still) => {
+  if (!still) applyDeferred()
+})
 
 const sections = computed<ShelterSection[]>(() => applied.value?.sections ?? [])
 const counts = computed<Record<string, number>>(() => applied.value?.counts ?? {})
@@ -229,6 +257,32 @@ const openPatrulje = (member: ShelterMember) => {
   if (!member.team?.teamId) return
   router.push({ name: 'patrulje', params: { teamId: member.team.teamId } })
 }
+
+// The scout's name opens the shared member dialog (task 103), which carries the guardian's phone,
+// address, history and the note trail. The name is the affordance on every host — case card,
+// Hønsegården, patrol page — so the crew learns one gesture rather than three.
+//
+// teamId is required by the endpoint: a scout the lifecycle never touched has no status row, so the
+// server cannot infer which roster to find them on. The row's current team is the right answer.
+const showMember = (member: ShelterMember) => {
+  openMember.value = {
+    memberId: member.memberId,
+    teamId: member.team?.teamId ?? '',
+    name: member.name,
+    status: member.status,
+  }
+}
+
+const closeMember = () => {
+  openMember.value = null
+  // The note form went with the dialog, so any pause it caused ends here rather than waiting for a
+  // dirty event that will never arrive from an unmounted component.
+  notesDirty.value = false
+}
+
+// The snippet is already truncated by the server (120 runes), so this only strips newlines: a note
+// written across three lines would otherwise stretch the row and push every other scout down.
+const noteSnippet = (member: ShelterMember) => member.latestNote.replace(/\s+/g, ' ').trim()
 
 const openCase = (member: ShelterMember) => {
   if (!member.sosId) return
@@ -381,11 +435,12 @@ const reuniteTooltip = (member: ShelterMember) =>
       It disappears the moment the field closes.
     -->
     <div
-      v-if="editing"
+      v-if="paused"
       class="mb-3 rounded border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800"
     >
       <i class="pi pi-pause mr-2" aria-hidden="true" />
-      Skriver placering — opdateringer fra andre er sat på pause indtil du gemmer eller fortryder.
+      {{ editing ? 'Skriver placering' : 'Skriver note' }} — opdateringer fra andre er sat på pause
+      indtil du gemmer eller fortryder.
       <span v-if="deferred" class="font-semibold">Der er nye ændringer, som vises når du er færdig.</span>
     </div>
 
@@ -422,7 +477,18 @@ const reuniteTooltip = (member: ShelterMember) =>
 
         <Column field="name" header="Navn" sortable>
           <template #body="{ data: member }">
-            <span class="font-medium">{{ member.name }}</span>
+            <!--
+              The name is the way in to everything about this scout: guardian's phone, address,
+              history and the note trail. A button rather than a row click, so sorting a column or
+              editing a placering cannot open a dialog by accident.
+            -->
+            <Button
+              :label="member.name"
+              link
+              class="!p-0 !font-medium"
+              v-tooltip.top="'Vis oplysninger, historik og noter'"
+              @click="showMember(member)"
+            />
           </template>
         </Column>
 
@@ -526,6 +592,44 @@ const reuniteTooltip = (member: ShelterMember) =>
               :class="member.placement ? '' : '!text-amber-700 italic'"
               v-tooltip.top="'Sæt eller ret placering'"
               @click="startEditing(member)"
+            />
+          </template>
+        </Column>
+
+        <!--
+          Noter: the count and the newest line, so the one scout with instructions is visible while
+          scanning rather than found by opening forty dialogs. This is the deliberate answer to
+          "expandable rows" as a host for the trail (PRD 008 §7) — the context without a second
+          editing UI.
+        -->
+        <Column header="Noter">
+          <template #body="{ data: member }">
+            <Button
+              v-if="member.noteCount"
+              link
+              class="!p-0 !text-left"
+              v-tooltip.top="member.latestNote"
+              @click="showMember(member)"
+            >
+              <span class="flex items-start gap-2">
+                <Badge :value="member.noteCount" severity="info" />
+                <span class="max-w-56 truncate text-xs text-gray-600">{{ noteSnippet(member) }}</span>
+              </span>
+            </Button>
+            <!--
+              No notes is not nothing to say: on a sheltered scout it means nobody has written down
+              what was agreed, which is worth a nudge rather than an empty cell.
+            -->
+            <Button
+              v-else
+              label="Tilføj"
+              icon="pi pi-plus"
+              link
+              size="small"
+              class="!p-0 !text-xs"
+              severity="secondary"
+              v-tooltip.top="'Skriv hvad der er aftalt'"
+              @click="showMember(member)"
             />
           </template>
         </Column>
@@ -652,6 +756,23 @@ const reuniteTooltip = (member: ShelterMember) =>
         </Column>
       </DataTable>
     </template>
+
+    <!--
+      One scout in full, shared with the nødtelefon's case card and the patrol page (task 103). No
+      actions slot: the shelter's own actions live in the row, where the crew is already looking, and
+      duplicating them inside the dialog would give two places to press for one thing.
+
+      `dirty` pauses this list while a note is being written — see `paused` above.
+    -->
+    <MemberDetailDialog
+      v-if="openMember"
+      :member-id="openMember.memberId"
+      :team-id="openMember.teamId"
+      :status="openMember.status"
+      :name="openMember.name"
+      @close="closeMember"
+      @dirty="notesDirty = $event"
+    />
   </div>
 </template>
 
