@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import { http } from '@/plugins/axios'
+import { useLiveResource } from '@/composables/useLiveResource'
+import { useDeferredApply } from '@/composables/useDeferredApply'
 
 // ----- Types -----------------------------------------------------------------
 
@@ -105,8 +107,15 @@ const corpsOptions = ref<{ slug: string; label: string }[]>([])
 const availableYearsForCopy = ref<string[]>([])
 const selectedCopyYear = ref<string | null>(null)
 
-const loading = ref(false)
 const busy = ref(false)
+
+/**
+ * A drag gesture is in progress.
+ *
+ * Declared here rather than with the drag handlers below because `paused` reads
+ * it: a payload applied mid-drag rebuilds the very rows being dragged over.
+ */
+const dragActive = ref(false)
 
 // -- New section dialog
 const addDialogOpen = ref(false)
@@ -325,32 +334,116 @@ async function toggleSosAssignable(slug?: string, label?: string) {
   }
 }
 
-async function load() {
-  loading.value = true
-  try {
-    const res = await http.get<OrganisationResponse>('/organisation')
-    year.value = res.data.year
-    sections.value = res.data.sections ?? []
-    crewMembers.value = res.data.crewMembers ?? []
-    vehicles.value = res.data.vehicles ?? []
-    crewSignupUrls.value = res.data.crewSignupUrls ?? {}
-    corpsOptions.value = res.data.corpsOptions ?? []
-    availableYearsForCopy.value = res.data.availableYearsForCopy ?? []
-    sosAssignable.value = new Set(res.data.sosAssignableSections ?? [])
-    if (!selectedCopyYear.value && availableYearsForCopy.value.length > 0) {
-      selectedCopyYear.value = availableYearsForCopy.value[0]
-    }
-    rebuildTree()
-  } catch (err: any) {
-    toast.add({
-      severity: 'error',
-      summary: 'Kunne ikke hente organisation',
-      detail: err?.response?.data?.error ?? String(err),
-      life: 5000
-    })
-  } finally {
-    loading.value = false
+// The whole screen is one live resource (PRD 004).
+//
+// One key, not one per collection: sections, crew members and vehicles arrive in
+// a single payload because the tree needs all three to render a row, and splitting
+// them would let the parts revalidate independently and be drawn half-updated.
+//
+// The tokens are the event *subjects'* entities, taken from the projections that
+// own them:
+//
+//   section   NATHEJK.*.section.*.added|moved|deleted
+//   sections  NATHEJK.*.sections.sorted        — collection-level, no id
+//   crewmember NATHEJK.*.crewmember.*.registered|updated|deleted|section.assigned
+//   crew      NATHEJK.*.crew.*.signedup       — a signup mints a crew member, and
+//             is also what gives it a signup URL in this payload
+//   vehicle   NATHEJK.*.vehicle.*.…
+//   sos:section  NATHEJK:*.sos.section.*.assignable — the nødråb toggle. Instance
+//             rather than the bare `sos` type on purpose: every comment on every
+//             case is an `sos` signal, and none of them changes this screen.
+//
+// All type-level (except that last one) because this is a list: a section or crew
+// member created by somebody else has an id this client has never seen, so an
+// instance-keyed dependency could not make it appear.
+const {
+  data: organisation,
+  pending,
+  error: organisationError,
+  refresh
+} = useLiveResource(
+  'organisation',
+  async () => (await http.get<OrganisationResponse>('/organisation')).data,
+  { dependsOn: ['section', 'sections', 'crewmember', 'crew', 'vehicle', 'sos:section'] }
+)
+
+watch(organisationError, (err: any) => {
+  if (!err) return
+  toast.add({
+    severity: 'error',
+    summary: 'Kunne ikke hente organisation',
+    detail: err?.response?.data?.error ?? String(err),
+    life: 5000
+  })
+})
+
+/**
+ * Copy a payload into the refs the tree and the side panel are built from.
+ *
+ * The view keeps its own refs rather than rendering the cached payload directly
+ * because both the tree and the assignment handlers mutate them: `rebuildTree`
+ * needs a plain array PrimeVue may reorder, and the optimistic assignment writes
+ * `sectionSlug` before the server has confirmed it. Applying is therefore an
+ * explicit step — which is also what makes it deferrable.
+ */
+function applyPayload(res: OrganisationResponse) {
+  year.value = res.year
+  sections.value = res.sections ?? []
+  crewMembers.value = res.crewMembers ?? []
+  vehicles.value = res.vehicles ?? []
+  crewSignupUrls.value = res.crewSignupUrls ?? {}
+  corpsOptions.value = res.corpsOptions ?? []
+  availableYearsForCopy.value = res.availableYearsForCopy ?? []
+  sosAssignable.value = new Set(res.sosAssignableSections ?? [])
+  if (!selectedCopyYear.value && availableYearsForCopy.value.length > 0) {
+    selectedCopyYear.value = availableYearsForCopy.value[0]
   }
+  rebuildTree()
+}
+
+/**
+ * True while the screen must not be redrawn underneath the operator.
+ *
+ * Three kinds of unsaved state live on this page, and a payload applied during
+ * any of them destroys work or aim:
+ *
+ *  - **an open dialog** holds a half-typed form, and `editingCrew` /
+ *    `editingVehicle` point into the very arrays a payload replaces;
+ *  - **a drag in progress** would have its rows renumbered mid-gesture, so the
+ *    drop would land somewhere the operator was not pointing;
+ *  - **a write in flight** — a reparent followed by a sort is two requests, and
+ *    the signal from the first would rebuild the tree while the second is still
+ *    on its way, showing an order that never existed.
+ */
+const paused = computed(
+  () =>
+    busy.value ||
+    dragActive.value ||
+    addDialogOpen.value ||
+    editDialogOpen.value ||
+    newCrewDialogOpen.value ||
+    editCrewDialogOpen.value ||
+    vehicleDialogOpen.value
+)
+
+/**
+ * A payload arrived while paused and still needs applying.
+ *
+ * Reported on screen: an operator who has been told the page is live deserves to
+ * know when it is deliberately not.
+ */
+const { updatesWaiting } = useDeferredApply(organisation, paused, applyPayload)
+
+/**
+ * Force a revalidation.
+ *
+ * Kept under the old name, and still awaited by every write, because a write's
+ * own signal is not a substitute: a command that changes nothing publishes no
+ * event (the dirty-check in the commands), so a no-op save would otherwise leave
+ * the operator looking at whatever they had typed with nothing to correct it.
+ */
+async function load() {
+  await refresh()
 }
 
 async function submitNewSection() {
@@ -837,6 +930,7 @@ const dragHover = ref<{ targetKey: string | null; position: DropPosition | null 
 
 function onRowDragStart(ev: DragEvent, node: TreeNode) {
   if (!ev.dataTransfer) return
+  dragActive.value = true
   if (node.data.type === 'section') {
     ev.dataTransfer.setData('text/x-section-slug', node.data.slug ?? '')
   } else if (node.data.type === 'crewmember') {
@@ -879,6 +973,7 @@ function onRowDragLeave(node: TreeNode) {
 }
 
 function onRowDragEnd() {
+  dragActive.value = false
   dragHover.value.targetKey = null
   dragHover.value.position = null
 }
@@ -964,6 +1059,7 @@ function rowDropClasses(node: TreeNode): Record<string, boolean> {
 // Drop onto the "unassigned" list = unassignment.
 function onDropUnassigned(ev: DragEvent) {
   ev.preventDefault()
+  dragActive.value = false
   const userId = ev.dataTransfer?.getData('text/x-crewmember-id')
   if (userId) {
     assignCrew(userId, '')
@@ -973,10 +1069,12 @@ function onDropUnassigned(ev: DragEvent) {
   if (vehicleId) assignVehicle(vehicleId, '')
 }
 function onDragStartCrew(ev: DragEvent, userId: string) {
+  dragActive.value = true
   ev.dataTransfer?.setData('text/x-crewmember-id', userId)
   ev.dataTransfer!.effectAllowed = 'move'
 }
 function onDragStartVehicle(ev: DragEvent, vehicleId: string) {
+  dragActive.value = true
   ev.dataTransfer?.setData('text/x-vehicle-id', vehicleId)
   ev.dataTransfer!.effectAllowed = 'move'
 }
@@ -996,15 +1094,24 @@ function quickAssignFromDropdown(userId: string, slug: string) {
 function quickAssignVehicleFromDropdown(vehicleId: string, slug: string) {
   assignVehicle(vehicleId, slug)
 }
-
-onMounted(load)
 </script>
 
 <template>
   <div class="py-2">
     <div class="flex justify-between items-center pb-4">
       <h1 class="font-nathejk text-2xl">Organisation</h1>
-      <div class="flex gap-2">
+      <div class="flex items-center gap-2">
+        <!--
+          Said out loud, because otherwise the screen is quietly lying: this page
+          updates itself, so an operator who has learned that has to be told the one
+          time it is not. Shown only once something is actually waiting — "paused"
+          with nothing pending would be noise on every dialog open — and not while a
+          write is in flight, which pauses too but already shows its own spinner and
+          resolves in a moment.
+        -->
+        <span v-if="updatesWaiting && !busy" class="text-sm text-gray-500 mr-2" v-tooltip.bottom="'Ændringer fra andre anvendes, når du er færdig'">
+          <i class="pi pi-pause-circle" /> Opdateringer sat på pause
+        </span>
         <Button icon="pi pi-user-plus" label="Nyt crew-medlem" size="small" severity="secondary" @click="newCrewDialogOpen = true" />
         <Button icon="pi pi-car" label="Nyt køretøj" size="small" severity="secondary" :disabled="crewMembers.length === 0" v-tooltip.bottom="crewMembers.length === 0 ? 'Opret først et crew-medlem, der kan være ansvarlig' : undefined" @click="openNewVehicle" />
         <Button icon="pi pi-plus" label="Ny sektion" size="small" :disabled="sections.length === 0 && availableYearsForCopy.length > 0" @click="addDialogOpen = true" />
@@ -1012,7 +1119,7 @@ onMounted(load)
     </div>
 
     <!-- Empty state with copy-from-year option -->
-    <div v-if="!loading && sections.length === 0" class="border border-dashed border-gray-300 rounded p-6 mb-4 text-center">
+    <div v-if="!pending && sections.length === 0" class="border border-dashed border-gray-300 rounded p-6 mb-4 text-center">
       <p class="mb-3">Der er endnu ingen sektioner for dette år.</p>
       <div v-if="availableYearsForCopy.length > 0" class="flex justify-center items-center gap-2">
         <Select v-model="selectedCopyYear" :options="availableYearsForCopy" placeholder="Vælg år" class="w-40" />
@@ -1024,7 +1131,12 @@ onMounted(load)
       </div>
     </div>
 
-    <div v-if="loading" class="p-4 text-center text-gray-500">Indlæser…</div>
+    <!--
+      Only when there is nothing cached to show: `pending` stays false during a
+      background revalidation, so a live update must not replace the tree with a
+      loading line, and a revisit must not flash one.
+    -->
+    <div v-if="pending" class="p-4 text-center text-gray-500">Indlæser…</div>
 
     <div v-else-if="sections.length > 0" class="grid gap-4 md:grid-cols-3">
       <div class="md:col-span-2">
@@ -1057,12 +1169,12 @@ onMounted(load)
         <h2 class="font-semibold pb-2">Ikke tildelt ({{ unassignedCrew.length + unassignedVehicles.length }})</h2>
         <ul class="border rounded p-2 min-h-32 space-y-1 bg-gray-50" @dragover="allowDrop" @drop="onDropUnassigned">
           <li v-if="unassignedCrew.length === 0 && unassignedVehicles.length === 0" class="text-sm text-gray-500 italic">Ingen frie crew-medlemmer eller køretøjer</li>
-          <li v-for="m in unassignedCrew" :key="m.userId" :draggable="true" class="p-2 bg-white border rounded flex items-center gap-2 cursor-move" @dragstart="onDragStartCrew($event, m.userId)">
+          <li v-for="m in unassignedCrew" :key="m.userId" :draggable="true" class="p-2 bg-white border rounded flex items-center gap-2 cursor-move" @dragstart="onDragStartCrew($event, m.userId)" @dragend="onRowDragEnd">
             <i class="pi pi-user text-gray-500" />
             <span class="flex-1 truncate cursor-pointer" @click="openEditCrew(m.userId)">{{ m.name || m.email || m.userId }}</span>
             <Select :modelValue="''" :options="sectionOptions.filter((o) => o.value !== '')" optionLabel="label" optionValue="value" placeholder="Tildel…" size="small" class="w-32" @update:modelValue="(v: string) => v && quickAssignFromDropdown(m.userId, v)" />
           </li>
-          <li v-for="v in unassignedVehicles" :key="v.vehicleId" :draggable="true" class="p-2 bg-white border rounded flex items-center gap-2 cursor-move" @dragstart="onDragStartVehicle($event, v.vehicleId)">
+          <li v-for="v in unassignedVehicles" :key="v.vehicleId" :draggable="true" class="p-2 bg-white border rounded flex items-center gap-2 cursor-move" @dragstart="onDragStartVehicle($event, v.vehicleId)" @dragend="onRowDragEnd">
             <i class="pi pi-car text-gray-500" />
             <span class="flex-1 truncate cursor-pointer" @click="openEditVehicle(v.vehicleId)">{{ vehicleLabel(v) }}</span>
             <Select :modelValue="''" :options="sectionOptions.filter((o) => o.value !== '')" optionLabel="label" optionValue="value" placeholder="Tildel…" size="small" class="w-32" @update:modelValue="(s: string) => s && quickAssignVehicleFromDropdown(v.vehicleId, s)" />
