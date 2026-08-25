@@ -2,6 +2,7 @@
 import { computed, ref, watch, onMounted } from 'vue'
 import MultiSwitch from '@/components/MultiSwitch.vue'
 import TimePicker from '@/components/TimePicker.vue'
+import { parseOffset, dayIndex, composeDayTime, dayOptions } from '@/composables/daytime'
 
 const props = withDefaults(
   defineProps<{
@@ -22,23 +23,21 @@ const emit = defineEmits<{
   change: [action: Date]
 }>()
 
-const day = ref(1)
+const day = ref(0)
 const timestring = ref('00:00')
 const zeropad = (v: number | string) => String(v).padStart(2, '0')
 const hhmm = (d: Date) => zeropad(d.getHours()) + ':' + zeropad(d.getMinutes())
 
-const offsetDate = computed(() => (props.offset ? new Date(props.offset) : new Date(0)))
+const offsetDate = computed(() => parseOffset(props.offset))
 
 // when external value changes, update local UI state
 const updateFromModel = (ts: Date) => {
-  const ms = Math.max(0, ts.getTime() - offsetDate.value.getTime())
-
   timestring.value = hhmm(ts)
-  day.value = Math.floor(ms / (1000 * 3600 * 24))
+  day.value = dayIndex(ts, offsetDate.value, props.dayCount)
 }
 onMounted(() => {
   if (!valueModel.value) {
-    const fallback = new Date(props.offset ?? 0)
+    const fallback = parseOffset(props.offset)
     valueModel.value = fallback
     updateFromModel(fallback)
   } else {
@@ -58,10 +57,7 @@ watch(
 watch([day, timestring], ([dayVal, timeStr]) => {
   if (!timeStr) return
   const [hh, mm] = timeStr.split(':').map(Number)
-  const base = new Date()
-  base.setTime(offsetDate.value.getTime() + dayVal * 1000 * 3600 * 24)
-  base.setHours(hh)
-  base.setMinutes(mm)
+  const base = composeDayTime(offsetDate.value, dayVal, hh, mm)
 
   // emit only if actually changed to avoid redundant updates
   if (!valueModel.value || base.getTime() !== valueModel.value.getTime()) {
@@ -69,28 +65,7 @@ watch([day, timestring], ([dayVal, timeStr]) => {
     emit('change', base)
   }
 })
-const week = [
-  { name: 'Søndag', shortName: 'søn', value: 6 },
-  { name: 'Mandag', shortName: 'man', value: 0 },
-  { name: 'Tirsdag', shortName: 'tirs', value: 1 },
-  { name: 'Onsdag', shortName: 'ons', value: 2 },
-  { name: 'Torsdag', shortName: 'tors', value: 3 },
-  { name: 'Fredag', shortName: 'fre', value: 4 },
-  { name: 'Lørdag', shortName: 'lør', value: 5 }
-]
-const days = computed(() => {
-  const d = new Date(props.offset ?? offsetDate.value)
-  const out: { name: string; shortName: string; value: number }[] = []
-  for (let i = 0; i < (props.dayCount ?? 0); i++) {
-    const w = week[(d.getDay() + i) % 7]
-    out.push({
-      name: w.name,
-      shortName: w.shortName,
-      value: i
-    })
-  }
-  return out
-})
+const days = computed(() => dayOptions(offsetDate.value, props.dayCount))
 </script>
 
 <template>
