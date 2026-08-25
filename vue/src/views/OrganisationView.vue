@@ -19,6 +19,21 @@ type CrewMember = {
   phone: string
   email: string
   sectionSlug: string
+  // The scouting identity, as the signup form collects it. Kept on the type
+  // even though the tree shows only the name: the edit dialog is where they are
+  // read and written, and leaving them off meant a save from that dialog had to
+  // guess what it was preserving.
+  medlemnr: string
+  group: string
+  /** Korps *slug* ("dds"), not a label — the labels come from `corpsOptions`. */
+  corps: string
+  diet: string
+  /**
+   * The remaining signup answers, as a JSON *string* (the projection stores the
+   * document verbatim). Read-only here: the API hands it back to the event
+   * untouched on save.
+   */
+  additionals: string
 }
 
 // A car present in the race area. Vehicles sit in the same tree as crew
@@ -48,6 +63,15 @@ type OrganisationResponse = {
   // the sections rather than a field on each one: the section entity belongs to
   // shared-go and knows nothing about the nødtelefon.
   sosAssignableSections?: string[]
+  /**
+   * Signup page per crew member, keyed by userId, for those who came through the
+   * public form. Absent for anybody an HQ operator typed in, who has no signup
+   * page — which is why this is a server-built map and not a URL this view
+   * assembles from an id.
+   */
+  crewSignupUrls?: Record<string, string>
+  /** The canonical korps list, slug + label, as the signup form offers it. */
+  corpsOptions?: { slug: string; label: string }[]
 }
 
 type TreeNode = {
@@ -76,6 +100,8 @@ const year = ref('')
 const sections = ref<Section[]>([])
 const crewMembers = ref<CrewMember[]>([])
 const vehicles = ref<Vehicle[]>([])
+const crewSignupUrls = ref<Record<string, string>>({})
+const corpsOptions = ref<{ slug: string; label: string }[]>([])
 const availableYearsForCopy = ref<string[]>([])
 const selectedCopyYear = ref<string | null>(null)
 
@@ -100,6 +126,10 @@ const editingCrew = ref<CrewMember | null>(null)
 const editCrewName = ref('')
 const editCrewPhone = ref('')
 const editCrewEmail = ref('')
+const editCrewMedlemNr = ref('')
+const editCrewGroup = ref('')
+const editCrewCorps = ref<string | null>(null)
+const editCrewDiet = ref('')
 
 // -- Vehicle dialogs. One form serves both create and edit: the fields are the
 // same, and `editingVehicle` is what tells them apart at submit time.
@@ -303,6 +333,8 @@ async function load() {
     sections.value = res.data.sections ?? []
     crewMembers.value = res.data.crewMembers ?? []
     vehicles.value = res.data.vehicles ?? []
+    crewSignupUrls.value = res.data.crewSignupUrls ?? {}
+    corpsOptions.value = res.data.corpsOptions ?? []
     availableYearsForCopy.value = res.data.availableYearsForCopy ?? []
     sosAssignable.value = new Set(res.data.sosAssignableSections ?? [])
     if (!selectedCopyYear.value && availableYearsForCopy.value.length > 0) {
@@ -499,6 +531,51 @@ async function submitNewCrew() {
 
 // ----- Crew member editing ---------------------------------------------------
 
+/** The signup page of a crew member who came through the public form, if any. */
+const signupUrl = (userId?: string) => (userId ? crewSignupUrls.value[userId] : undefined)
+
+/**
+ * The korps list, plus the member's own value when the canonical list has no
+ * such slug.
+ *
+ * Without this, a row carrying a korps from an earlier signup form would have no
+ * matching option: the Select would fall back to its placeholder, the operator
+ * would see an empty field, and saving anything else on the dialog would write
+ * that emptiness back. Silent data loss on a form the operator never touched.
+ */
+const corpsSelectOptions = computed(() => {
+  const current = editCrewCorps.value
+  if (!current || corpsOptions.value.some((c) => c.slug === current)) return corpsOptions.value
+  return [...corpsOptions.value, { slug: current, label: current }]
+})
+
+/**
+ * The signup answers that have no column of their own, as label/value pairs.
+ *
+ * Shown read-only beside Kost because of a trap in the data: the signup form
+ * files its dietary answer in `additionals` (`{"diet":"Nej"}`), while the `diet`
+ * column is the free-text note HQ maintains. Every crew member who signed up
+ * therefore has an empty `diet` and an answer nobody could see — so an operator
+ * looking at a blank Kost field could not tell "no dietary needs" from "never
+ * asked".
+ */
+const signupAnswers = computed<{ label: string; value: string }[]>(() => {
+  const raw = editingCrew.value?.additionals
+  if (!raw) return []
+  let parsed: Record<string, unknown>
+  try {
+    parsed = JSON.parse(raw)
+  } catch {
+    // A malformed document is the server's problem, not something to throw a
+    // render over: the rest of the dialog is still worth showing.
+    return []
+  }
+  const labels: Record<string, string> = { diet: 'Kost oplyst', tshirtSize: 'T-shirt' }
+  return Object.entries(parsed)
+    .filter(([, v]) => v !== '' && v !== null && v !== undefined)
+    .map(([k, v]) => ({ label: labels[k] ?? k, value: String(v) }))
+})
+
 function openEditCrew(userId?: string) {
   const m = crewMembers.value.find((x) => x.userId === userId)
   if (!m) return
@@ -506,6 +583,12 @@ function openEditCrew(userId?: string) {
   editCrewName.value = m.name
   editCrewPhone.value = m.phone
   editCrewEmail.value = m.email
+  editCrewMedlemNr.value = m.medlemnr ?? ''
+  editCrewGroup.value = m.group ?? ''
+  // null rather than '' so the Select shows its placeholder for an unset korps
+  // instead of an empty selected option.
+  editCrewCorps.value = m.corps || null
+  editCrewDiet.value = m.diet ?? ''
   editCrewDialogOpen.value = true
 }
 
@@ -521,7 +604,14 @@ async function submitEditCrew() {
     await http.patch(`/crewmember/${encodeURIComponent(m.userId)}`, {
       name: editCrewName.value.trim(),
       phone: editCrewPhone.value.trim(),
-      email: editCrewEmail.value.trim()
+      email: editCrewEmail.value.trim(),
+      // Sent on every save, including when blank: the endpoint treats an omitted
+      // field as "keep" and a present one as "replace", so an empty string is how
+      // a value gets cleared.
+      medlemnr: editCrewMedlemNr.value.trim(),
+      group: editCrewGroup.value.trim(),
+      corps: editCrewCorps.value ?? '',
+      diet: editCrewDiet.value.trim()
     })
     toast.add({ severity: 'success', summary: 'Crew-medlem opdateret', life: 2500 })
     editCrewDialogOpen.value = false
@@ -1043,7 +1133,7 @@ onMounted(load)
     </Dialog>
 
     <!-- Edit crew member dialog -->
-    <Dialog v-model:visible="editCrewDialogOpen" modal :style="{ width: '30rem' }" header="Rediger crew-medlem">
+    <Dialog v-model:visible="editCrewDialogOpen" modal :style="{ width: '34rem' }" header="Rediger crew-medlem">
       <div class="grid gap-3 pt-2">
         <FloatLabel variant="on">
           <InputText id="edit-crew-name" v-model="editCrewName" class="w-full" autocomplete="off" @keydown.enter="submitEditCrew" />
@@ -1057,8 +1147,75 @@ onMounted(load)
           <InputText id="edit-crew-email" v-model="editCrewEmail" class="w-full" autocomplete="off" />
           <label for="edit-crew-email">Email</label>
         </FloatLabel>
+
+        <!--
+          The scouting identity, below the contact details: reaching somebody is
+          what this dialog is opened for in a hurry, and gruppe/korps/medlemsnummer
+          are what it is opened for at a desk. Gruppe and korps share a row because
+          they are read as one fact ("12. Århus, DDS").
+        -->
+        <div class="grid grid-cols-2 gap-3">
+          <FloatLabel variant="on">
+            <InputText id="edit-crew-group" v-model="editCrewGroup" class="w-full" autocomplete="off" />
+            <label for="edit-crew-group">Gruppe / Division</label>
+          </FloatLabel>
+          <FloatLabel variant="on">
+            <!--
+              A Select, not a text field: the API casts whatever it receives to a
+              CorpsSlug, so free text would mint korps that no filter or export
+              knows about. `showClear` because "not stated" is a legitimate answer
+              and there has to be a way back to it.
+            -->
+            <Select
+              id="edit-crew-corps"
+              v-model="editCrewCorps"
+              :options="corpsSelectOptions"
+              optionLabel="label"
+              optionValue="slug"
+              showClear
+              class="w-full"
+            />
+            <label for="edit-crew-corps">Korps</label>
+          </FloatLabel>
+        </div>
+        <FloatLabel variant="on">
+          <InputText id="edit-crew-medlemnr" v-model="editCrewMedlemNr" class="w-full" autocomplete="off" />
+          <label for="edit-crew-medlemnr">Medlemsnummer</label>
+        </FloatLabel>
+        <FloatLabel variant="on">
+          <InputText id="edit-crew-diet" v-model="editCrewDiet" class="w-full" autocomplete="off" />
+          <label for="edit-crew-diet">Kost / allergi</label>
+        </FloatLabel>
+
+        <!--
+          What the person answered on the signup form. Read-only, and shown because
+          the free-text Kost field above is HQ's own note: without this, an empty
+          Kost field looks like "no dietary needs" when it may only mean nobody has
+          written anything down yet.
+        -->
+        <div v-if="signupAnswers.length" class="text-sm text-gray-500">
+          Fra tilmeldingen:
+          <span v-for="(a, i) in signupAnswers" :key="a.label">
+            <span v-if="i > 0"> · </span>{{ a.label }}: <span class="text-gray-700">{{ a.value }}</span>
+          </span>
+        </div>
       </div>
       <template #footer>
+        <!--
+          The signup page, left of the destructive action so it is nowhere near
+          Slet. Only for members who came through the public form — one typed in
+          here by an operator has no such page, and a dead link on a screen like
+          this is worse than no link.
+        -->
+        <a
+          v-if="signupUrl(editingCrew?.userId)"
+          :href="signupUrl(editingCrew?.userId)"
+          target="_blank"
+          rel="noopener"
+          class="mr-auto"
+        >
+          <Button label="Tilmelding" icon="pi pi-external-link" iconPos="right" text />
+        </a>
         <Button label="Slet" icon="pi pi-trash" severity="danger" text :loading="busy" @click="deleteCrew" />
         <Button label="Annuller" text @click="editCrewDialogOpen = false" />
         <Button label="Gem" icon="pi pi-check" :loading="busy" @click="submitEditCrew" />

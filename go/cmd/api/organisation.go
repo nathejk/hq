@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"regexp"
 	"strings"
@@ -62,6 +63,29 @@ func (app *application) showOrganisationHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Which crew members came through the public signup form, as ready-made links
+	// to the page they filled in.
+	//
+	// A map keyed by userId rather than a field on each member: CrewMember belongs
+	// to shared-go, and a signup URL is this screen's concern. Built here rather
+	// than in the SPA for two reasons — the host is configuration (BASEURL, which
+	// differs in dev and stage), and a crew member registered by an HQ operator has
+	// no signup at all, so a link assembled from the id alone would send the
+	// operator to a page that does not exist.
+	signups, err := app.models.Signup.TeamIDsByType(r.Context(), year, types.TeamTypeCrew)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+	signupUrls := map[types.UserID]string{}
+	for _, m := range members {
+		// A crew signup mints the crew member with userId == teamId, which is what
+		// makes this lookup possible at all.
+		if signups[types.TeamID(m.UserID)] {
+			signupUrls[m.UserID] = fmt.Sprintf("%s/crew/%s", strings.TrimSuffix(app.config.baseurl, "/"), m.UserID)
+		}
+	}
+
 	envelope := jsonapi.Envelope{
 		"year":                  year,
 		"sections":              sections,
@@ -69,6 +93,13 @@ func (app *application) showOrganisationHandler(w http.ResponseWriter, r *http.R
 		"vehicles":              vehicles,
 		"availableYearsForCopy": otherYears,
 		"sosAssignableSections": assignable,
+		"crewSignupUrls":        signupUrls,
+		// The canonical korps list, so the edit form offers the same eight options
+		// the signup form does and stores the same slugs. Sent from here rather than
+		// duplicated in the SPA: the update handler casts whatever it is given to a
+		// CorpsSlug, so a free-text field would happily invent korps nobody can
+		// filter on.
+		"corpsOptions": types.CorpsSlugs.AsObjects(),
 	}
 	if err := app.WriteJSON(w, http.StatusOK, envelope, nil); err != nil {
 		app.ServerErrorResponse(w, r, err)

@@ -65,6 +65,7 @@ type Models struct {
 	}
 	Signup interface {
 		GetByID(types.TeamID) (*Signup, error)
+		TeamIDsByType(context.Context, types.YearSlug, types.TeamType) (map[types.TeamID]bool, error)
 	}
 	Year           year.Queries
 	Klan           KlanInterface
