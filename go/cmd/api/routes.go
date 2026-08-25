@@ -55,6 +55,7 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodGet, "/api/klan/:id", app.showKlanHandler)
 	router.HandlerFunc(http.MethodPut, "/api/klan/:id", app.updateKlanHandler)
 	router.HandlerFunc(http.MethodPatch, "/api/klan/:id", app.patchKlanHandler)
+	router.HandlerFunc(http.MethodDelete, "/api/klan/:id", app.deleteKlanHandler)
 	router.HandlerFunc(http.MethodGet, "/api/badut", app.showBadutListHandler)
 
 	// Members in our care (PRD 006). Event-wide rather than per case: a member we

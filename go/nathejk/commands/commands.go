@@ -1,6 +1,8 @@
 package commands
 
 import (
+	"context"
+
 	"github.com/jrgensen/stream"
 	"github.com/nathejk/shared-go/tables/crewmember"
 	"github.com/nathejk/shared-go/tables/section"
@@ -42,6 +44,14 @@ type Commands struct {
 		StartPatrulje(types.TeamID, []StartPatruljeMember) error
 		UpdateKlan(types.TeamID, Klan, []Senior) error
 		AssignToLok(types.TeamID, string) error
+	}
+
+	// Klan is the klan write side hq owns: the status override, and delete
+	// delegated to the shared-go entity. See klan.go for why an override exists
+	// at all.
+	Klan interface {
+		SetStatus(context.Context, types.TeamID, types.SignupStatus) error
+		Delete(context.Context, types.TeamID) error
 	}
 	Lok interface {
 		UpdateLok(types.LokID, string, int, []types.UserID, []types.TeamID) error

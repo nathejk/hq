@@ -311,6 +311,9 @@ func main() {
 	cmds.Member = spejderstatustable
 	cmds.Shelter = sheltertable
 	cmds.Note = spejdernotetable
+	// Both arguments are klantable: it is the read model the override dirty-checks
+	// against *and* the entity that owns what deleting a klan means.
+	cmds.Klan = commands.NewKlan(publisher, klantable, klantable)
 
 	expvar.NewString("version").Set(version)
 	expvar.NewInt("timestamp").Set(time.Now().Unix())

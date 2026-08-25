@@ -6,6 +6,7 @@ import { useLiveResource } from '@/composables/useLiveResource'
 import draggable from 'vuedraggable'
 import Menu from 'primevue/menu'
 import LokEditArmNumber from '@/views/LokEditArmNumber.vue'
+import KlanDetailDialog from '@/components/KlanDetailDialog.vue'
 
 const toast = useToast()
 
@@ -130,6 +131,41 @@ const deleteLok = async (lok) => {
   toast.add({ severity: 'success', summary: 'LOK fjernet', detail: 'OK', life: 3000 })
 }
 const memberCount = (lok) => lok.teams.reduce((sum, team) => sum + (team.memberCount || 0), lok.users.length)
+
+// ----- Klan dialog -----------------------------------------------------------
+
+// The klan being inspected, or null. Every klan name on this page opens it — in a LOK and in
+// the unassigned panel alike — so the gesture is the same wherever the operator finds the klan.
+//
+// Clicking the name is safe next to the drag-and-drop: vuedraggable is bound with
+// `handle=".handle"`, so only the grip icon starts a drag and the text is an ordinary click
+// target.
+const openKlan = ref(null)
+
+const showKlan = (team) => {
+  openKlan.value = { teamId: team.id, name: team.name }
+}
+
+/**
+ * A klan changed inside the dialog.
+ *
+ * A deleted klan is also removed locally, rather than left to the refetch. This page defers
+ * incoming payloads while the LOK arrangement is unsaved (see `dirty`), so an operator who is
+ * mid-rearrangement would otherwise go on dragging a klan that no longer exists — and would
+ * then save an arrangement referring to it.
+ */
+const onKlanChanged = ({ deleted }) => {
+  if (deleted && openKlan.value) {
+    const gone = openKlan.value.teamId
+    teams.value = teams.value.filter((t) => t.id !== gone)
+    for (const lok of loks.value) {
+      lok.teams = lok.teams.filter((t) => t.id !== gone)
+    }
+  }
+  // Asked for directly as well as signalled: a status override that lands while the page is
+  // dirty is deferred, and the operator has just been told it succeeded.
+  void refresh()
+}
 
 //const klans = ref([])
 //const selectedValue = ref(null)
@@ -345,8 +381,8 @@ const closeInplace = (expr, next) => next()
             <template #item="{ element }">
               <div class="flex flex-wrap px-1 items-center gap-4 w-full border-b border-slate-200 last:border-0 select-none hover:bg-slate-50">
                 <i class="w-6 shrink-0 rounded pi pi-bars handle cursor-move"></i>
-                <div class="flex-1 flex flex-col">
-                  <span class="font-medium">{{ element.name }}</span>
+                <div class="flex-1 flex flex-col cursor-pointer" @click="showKlan(element)">
+                  <span class="font-medium hover:underline">{{ element.name }}</span>
                   <span class="text-xs font-thin text-slate-900 upper">{{ element.group }}</span>
                 </div>
                 <span class="font-bold sm:ml-8">{{ element.memberCount }}</span>
@@ -380,7 +416,10 @@ const closeInplace = (expr, next) => next()
       <Panel toggleable header="Tilmeldte klaner">
         <draggable :list="unassignedTeams" handle=".handle" group="a" item-key="id" @change="markDirty">
           <template #item="{ element }">
-            <div class="select-none"><i class="pi pi-bars handle cursor-move"></i> {{ element.name }}</div>
+            <div class="select-none">
+              <i class="pi pi-bars handle cursor-move"></i>
+              <span class="cursor-pointer hover:underline" @click="showKlan(element)">{{ element.name }}</span>
+            </div>
           </template>
         </draggable>
       </Panel>
@@ -395,6 +434,15 @@ const closeInplace = (expr, next) => next()
     </template>
     <LokEditArmNumber :lok="lokEditArmNumber" @saved="visible = false" />
   </Dialog>
+
+  <KlanDetailDialog
+    v-if="openKlan"
+    :key="openKlan.teamId"
+    :team-id="openKlan.teamId"
+    :name="openKlan.name"
+    @changed="onKlanChanged"
+    @close="openKlan = null"
+  />
 </template>
 
 <style>
