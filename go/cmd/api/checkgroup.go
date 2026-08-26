@@ -13,17 +13,7 @@ import (
 	"nathejk.dk/nathejk/table/checkgroup"
 	"nathejk.dk/nathejk/table/checkpersonnel"
 	"nathejk.dk/nathejk/table/checkpoint"
-	"nathejk.dk/nathejk/table/patrulje"
-	"nathejk.dk/nathejk/table/personnel"
 )
-
-type CheckgroupStats struct {
-	CheckgroupID types.CheckgroupID `json:"checkgroupId"`
-	OnTime       int                `json:"onTime"`
-	Late         int                `json:"late"`
-	Expired      int                `json:"expired"`
-	Missing      int                `json:"missing"`
-}
 
 func (app *application) listCheckgroupsHandler(w http.ResponseWriter, r *http.Request) {
 	var input struct {
@@ -63,64 +53,17 @@ func (app *application) listCheckgroupsHandler(w http.ResponseWriter, r *http.Re
 	if assignedPersonnel == nil {
 		assignedPersonnel = []checkpersonnel.Checkpersonnel{}
 	}
-	availablePersonnel, _ := app.models.Personnel.GetAll(r.Context(), personnel.Filter{YearSlug: input.Filter.Year, UserTypes: []string{"friend"}})
+	availablePersonnel := app.assignablePersonnel(r.Context(), input.Filter.Year)
 
-	// Compute scan stats per checkgroup
-	startedTeamIDs, err := app.models.Patrulje.GetStartedTeamIDs(r.Context(), patrulje.Filter{YearSlug: input.Filter.Year})
+	// The four numbers per line, over every started team.
+	//
+	// Shares its computation with the dialog behind each number (see
+	// checkgroupteams.go): a count the operator can click through to has to be the
+	// same arithmetic as the list they land on.
+	checkgroupStats, startedTeamCount, err := app.checkgroupStats(r.Context(), input.Filter.Year, filter.CheckgroupIDs)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 		return
-	}
-	startedTeamCount := len(startedTeamIDs)
-
-	// For each checkgroup, find teams scanned on-time vs late
-	checkgroupStatsMap := make(map[types.CheckgroupID]*CheckgroupStats)
-	for _, cg := range checkgroups {
-		checkgroupStatsMap[cg.ID] = &CheckgroupStats{CheckgroupID: cg.ID, Missing: startedTeamCount}
-	}
-
-	if len(filter.CheckgroupIDs) > 0 {
-		statsQuery := `
-			SELECT cpt.checkgroupId, s.teamId,
-				MAX(CASE WHEN s.uts >= cpt.openFromUts AND s.uts <= cpt.openUntilUts THEN 1 ELSE 0 END) as wasOnTime
-			FROM scan s
-			JOIN checkpersonnel cpn ON s.scannerId = cpn.userId AND s.uts >= cpn.startUts AND s.uts <= cpn.endUts
-			JOIN checkpoint cpt ON cpn.checkpointId = cpt.id
-			WHERE cpt.checkgroupId IN (?` + strings.Repeat(",?", len(filter.CheckgroupIDs)-1) + `)
-			GROUP BY cpt.checkgroupId, s.teamId`
-		args := make([]any, len(filter.CheckgroupIDs))
-		for i, id := range filter.CheckgroupIDs {
-			args[i] = string(id)
-		}
-		statsRows, err := app.db.DB().QueryContext(r.Context(), statsQuery, args...)
-		if err == nil {
-			defer statsRows.Close()
-			for statsRows.Next() {
-				var cgID types.CheckgroupID
-				var teamID types.TeamID
-				var wasOnTime int
-				if err := statsRows.Scan(&cgID, &teamID, &wasOnTime); err != nil {
-					continue
-				}
-				st := checkgroupStatsMap[cgID]
-				if st == nil {
-					continue
-				}
-				if wasOnTime == 1 {
-					st.OnTime++
-				} else {
-					st.Late++
-				}
-				st.Missing--
-			}
-		}
-	}
-
-	checkgroupStats := make([]CheckgroupStats, 0, len(checkgroups))
-	for _, cg := range checkgroups {
-		if st, ok := checkgroupStatsMap[cg.ID]; ok {
-			checkgroupStats = append(checkgroupStats, *st)
-		}
 	}
 
 	envelope := jsonapi.Envelope{
@@ -163,7 +106,7 @@ func (app *application) checkgroupHandler(w http.ResponseWriter, r *http.Request
 	}
 	cps, _ := app.models.Checkpoint.GetAll(r.Context(), checkpoint.Filter{CheckgroupIDs: []types.CheckgroupID{cgID}})
 	assignedPersonnel, _ := app.models.Checkpersonnel.GetAll(r.Context(), checkpersonnel.Filter{CheckgroupIDs: []types.CheckgroupID{cgID}})
-	availablePersonnel, _ := app.models.Personnel.GetAll(r.Context(), personnel.Filter{YearSlug: cg.YearSlug, UserTypes: []string{"friend"}})
+	availablePersonnel := app.assignablePersonnel(r.Context(), cg.YearSlug)
 	year, _ := app.models.Year.GetByID(r.Context(), cg.YearSlug)
 
 	envelope := jsonapi.Envelope{

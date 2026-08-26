@@ -15,8 +15,24 @@ type Queries interface {
 	GetAll(context.Context, Filter) ([]Patrulje, error)
 	GetByID(context.Context, types.TeamID) (*Patrulje, error)
 	GetStartedTeamIDs(context.Context, Filter) ([]types.TeamID, error)
+	GetStartedTeams(context.Context, Filter) ([]StartedTeam, error)
 	GetDiscontinuedTeamIDs(context.Context, Filter) ([]types.TeamID, error)
 	AssignedNumbers(context.Context, types.YearSlug) (map[types.TeamID]string, error)
+}
+
+// StartedTeam is a patrol on the route and its strength there.
+//
+// Deliberately two columns. The post list's four numbers per line need exactly this
+// and are recomputed on every scan during the race — peak 17 a minute — while GetAll
+// carries three correlated subqueries per row (member count, t-shirt count, a payment
+// sum with a nested IN) and measures 226ms against this season's data, against 0.3ms
+// for the query below. Reaching for the fat row to read two fields is how a page that
+// answered in milliseconds comes to take a quarter of a second per scan.
+type StartedTeam struct {
+	TeamID types.TeamID
+	// ActiveMemberCount is zero for a patrol nobody is left racing on: the canonical
+	// test for udgået. Maintained by the spejderstatus projection.
+	ActiveMemberCount int
 }
 
 type querier struct {
@@ -123,6 +139,37 @@ func (q *querier) GetStartedTeamIDs(ctx context.Context, f Filter) ([]types.Team
 
 func (q *querier) GetDiscontinuedTeamIDs(ctx context.Context, f Filter) ([]types.TeamID, error) {
 	return []types.TeamID{}, nil
+}
+
+// GetStartedTeams lists the patrols on the route with their remaining strength.
+//
+// See StartedTeam for why this exists next to GetAll.
+func (q *querier) GetStartedTeams(ctx context.Context, f Filter) ([]StartedTeam, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	query := `SELECT teamId, activeMemberCount FROM patrulje WHERE signupStatus = ?`
+	args := []any{string(types.SignupStatusStarted)}
+	if f.YearSlug != "" {
+		query += ` AND year = ?`
+		args = append(args, string(f.YearSlug))
+	}
+
+	rows, err := q.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	teams := []StartedTeam{}
+	for rows.Next() {
+		var t StartedTeam
+		if err := rows.Scan(&t.TeamID, &t.ActiveMemberCount); err != nil {
+			return nil, err
+		}
+		teams = append(teams, t)
+	}
+	return teams, rows.Err()
 }
 
 /*

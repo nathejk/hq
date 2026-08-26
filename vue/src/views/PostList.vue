@@ -13,6 +13,7 @@ import DayTimePicker from '@/components/DayTimePicker.vue'
 */
 import Checkgroup from '@/views/PostlinjeModal.vue'
 import CheckgroupPersonnel from '@/views/PostmandskabModal.vue'
+import CheckgroupTeamsDialog from '@/components/CheckgroupTeamsDialog.vue'
 
 /*
 const checkpointSchemes = [
@@ -55,6 +56,26 @@ const personName = (userId) => {
 //                           Needed by the per-line progress meters, which are the
 //                           whole point of this page during the race.
 //   patrulje                startedTeamCount, from patrulje.*.started
+//   spejder                 activeMemberCount, which is what makes a team read as udgået
+//                           rather than missing in the four numbers per line. Maintained by
+//                           the spejderstatus projection, whose subjects are spejder — so a
+//                           withdrawal reaches these counts only through this token, and
+//                           without it a patrol that went home would go on being counted as
+//                           somebody to chase.
+//   crewmember/crew         the names shown for assigned staff. Anyone on a post is a
+//                           crew member now (see assignablePersonnel in the API): a
+//                           rename, or a newly enrolled member being put on a post,
+//                           has to reach this page or it prints "Ukendt" for an id it
+//                           cannot resolve. `crew` because a crew *signup* mints the
+//                           member — the signedup subject is the crew entity, not
+//                           crewmember.
+//   section                 the section labels those names are grouped by, from
+//                           section.*.added|moved|deleted. Not `sections`: the sort
+//                           event changes order, which this page does not show.
+//   friend                  the signed-up helpers, still offered for the years that
+//                           have them. NOTE the token is the signup's team type,
+//                           `friend` — there is no `personnel` token, despite the
+//                           projection being called that.
 //
 // On the cost of depending on scans: measured, not assumed. Peak scan rate in the
 // existing data is 17/minute (2025-09-20 13:45) and /checkgroups answers in ~3.5ms
@@ -79,7 +100,7 @@ const { data: postData, error, refresh } = useLiveResource(
       checkgroupStats: rsp.data.checkgroupStats || []
     }
   },
-  { dependsOn: ['checkgroup', 'checkgroups', 'checkpoint', 'checkpersonnel', 'qr', 'patrulje'] }
+  { dependsOn: ['checkgroup', 'checkgroups', 'checkpoint', 'checkpersonnel', 'qr', 'patrulje', 'spejder', 'crewmember', 'crew', 'section', 'friend'] }
 )
 
 watch(
@@ -178,17 +199,30 @@ const meterForCheckgroup = (cgId) => {
   const stats = checkgroupStats.value.find((s) => s.checkgroupId === cgId)
   const onTime = stats ? stats.onTime : 0
   const late = stats ? stats.late : 0
-  const expired = stats ? stats.expired : 0
+  const retired = stats ? stats.retired : 0
   const missing = stats ? stats.missing : 0
+  // `status` is the token the API uses for a team's standing, carried here so a click can open
+  // the dialog already filtered to the number that was clicked.
   return [
-    { label: 'Til tiden', color: '#34d399', text: '#fff', value: onTime, icon: 'pi pi-bolt' },
-    { label: 'For sent', color: '#fbbf24', text: '#fff', value: late, icon: 'pi pi-clock' },
-    { label: 'Udgåede', color: '#999', text: '#fff', value: expired, icon: 'pi pi-heart' },
-    { label: 'Mangler', color: 'rgb(229, 231, 235)', text: '#666', value: missing, icon: 'pi pi-eye' }
+    { label: 'Til tiden', status: 'onTime', color: '#34d399', text: '#fff', value: onTime, icon: 'pi pi-bolt' },
+    { label: 'For sent', status: 'late', color: '#fbbf24', text: '#fff', value: late, icon: 'pi pi-clock' },
+    { label: 'Udgåede', status: 'retired', color: '#999', text: '#fff', value: retired, icon: 'pi pi-heart' },
+    { label: 'Mangler', status: 'missing', color: 'rgb(229, 231, 235)', text: '#666', value: missing, icon: 'pi pi-eye' }
   ]
 }
 const meterTotal = (m) => m.reduce((s, o) => s + o.value, 0)
 const percent = (f, t) => (t === 0 ? 0 : Math.round((100 * f) / t))
+
+// The line whose teams are being listed, and which of its four numbers was clicked.
+//
+// The numbers answer "how many", which stops being enough the moment a line is about to close:
+// then the only useful question is *which* patruljer are still out and who to ring. The dialog
+// is that list, filtered to the number clicked.
+const openTeams = ref(null)
+
+const showTeams = (checkgroup, status) => {
+  openTeams.value = { checkgroupId: checkgroup.id, name: checkgroup.name, status }
+}
 
 const menu = ref(null)
 const menuItems = ref([
@@ -258,7 +292,20 @@ const toggle = (event, checkgroup) => {
             </template>
             <div class="flex flex-wrap gap-4 pt-3">
               <template v-for="val of meterForCheckgroup(element.id)" :key="val.label">
-                <Card class="flex-1 border border-surface shadow-none">
+                <!--
+                  Clickable: the number is the question "how many", and the answer an operator
+                  needs next is "which ones". Rendered as a button for the keyboard and for the
+                  cursor to say so, but styled as the card it already was.
+                -->
+                <Card
+                  class="flex-1 border border-surface shadow-none cursor-pointer hover:border-primary-400"
+                  role="button"
+                  tabindex="0"
+                  v-tooltip.bottom="`Vis ${val.label.toLowerCase()}`"
+                  @click="showTeams(element, val.status)"
+                  @keydown.enter="showTeams(element, val.status)"
+                  @keydown.space.prevent="showTeams(element, val.status)"
+                >
                   <template #content>
                     <div class="flex justify-between gap-8">
                       <div class="flex flex-col gap-1">
@@ -325,6 +372,16 @@ const toggle = (event, checkgroup) => {
       </template>
       <CheckgroupPersonnel :checkgroupId="edit.id" @canceled="closeEdit" @deleted="deleted" @saved="saved" />
     </Dialog>
+
+    <!-- `key` so clicking a number on a different line remounts on that line's resource. -->
+    <CheckgroupTeamsDialog
+      v-if="openTeams"
+      :key="openTeams.checkgroupId"
+      :checkgroup-id="openTeams.checkgroupId"
+      :name="openTeams.name"
+      :initial-status="openTeams.status"
+      @close="openTeams = null"
+    />
   </div>
 </template>
 

@@ -5,6 +5,13 @@ import { http } from '@/plugins/axios'
 
 import DayTimePicker from '@/components/DayTimePicker.vue'
 import { dddhhmm, hhmm } from '@/composables/datefilters'
+import {
+  buildPersonnelTree,
+  expandedPriorityKeys,
+  groupPersonnel,
+  selectionKeysFor,
+  userIdFromSelection
+} from '@/composables/personnelTree'
 
 const props = withDefaults(
   defineProps<{
@@ -91,6 +98,24 @@ const unassignedPersonnel = (currentRowKey: number | null = null) => {
   }
   return availablePersonnel.value.filter((p: any) => !assignedUserIds.has(p.id))
 }
+
+/**
+ * The picker's people, grouped, built and opened.
+ *
+ * The logic lives in `composables/personnelTree.ts` and is tested there: TreeSelect speaks
+ * selection *keys* rather than values, branches and people share one key namespace, and
+ * "postmandskab open, the rest shut" is derived from the data — all three fail in silent ways,
+ * and none can be tested inside a single-file component.
+ *
+ * Any crew member is selectable, which is the point: an unstaffed post gets whoever is standing
+ * there, and refusing to record that does not prevent the arrangement, only the record of it.
+ * The postmandskab are merely first, and already expanded.
+ */
+const personnelTree = (currentRowKey: number | null = null) =>
+  buildPersonnelTree(groupPersonnel(unassignedPersonnel(currentRowKey)))
+
+/** Which branches stand open. Reset on every open (see `load`), not remembered. */
+const personnelExpandedKeys = ref<Record<string, boolean>>({})
 
 // Whether there are any unsaved changes
 const hasChanges = computed(() => {
@@ -247,6 +272,9 @@ const load = async () => {
       availablePersonnel.value = rsp.data.availablePersonnel || []
       assignedPersonnel.value = rsp.data.assignedPersonnel || []
       year.value = rsp.data.year || {}
+      // After the people are in place, not before: the branches to open are derived
+      // from them.
+      personnelExpandedKeys.value = expandedPriorityKeys(groupPersonnel(unassignedPersonnel()))
     }
   } catch (error: any) {
     console.log('error happened', error)
@@ -529,7 +557,23 @@ const cancel = () => emit('canceled')
         <template #body="{ data }">
           <span v-if="data.isEmpty" class="italic text-surface-400">Intet postmandskab</span>
           <template v-else-if="data.isNew && data.isEditing">
-            <Select :modelValue="newRows.get(data.checkpointId)?.find((r: any) => r.key === data.newRowKey)?.userId" @update:modelValue="(val: string) => setNewRowUser(data.checkpointId, data.newRowKey, val)" :options="unassignedPersonnel(data.newRowKey)" optionLabel="name" optionValue="id" placeholder="Vælg person" class="w-full" filter />
+            <!--
+              A tree, postmandskab open and the other sections closed: every crew member is
+              selectable (that is the point) but the ones normally wanted are the ones already
+              on screen. `filter` because the full list is long enough to type into rather than
+              hunt through — filtering searches every branch, open or not.
+            -->
+            <TreeSelect
+              :modelValue="selectionKeysFor(newRows.get(data.checkpointId)?.find((r: any) => r.key === data.newRowKey)?.userId)"
+              @update:modelValue="(val: any) => setNewRowUser(data.checkpointId, data.newRowKey, userIdFromSelection(val))"
+              v-model:expandedKeys="personnelExpandedKeys"
+              :options="personnelTree(data.newRowKey)"
+              selectionMode="single"
+              placeholder="Vælg person"
+              class="w-full"
+              filter
+              filterPlaceholder="Søg blandt alt crew"
+            />
           </template>
           <span v-else-if="data.isDeleted" class="line-through text-surface-400">{{ data.name }}</span>
           <span v-else-if="data.isNew && !data.isEditing" class="text-green-600 font-medium">{{ data.name }}</span>

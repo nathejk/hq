@@ -29,6 +29,8 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodGet, "/api/checkgroups", app.listCheckgroupsHandler)
 	router.HandlerFunc(http.MethodPost, "/api/checkgroup", app.createCheckgroupHandler)
 	router.HandlerFunc(http.MethodGet, "/api/checkgroup/:id", app.checkgroupHandler)
+	// Every started team's standing at one line, behind the four numbers on the post list.
+	router.HandlerFunc(http.MethodGet, "/api/checkgroup/:id/teams", app.checkgroupTeamsHandler)
 	router.HandlerFunc(http.MethodPut, "/api/checkgroup/:id", app.updateCheckgroupHandler)
 	router.HandlerFunc(http.MethodDelete, "/api/checkgroup/:id", app.deleteCheckgroupHandler)
 	router.HandlerFunc(http.MethodPut, "/api/checkgroups/sorted", app.sortCheckgroupsHandler)

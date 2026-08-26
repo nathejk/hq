@@ -111,6 +111,9 @@ func (f *fakeShelterPatruljer) GetByID(context.Context, types.TeamID) (*patrulje
 func (f *fakeShelterPatruljer) GetStartedTeamIDs(context.Context, patrulje.Filter) ([]types.TeamID, error) {
 	return nil, nil
 }
+func (f *fakeShelterPatruljer) GetStartedTeams(context.Context, patrulje.Filter) ([]patrulje.StartedTeam, error) {
+	return nil, nil
+}
 func (f *fakeShelterPatruljer) GetDiscontinuedTeamIDs(context.Context, patrulje.Filter) ([]types.TeamID, error) {
 	return nil, nil
 }
