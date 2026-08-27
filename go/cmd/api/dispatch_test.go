@@ -17,7 +17,9 @@ import (
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/internal/data"
 	"nathejk.dk/nathejk/commands"
+	"nathejk.dk/nathejk/table/checkpoint"
 	"nathejk.dk/nathejk/table/dispatch"
+	"nathejk.dk/nathejk/table/lok"
 )
 
 // The dispatch endpoints at the HTTP boundary: what the board gets, what the SPA may send, and
@@ -145,6 +147,27 @@ func (f *fakeVehicleQueries) GetAll(context.Context, vehicle.Filter) ([]vehicle.
 	return f.vehicles, nil
 }
 
+// fakeCheckpointQueries and fakeLokQueries stand in for the place vocabulary the dialog's picker
+// offers. Empty by default: a board with no checkpoints still has HQ and free text, which is what
+// makes the picker usable before anything is configured.
+type fakeCheckpointQueries struct{ checkpoints []checkpoint.Checkpoint }
+
+func (f *fakeCheckpointQueries) GetAll(context.Context, checkpoint.Filter) ([]checkpoint.Checkpoint, error) {
+	return f.checkpoints, nil
+}
+func (f *fakeCheckpointQueries) GetByID(context.Context, types.CheckpointID) (*checkpoint.Checkpoint, error) {
+	return nil, tables.ErrRecordNotFound
+}
+
+type fakeLokQueries struct{ loks []*lok.Lok }
+
+func (f *fakeLokQueries) GetAll(context.Context, lok.Filter) ([]*lok.Lok, lok.Metadata, error) {
+	return f.loks, lok.Metadata{}, nil
+}
+func (f *fakeLokQueries) GetByID(context.Context, types.LokID) (*lok.Lok, error) {
+	return nil, tables.ErrRecordNotFound
+}
+
 func dispatchApp(cmd *fakeDispatchCommands, q *fakeDispatchQueries) *application {
 	return &application{
 		models: data.Models{
@@ -152,6 +175,8 @@ func dispatchApp(cmd *fakeDispatchCommands, q *fakeDispatchQueries) *application
 			Section:    &fakeSectionQueries{},
 			Vehicle:    &fakeVehicleQueries{},
 			CrewMember: &fakeCrewQueries{},
+			Checkpoint: &fakeCheckpointQueries{},
+			Lok:        &fakeLokQueries{},
 		},
 		commands: commands.Commands{Dispatch: cmd},
 	}
@@ -629,4 +654,49 @@ func (s *seatQueries) GetTour(context.Context, types.YearSlug, dispatch.TourID) 
 }
 func (s *seatQueries) GetTask(context.Context, types.YearSlug, dispatch.TaskID) (*dispatch.Task, error) {
 	return s.task, nil
+}
+
+// --- the place vocabulary (task 114) ---
+
+func TestPlacesOfferHQEvenWithNothingConfigured(t *testing.T) {
+	// The picker must be usable on a fresh year: HQ exists whatever the organisers have set up,
+	// and free text is typed rather than offered. A picker with no options is one an operator
+	// types around — into the description, where nothing can read it.
+	rec := httptest.NewRecorder()
+	dispatchApp(&fakeDispatchCommands{}, &fakeDispatchQueries{}).showDispatchBoardHandler(rec,
+		dispatchRequest(t, http.MethodGet, "/api/dispatch", "", nil))
+
+	var got struct {
+		Places []struct {
+			Kind  string `json:"kind"`
+			Label string `json:"label"`
+		} `json:"places"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding: %v; body: %s", err, rec.Body.String())
+	}
+	if len(got.Places) != 1 || got.Places[0].Kind != "hq" {
+		t.Errorf("places = %+v, want just HQ", got.Places)
+	}
+}
+
+func TestPlacesGroupCheckpointsAndLoks(t *testing.T) {
+	app := dispatchApp(&fakeDispatchCommands{}, &fakeDispatchQueries{})
+	app.models.Checkpoint = &fakeCheckpointQueries{checkpoints: []checkpoint.Checkpoint{
+		{ID: "cp-1", Name: "Post 2A"},
+		// A checkpoint with no name is still somewhere a car may have to go; an unlabelled
+		// option is one nobody can pick, so it falls back to its id.
+		{ID: "cp-2"},
+	}}
+	app.models.Lok = &fakeLokQueries{loks: []*lok.Lok{{LokID: "lok-3", Name: "Lok 3"}}}
+
+	rec := httptest.NewRecorder()
+	app.showDispatchBoardHandler(rec, dispatchRequest(t, http.MethodGet, "/api/dispatch", "", nil))
+
+	body := rec.Body.String()
+	for _, want := range []string{"Post 2A", "cp-2", "Lok 3", `"checkpoint"`, `"lok"`, `"hq"`} {
+		if !strings.Contains(body, want) {
+			t.Errorf("places are missing %s: %s", want, body)
+		}
+	}
 }

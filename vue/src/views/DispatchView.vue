@@ -16,9 +16,8 @@
 //
 // # What is not here yet
 //
-// Creating a task (task 114, the dialog and its place picker), the capacity strip and the queued
-// wait-time estimate (115/116), deadline warnings (117) and `Bestil kørsel` from a case (119).
-// Tasks reach this board from the API until then.
+// The capacity strip and the queued wait-time estimate (115/116), deadline warnings (117) and
+// `Bestil kørsel` from a case (119).
 
 import { computed, ref } from 'vue'
 import { useToast } from 'primevue/usetoast'
@@ -27,6 +26,7 @@ import { useLiveResource } from '@/composables/useLiveResource'
 import { useDeferredApply } from '@/composables/useDeferredApply'
 import { useNow } from '@/composables/shelter'
 import DispatchTourCard from '@/components/DispatchTourCard.vue'
+import DispatchTaskDialog, { type PlaceOption } from '@/components/DispatchTaskDialog.vue'
 import {
   type Board,
   type Task,
@@ -74,19 +74,45 @@ const { data, pending, error, refresh } = useLiveResource(
 const tasks = ref<Task[]>([])
 const tours = ref<Tour[]>([])
 const units = ref<Unit[]>([])
+const places = ref<PlaceOption[]>([])
 
-// True while the board must not be redrawn underneath the operator: a write in flight, or a
-// local arrangement not yet saved. A drag is short, but the round trip after it is not, and a
-// payload landing mid-save would show the pre-save order for a moment and then jump.
+// True while the board must not be redrawn underneath the operator: a write in flight, a local
+// arrangement not yet saved, or a dialog holding a half-typed form. A drag is short, but the round
+// trip after it is not, and a payload landing mid-save would show the pre-save order for a moment
+// and then jump.
 const saving = ref(false)
 const dragging = ref(false)
-const paused = computed(() => saving.value || dragging.value)
+const taskDialogOpen = ref(false)
+const editingTask = ref<Task | undefined>(undefined)
+// Declared here rather than beside the handlers that use them, because `paused` reads them and
+// `useDeferredApply` evaluates that immediately — a later `const` would be a temporal-dead-zone
+// error on mount, which is a blank screen rather than a warning.
+const cancelling = ref<{ kind: 'task' | 'tour'; id: string; label: string } | null>(null)
+const boarding = ref<Task | null>(null)
+const paused = computed(
+  () => saving.value || dragging.value || taskDialogOpen.value || !!cancelling.value || !!boarding.value,
+)
 
 const { updatesWaiting } = useDeferredApply(data, paused, (board: Board) => {
   tasks.value = board.tasks ?? []
   tours.value = board.tours ?? []
   units.value = board.units ?? []
+  places.value = (board as Board & { places?: PlaceOption[] }).places ?? []
 })
+
+function newTask() {
+  editingTask.value = undefined
+  taskDialogOpen.value = true
+}
+
+function editTask(task: Task) {
+  editingTask.value = task
+  taskDialogOpen.value = true
+}
+
+async function onTaskSaved() {
+  await refresh()
+}
 
 const tasksById = computed<Record<string, Task>>(() => {
   const map: Record<string, Task> = {}
@@ -277,7 +303,6 @@ async function createTour() {
 
 // --- cancelling, which always needs a reason ---
 
-const cancelling = ref<{ kind: 'task' | 'tour'; id: string; label: string } | null>(null)
 const cancelReason = ref('')
 
 function askToCancelTask(task: Task) {
@@ -307,7 +332,6 @@ async function confirmCancel() {
 
 // --- people aboard ---
 
-const boarding = ref<Task | null>(null)
 const boardingUnit = ref<string>('')
 
 function askWhoCollected(task: Task) {
@@ -352,6 +376,7 @@ function errorDetail(err: any) {
       <Tag :value="`${openTours.length} ture ude`" severity="secondary" />
 
       <div class="flex-1" />
+      <Button label="Ny opgave" icon="pi pi-plus" size="small" @click="newTask()" />
       <Button
         icon="pi pi-refresh"
         label="Opdater"
@@ -428,8 +453,18 @@ function errorDetail(err: any) {
               </div>
             </template>
           </Column>
-          <Column style="width: 3rem">
+          <Column style="width: 5rem">
             <template #body="{ data: task }">
+              <Button
+                icon="pi pi-pencil"
+                size="small"
+                text
+                rounded
+                severity="secondary"
+                :disabled="saving"
+                v-tooltip.top="'Rediger opgaven'"
+                @click="editTask(task)"
+              />
               <Button
                 icon="pi pi-ban"
                 size="small"
@@ -542,6 +577,13 @@ function errorDetail(err: any) {
         </template>
       </section>
     </div>
+
+    <DispatchTaskDialog
+      v-model:visible="taskDialogOpen"
+      :task="editingTask"
+      :places="places"
+      @saved="onTaskSaved()"
+    />
 
     <!-- Cancelling always asks why: a cancelled job with no explanation is the one thing a shift
          handover cannot recover from. -->

@@ -11,7 +11,9 @@ import (
 	"github.com/nathejk/shared-go/tables/vehicle"
 	"github.com/nathejk/shared-go/types"
 	jsonapi "nathejk.dk/cmd/api/app"
+	"nathejk.dk/nathejk/table/checkpoint"
 	"nathejk.dk/nathejk/table/dispatch"
+	"nathejk.dk/nathejk/table/lok"
 )
 
 // Kørsel — the dispatch desk (PRD 009). What needs moving, which car is doing it, and when.
@@ -97,6 +99,11 @@ func (app *application) showDispatchBoardHandler(w http.ResponseWriter, r *http.
 		app.ServerErrorResponse(w, r, err)
 		return
 	}
+	places, err := app.dispatchPlaces(r, year)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
 	// Never null, always an array. The queries already promise this, and the handler promises
 	// it again: a null collection has broken rendering in this repo three times, and the cost
 	// of the belt as well as the braces is two lines.
@@ -111,6 +118,10 @@ func (app *application) showDispatchBoardHandler(w http.ResponseWriter, r *http.
 		"tasks": tasks,
 		"tours": tours,
 		"units": units,
+		// The places the picker offers as groups. Sent with the board rather than fetched
+		// separately: the dialog must open instantly at 3am, and a picker that has to load its
+		// own options is a picker somebody types around.
+		"places": places,
 		// The vocabularies the dialog offers, sent from here for the reason the korps list
 		// is: a client that invents its own would store values nothing can filter on.
 		"kinds":      []dispatch.Kind{dispatch.KindPickup, dispatch.KindTransport, dispatch.KindCollection, dispatch.KindDelivery},
@@ -177,6 +188,55 @@ func (app *application) dispatchUnits(r *http.Request, year types.YearSlug) ([]d
 		units = append(units, unit)
 	}
 	return units, nil
+}
+
+// dispatchPlaceOption is one entry in the place picker.
+//
+// Grouped by kind, and *not* including free text, which the control accepts on its own: "på
+// Slangerupvej ved skovbrynet" is the normal way to say where a scout is standing (PRD 009 §6),
+// not a fallback for missing data. A picker that only offered known locations would be worked
+// around by typing the road name into the description, where nothing can read it.
+type dispatchPlaceOption struct {
+	Kind  dispatch.PlaceKind `json:"kind"`
+	RefID string             `json:"refId"`
+	Label string             `json:"label"`
+}
+
+// dispatchPlaces lists the checkpoints, loks and HQ the picker offers.
+//
+// Failures to load either collection are *not* fatal to the board: a dispatcher can still type a
+// place. Hence the errors are returned only for a real query failure, and an empty group is
+// simply an empty group.
+func (app *application) dispatchPlaces(r *http.Request, year types.YearSlug) ([]dispatchPlaceOption, error) {
+	places := []dispatchPlaceOption{
+		// HQ is a place with no id — there is one of it, and it is where most things go.
+		{Kind: dispatch.PlaceHQ, Label: "HQ"},
+	}
+	checkpoints, err := app.models.Checkpoint.GetAll(r.Context(), checkpoint.Filter{YearSlug: string(year)})
+	if err != nil {
+		return nil, err
+	}
+	for _, cp := range checkpoints {
+		label := cp.Name
+		if label == "" {
+			// A checkpoint with no name is still somewhere a car may have to go, and an
+			// unlabelled option is one an operator cannot pick.
+			label = string(cp.ID)
+		}
+		places = append(places, dispatchPlaceOption{Kind: dispatch.PlaceCheckpoint, RefID: string(cp.ID), Label: label})
+	}
+	loks, _, err := app.models.Lok.GetAll(r.Context(), lok.Filter{YearSlug: year})
+	if err != nil {
+		return nil, err
+	}
+	for _, l := range loks {
+		label := l.Name
+		if label == "" {
+			label = string(l.LokID)
+		}
+		places = append(places, dispatchPlaceOption{Kind: dispatch.PlaceLok, RefID: string(l.LokID), Label: label})
+	}
+	return places, nil
 }
 
 // dispatchPlace is a place as the client sends it.
