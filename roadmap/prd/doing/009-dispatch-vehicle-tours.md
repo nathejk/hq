@@ -3,7 +3,7 @@
 **Status:** doing
 **Author:** agent session (with the product owner's request)
 **Created:** 2026-08-27
-**Last updated:** 2026-08-27 (revised three times during drafting as the product owner answered — tours, dispatchable subsections, logistics as the operator, desk-only in this repo, English names in source, SOS priority vocabulary, one allowance for all vehicles — see §11; §8's table list amended during task 109 to add `dispatch_stop_task`)
+**Last updated:** 2026-08-27 (revised three times during drafting as the product owner answered — tours, dispatchable subsections, logistics as the operator, desk-only in this repo, English names in source, SOS priority vocabulary, one allowance for all vehicles — see §11; §8's table list amended during task 109 to add `dispatch_stop_task`; §10 updated as tasks 108–119 shipped)
 **Approved:** 2026-08-27
 **Shipped:**
 **Target users:** organizer (logistics crew — the dispatch desk and the drivers), organizer (nødtelefon operator, as the originator of pickups), organizer (Hønsegården crew, as a reader)
@@ -646,21 +646,27 @@ it needs Phase 1's state machine to hang off.
 **Phase 4 — positions.** When the tracker feed is available: the vehicle position event, last
 known position on the capacity strip, a distance term in the leg allowance.
 
-Tasks created in `roadmap/tasks/` on approval (2026-08-27):
+Tasks created in `roadmap/tasks/` on approval (2026-08-27). Phases 1–3 shipped the same day;
+Phase 4 remains blocked on tracker access.
 
-- [ ] 108 — `dispatchable` flag on sections — table, endpoint, Organisation page toggle
-- [ ] 109 — `dispatch` entity — tasks, tours, stops, timeline, projection, live wiring
-- [ ] 110 — dispatch API — board, task create/edit/cancel (with OpenAPI annotations)
-- [ ] 111 — tour API — create, stops (whole-list PUT), underway, stop visited, complete
-- [ ] 112 — extract `composables/severity.ts` from `sos.ts` and share the grøn/gul/rød vocabulary
-- [ ] 113 — `DispatchView` — queue + tour panes, live + deferred while rearranging
-- [ ] 114 — task dialog with the place picker (checkpoint / lok / HQ / free text)
-- [ ] 115 — `dispatchduty` entity + duty window editor per unit
-- [ ] 116 — capacity strip, unit readiness, and the queued wait-time estimate
-- [ ] 117 — deadline warnings and the at-risk filter
-- [ ] 118 — `AcceptPickup` on `spejderstatus.Commands` → `transit`
-- [ ] 119 — `Bestil kørsel` from an SOS case, and the case's task list
+- [x] 108 — `dispatchable` flag on sections — table, endpoint, Organisation page toggle
+- [x] 109 — `dispatch` entity — tasks, tours, stops, timeline, projection, live wiring
+- [x] 110 — dispatch API — board, task create/edit/cancel (with OpenAPI annotations)
+- [x] 111 — tour API — create, stops (whole-list PUT), underway, stop visited, complete
+- [x] 112 — extract `composables/severity.ts` from `sos.ts` and share the grøn/gul/rød vocabulary
+- [x] 113 — `DispatchView` — queue + tour panes, live + deferred while rearranging
+- [x] 114 — task dialog with the place picker (checkpoint / lok / HQ / free text)
+- [x] 115 — `dispatchduty` entity + duty window editor per unit
+- [x] 116 — capacity strip, unit readiness, and the queued wait-time estimate
+- [x] 117 — deadline warnings and the at-risk filter
+- [x] 118 — `AcceptPickup` on `spejderstatus.Commands` → `transit`
+- [x] 119 — `Bestil kørsel` from an SOS case, and the case's task list
 - [ ] 120 — vehicle position seam (Phase 4, blocked on tracker access)
+
+One known gap inside a shipped task, recorded rather than quietly dropped: a pickup card on the
+SOS case does not link into `MemberDetailDialog` (task 119). The dialog is already how an operator
+reaches *Bestil kørsel* in the first place, and a second entry point would mean lifting that
+dialog's state out of `SosTeamCard` for no new capability.
 
 ## 11. Open Questions
 
