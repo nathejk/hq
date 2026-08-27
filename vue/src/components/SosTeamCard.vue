@@ -39,7 +39,17 @@ const props = defineProps<{
   }[]
 }>()
 
-const emit = defineEmits<{ changed: [] }>()
+const emit = defineEmits<{
+  changed: []
+  /**
+   * The operator wants a car for these members (PRD 009 §6).
+   *
+   * Emitted rather than handled here: the case owns the dispatch dialog, because the task belongs
+   * to the *case* and not to this card — and because one dialog on the view is one place where the
+   * case id, the patrol and the members are assembled.
+   */
+  'request-transport': [{ teamId: string; memberIds: string[]; label: string }]
+}>()
 
 // The picker filters the year's patrol list that the SPA already holds live for
 // PatruljeListView — same cache key, so opening a case costs no extra request and
@@ -726,6 +736,27 @@ const withdrawTeam = computed<TeamRow | null>(() => {
             outlined
             :loading="pending[detailMember.memberId]"
             @click="act(detailMember.memberId, 'racing')"
+          />
+          <!--
+            A car for this scout (PRD 009). Beside "Fortsætter selv" and only on a waiting member,
+            because those are the two things that can happen next to somebody sitting by the
+            trailside: they carry on, or somebody comes for them. One click, from the screen the
+            operator is already on — which is the whole mitigation for the desk-discipline risk.
+          -->
+          <Button
+            v-if="canResume(detailMember.status) && detail"
+            label="Bestil kørsel"
+            icon="pi pi-truck"
+            size="small"
+            severity="secondary"
+            outlined
+            @click="
+              emit('request-transport', {
+                teamId: detail.team.teamId,
+                memberIds: [detail.memberId],
+                label: `${detailMember.name} (${detail.team.name})`,
+              })
+            "
           />
           <span v-else-if="detailMember.status" class="text-xs italic text-gray-500">
             Bil og HQ registrerer selv de næste skridt

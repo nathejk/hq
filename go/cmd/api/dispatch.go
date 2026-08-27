@@ -563,6 +563,57 @@ func (app *application) cancelDispatchTaskHandler(w http.ResponseWriter, r *http
 	}
 }
 
+// showSosDispatchHandler serves one case's kørsel tasks.
+//
+// Its own endpoint on the case rather than a field on GET /api/sos/:id, and its own live cache
+// key: the nødtelefon operator wants the *time* — "22.35" read off the case while still on the
+// phone — and a task planned by the logistics desk must reach them without the case itself
+// changing. Folding it into the case payload would mean every dispatch edit invalidated the
+// case, and every case edit refetched the tasks.
+//
+// @Summary     A case's kørsel tasks
+// @Description The dispatch tasks created from this nødråb, each with the stops it occupies and their planned times — which is what lets the operator answer "when is somebody coming for my scout?" without opening the kørsel board. Oldest first. Always an array. The planned time is a human's plan rather than a computation: it is the time the dispatcher's own tour reaches that stop.
+// @Tags        dispatch
+// @Produce     json
+// @Param       id path string true "Case id"
+// @Success     200 {object} map[string]interface{} "envelope with a \"tasks\" array"
+// @Failure     404 {object} map[string]interface{}
+// @Failure     500 {object} map[string]interface{}
+// @Router      /api/sos/{id}/dispatch [get]
+func (app *application) showSosDispatchHandler(w http.ResponseWriter, r *http.Request) {
+	sosID := types.SosID(app.ReadNamedParam(r, "id"))
+	if sosID == "" {
+		app.NotFoundResponse(w, r)
+		return
+	}
+	year := app.YearSlug(r)
+	tasks, err := app.models.Dispatch.Tasks(r.Context(), dispatch.Filter{YearSlug: year, SosID: sosID})
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+	if tasks == nil {
+		tasks = []*dispatch.Task{}
+	}
+	// The stops in one batched query rather than one per task: a case with four waiting members
+	// must not be four round trips.
+	ids := make([]dispatch.TaskID, 0, len(tasks))
+	for _, task := range tasks {
+		ids = append(ids, task.ID)
+	}
+	stops, err := app.models.Dispatch.StopsByTask(r.Context(), year, ids)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+	for _, task := range tasks {
+		task.Stops = stops[task.ID]
+	}
+	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"tasks": tasks}, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
 // dispatchCommandError maps the dispatch commands' refusals onto responses.
 //
 // Danish, and phrased as what is wrong with the request rather than as the rule it broke —

@@ -60,6 +60,24 @@ export interface Tour {
   stops: TourStop[]
 }
 
+/**
+ * One appearance of a task on a tour — the load, the unload, or a single action.
+ *
+ * This is where the answer to "when?" comes from: the planned time of the stop, made by a human
+ * who knows the roads. Sent with a task by `GET /api/dispatch/task/:id` and
+ * `GET /api/sos/:id/dispatch`; the board matches tasks to stops from the tours it already has.
+ */
+export interface TaskStop {
+  tourId: string
+  stopId: string
+  role: Role
+  sortOrder: number
+  place: Place
+  plannedUts: number | null
+  override: boolean
+  visitedUts: number | null
+}
+
 export interface Task {
   id: string
   year: string
@@ -80,6 +98,8 @@ export interface Task {
   sosId?: string
   teamId?: string
   memberIds: string[]
+  /** Filled in by the single-task and case endpoints; absent on the board payload. */
+  stops?: TaskStop[]
 }
 
 export interface Vehicle {

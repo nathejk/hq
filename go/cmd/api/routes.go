@@ -144,6 +144,9 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPatch, "/api/sos/:id/comment/:commentId", app.updateSosCommentHandler)
 	router.HandlerFunc(http.MethodPut, "/api/sos/:id/team/:teamId", app.associateSosTeamHandler)
 	router.HandlerFunc(http.MethodDelete, "/api/sos/:id/team/:teamId", app.disassociateSosTeamHandler)
+	// The case's own kørsel tasks (PRD 009 §6): the operator reads the expected time off the
+	// case rather than opening the dispatch board.
+	router.HandlerFunc(http.MethodGet, "/api/sos/:id/dispatch", app.showSosDispatchHandler)
 
 	// Organisation (sections + crew members + vehicles)
 	router.HandlerFunc(http.MethodGet, "/api/organisation", app.showOrganisationHandler)

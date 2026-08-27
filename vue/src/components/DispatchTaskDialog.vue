@@ -32,6 +32,21 @@ const props = defineProps<{
   /** The task being edited, or undefined to create one. */
   task?: Task
   places: PlaceOption[]
+  /**
+   * Values a caller wants the new task to start with.
+   *
+   * This is how `Bestil kørsel` works from an SOS case (task 119): the case knows the patrol,
+   * the waiting members and the case id, and carrying them in means the operator confirms a
+   * filled-in form instead of retyping what the screen already knows. Ignored while editing.
+   */
+  prefill?: {
+    kind?: TaskKind
+    priority?: string
+    description?: string
+    sosId?: string
+    teamId?: string
+    memberIds?: string[]
+  }
 }>()
 
 const emit = defineEmits<{
@@ -128,6 +143,16 @@ watch(
     notBefore.value = null
     deadline.value = null
     applyKindDefaults('pickup')
+
+    const prefill = props.prefill
+    if (prefill) {
+      if (prefill.kind) {
+        kind.value = prefill.kind
+        applyKindDefaults(prefill.kind)
+      }
+      if (prefill.priority) priority.value = prefill.priority
+      if (prefill.description) description.value = prefill.description
+    }
   },
 )
 
@@ -163,6 +188,11 @@ async function save() {
         dropoff: dropoff.value,
         notBeforeUts: dateToUts(notBefore.value) ?? undefined,
         deadlineUts: dateToUts(deadline.value) ?? undefined,
+        // The case, the patrol and the members travel with the task, which is what lets the
+        // case show its own tasks and what lets `pickedup` move the right scouts to `transit`.
+        sosId: props.prefill?.sosId,
+        teamId: props.prefill?.teamId,
+        memberIds: props.prefill?.memberIds,
       })
       emit('saved', data?.taskId ?? '')
     }

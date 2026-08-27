@@ -7,6 +7,13 @@ import { useLiveResource, seedLiveResource } from '@/composables/useLiveResource
 import { optimisticWrite } from '@/composables/optimisticWrite'
 import SosActivityLine from '@/components/SosActivityLine.vue'
 import SosTeamCard from '@/components/SosTeamCard.vue'
+import DispatchTaskDialog, { type PlaceOption } from '@/components/DispatchTaskDialog.vue'
+import {
+  type Task as DispatchTask,
+  formatUtsTime,
+  kindLabel as dispatchKindLabel,
+  stateLabel as dispatchStateLabel,
+} from '@/composables/dispatch'
 import {
   severityOptions,
   severityLabel,
@@ -110,6 +117,110 @@ const isGone = computed(() => {
   const err = error.value as { response?: { status?: number } } | undefined
   return !!err && err.response?.status === 404
 })
+
+// --- kørsel (PRD 009) ----------------------------------------------------
+//
+// The operator's half of the dispatch feature: turn a case into a task without leaving the case,
+// and read the expected time back off it. The board itself belongs to logistics; what the
+// nødtelefon needs is one button and one number.
+//
+// Its own cache entry, keyed by case: a task planned by the logistics desk must reach this screen
+// without the case itself having changed, and a case edit must not refetch the tasks. `dispatch`
+// and `tour` are the entity tokens on the event subjects — `tour` matters because the *time* comes
+// from the tour's stop, so a re-planned run has to update the number quoted here.
+const { data: dispatchData, refresh: refreshDispatch } = useLiveResource(
+  `sos:${caseId.value || 'new'}:dispatch`,
+  async () => {
+    if (!caseId.value) return { tasks: [] }
+    const response = await http.get(`/sos/${caseId.value}/dispatch`)
+    return response.data as { tasks: DispatchTask[] }
+  },
+  { dependsOn: ['dispatch', 'tour'], immediate: !isNew.value },
+)
+
+// The place vocabulary for the dialog, shared with the kørsel board's own cache entry — same key,
+// so opening this dialog on a screen the operator has already visited costs no request.
+const { data: boardData } = useLiveResource(
+  'dispatch',
+  async () => {
+    const response = await http.get('/dispatch')
+    return response.data as { places: PlaceOption[] }
+  },
+  { dependsOn: ['dispatch', 'tour', 'section', 'crewmember', 'crew', 'vehicle', 'spejder', 'sos'] },
+)
+
+const dispatchTasks = computed<DispatchTask[]>(() => dispatchData.value?.tasks ?? [])
+const transportDialog = ref(false)
+const transportPrefill = ref<{
+  kind: 'pickup'
+  priority?: string
+  description: string
+  sosId: string
+  teamId?: string
+  memberIds?: string[]
+}>({ kind: 'pickup', description: '', sosId: '' })
+
+/**
+ * Open the task dialog, filled in from what the case already knows.
+ *
+ * `member` is given when the operator pressed the button on one waiting scout; without it the
+ * whole team's waiting members are carried, which is the case-level gesture ("a car for this
+ * patrol"). The description is assembled here rather than left blank because a task nobody
+ * described is a row nobody can interpret at handover — and the operator can still edit it.
+ *
+ * The case's own severity is carried across, so a red case produces a red task: the point of
+ * sharing the grøn/gul/rød vocabulary at all (PRD 009 §8).
+ */
+function requestTransport(payload?: { teamId: string; memberIds: string[]; label: string }) {
+  const team = payload ?? firstWaitingTeam()
+  transportPrefill.value = {
+    kind: 'pickup',
+    priority: sosCase.value?.severity || undefined,
+    description: team
+      ? `Hentning: ${team.label}`
+      : `Hentning til sag: ${sosCase.value?.headline ?? ''}`,
+    sosId: caseId.value,
+    teamId: team?.teamId,
+    memberIds: team?.memberIds,
+  }
+  transportDialog.value = true
+}
+
+/** The team with somebody waiting, for the case-level button. */
+function firstWaitingTeam() {
+  for (const team of teams.value) {
+    const waiting = (team.members ?? []).filter((m) => m.status === 'waiting')
+    if (waiting.length > 0) {
+      return {
+        teamId: team.teamId,
+        memberIds: waiting.map((m) => m.memberId),
+        label: `${team.teamNumber ? team.teamNumber + ' · ' : ''}${team.name}`,
+      }
+    }
+  }
+  return undefined
+}
+
+/**
+ * When a car is expected, as one line.
+ *
+ * The planned time of the task's own stop — a human's plan, not a computation — and nothing at all
+ * when there is no plan yet. Deliberately no fabricated estimate here: this string is read down a
+ * phone to a patrol standing in the dark, and a number that turns out to be invented is worse than
+ * "ikke planlagt endnu", which is at least true. The queued estimate (task 116) will be labelled
+ * *anslået* wherever it appears.
+ */
+function expectedLine(task: DispatchTask) {
+  const load = (task.stops ?? []).find((s) => s.role !== 'unload')
+  if (load?.plannedUts) return `ventes ${formatUtsTime(load.plannedUts)}`
+  if (task.state === 'queued') return 'ikke planlagt endnu'
+  return ''
+}
+
+async function onTransportSaved() {
+  await refreshDispatch()
+}
+
 
 // --- assignable sections -------------------------------------------------
 
@@ -509,13 +620,67 @@ watch(error, (err) => {
         </small>
       </div>
 
-      <SosTeamCard :sos-id="caseId" :teams="teams" @changed="refresh" />
+      <!--
+        Kørsel (PRD 009). One button and one number: the operator's whole involvement with the
+        dispatch desk. "Bestil kørsel" is deliberately the *fastest* path to a written-down job,
+        because the board is only as good as the desk's discipline — and the expected time is here
+        so it can be read out without leaving the case.
+      -->
+      <div class="card !p-3">
+        <h2 class="text-xs uppercase tracking-wide text-gray-500 mb-2">Kørsel</h2>
+        <Button
+          label="Bestil kørsel"
+          icon="pi pi-truck"
+          size="small"
+          severity="secondary"
+          outlined
+          class="w-full"
+          @click="requestTransport()"
+        />
+        <ul v-if="dispatchTasks.length" class="mt-2 space-y-1">
+          <li v-for="task in dispatchTasks" :key="task.id" class="border rounded px-2 py-1">
+            <div class="flex items-center gap-2">
+              <span class="flex-1 truncate">{{ task.description }}</span>
+              <Tag :value="dispatchStateLabel(task.state)" severity="secondary" />
+            </div>
+            <div class="text-xs text-gray-600">
+              {{ dispatchKindLabel(task.kind) }}
+              <template v-if="expectedLine(task)"> · {{ expectedLine(task) }}</template>
+              <template v-if="task.pickedUpUts">
+                · hentet {{ formatUtsTime(task.pickedUpUts) }}
+              </template>
+            </div>
+            <div v-if="task.cancelReason" class="text-xs text-red-700">
+              Aflyst: {{ task.cancelReason }}
+            </div>
+          </li>
+        </ul>
+        <small v-else class="block mt-2 text-gray-500">Ingen kørsel bestilt til sagen.</small>
+      </div>
+
+      <SosTeamCard
+        :sos-id="caseId"
+        :teams="teams"
+        @changed="refresh"
+        @request-transport="requestTransport($event)"
+      />
     </aside>
   </div>
 
   <div v-else class="card">
     <ProgressSpinner v-if="pending" />
   </div>
+
+  <!--
+    Outside the v-if/v-else pair on purpose: it is a modal, not part of either branch, and putting
+    it between them broke the pair — which the dev server caught and the type-checker did not.
+  -->
+  <DispatchTaskDialog
+    v-model:visible="transportDialog"
+    :places="boardData?.places ?? []"
+    :prefill="transportPrefill"
+    @saved="onTransportSaved()"
+  />
 </template>
 
 <style>
