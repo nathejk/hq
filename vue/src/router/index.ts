@@ -78,6 +78,13 @@ const router = createRouter({
       component: () => import('@/views/HoensegaardView.vue')
     },
     {
+      // Kørsel, the logistics dispatch desk (PRD 009). Danish path beside /poster and
+      // /hoensegaard, while the source says `dispatch`: the routes are the user-facing surface.
+      path: '/koersel',
+      name: 'koersel',
+      component: () => import('@/views/DispatchView.vue')
+    },
+    {
       path: '/betalinger',
       name: 'payments',
       component: () => import('@/views/PaymentListView.vue')

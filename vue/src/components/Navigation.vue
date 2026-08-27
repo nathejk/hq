@@ -100,6 +100,12 @@ const items = ref([
     name: 'hoensegaard'
   },
   {
+    // Also a race-night screen, and the one that fills Hønsegården's *På vej*: the cars.
+    label: 'Kørsel',
+    icon: 'fas fa-truck',
+    name: 'koersel'
+  },
+  {
     label: 'Betalinger',
     icon: 'fas fa-dollar',
     name: 'payments'
