@@ -59,6 +59,25 @@ type Commands interface {
 	// confirmed by the receiver**: the shelter interface calls these, and it is the
 	// receiving party. A driver's pickup is still not ours to publish.
 	AcceptIntoShelter(ctx context.Context, actor Actor, year types.YearSlug, id types.MemberID, placement string) (*Change, error)
+
+	// The car's acceptance (PRD 009 §8, task 118). The other half of the same argument as
+	// AcceptIntoShelter above: **custody is confirmed by the receiver**, and here the driver
+	// is the receiver. Until the drivers have a screen of their own the dispatcher records it
+	// on their behalf, which is a question of who is at the keyboard rather than of who took
+	// the scout — hence the unit is passed in explicitly and never inferred from the actor.
+	//
+	// This is what closes the hole PRD 007 §8 named as the single biggest risk to
+	// Hønsegården: before it, nothing in hq published `transit` except an operator remembering
+	// to override a status, so *På vej* was empty while cars were on their way.
+	//
+	// A batch, because one stop collects several scouts and two members of one patrol leaving
+	// together is one act — not two decisions that happen to coincide.
+	//
+	// The unit is a **section slug**, not a vehicle id: the unit is who took them, and it
+	// survives a car being swapped mid-night. `driver` is recorded beside it for the same
+	// reason the shelter records its actor — empty until HQ has login, and wired now so nothing
+	// has to change when it arrives.
+	AcceptPickup(ctx context.Context, actor Actor, year types.YearSlug, ids []types.MemberID, unit types.Slug, driver types.UserID) ([]Change, error)
 	CompleteHandover(ctx context.Context, actor Actor, year types.YearSlug, id types.MemberID, to types.MemberStatus) (*Change, error)
 }
 
@@ -496,6 +515,76 @@ func (c commander) AcceptIntoShelter(ctx context.Context, actor Actor, year type
 		return nil, err
 	}
 	return change, nil
+}
+
+// AcceptPickup records that a car has taken members aboard (PRD 009).
+//
+// # Why it validates everything before publishing anything
+//
+// One stop collecting three scouts is one act. If the second member turns out to be somebody
+// who never started — a mistyped or misclicked identity — then the dispatcher has the wrong
+// task open, and publishing the first member's transit before finding that out would leave a
+// scout recorded as sitting in a car nobody sent for them. So the batch is checked first and
+// refused whole, naming the member at fault.
+//
+// # What it skips rather than refuses
+//
+// A member already in our care is skipped silently and contributes no Change. That is the
+// idempotency the desk needs: pressing Hentet twice, or a driver ringing in about a scout the
+// operator already recorded, must not put two custody changes on the log. It is also the
+// resolution of the race `ErrAlreadyCollected` exists for — an acceptance beats a resume
+// "because it reflects a member physically sitting in a car", and the way that precedence is
+// expressed here is that this command never asks whether the member is `waiting`: a `racing`
+// member whose resume landed first is still accepted, because the car has them.
+func (c commander) AcceptPickup(ctx context.Context, actor Actor, year types.YearSlug, ids []types.MemberID, unit types.Slug, driver types.UserID) ([]Change, error) {
+	currents := make([]*SpejderStatus, 0, len(ids))
+	for _, id := range ids {
+		current, err := c.q.GetByMemberID(ctx, year, id)
+		if err != nil {
+			return nil, err
+		}
+		switch current.Status {
+		case types.MemberStatusRegistered, types.MemberStatusSeated, types.MemberStatusNone:
+			// The same single refusal AcceptIntoShelter makes, for the same reason: those
+			// members are at home, so an acceptance for one of them would invent a child in
+			// our care who is not on site.
+			return nil, fmt.Errorf("%w: %s", ErrNotStarted, id)
+		}
+		currents = append(currents, current)
+	}
+
+	changes := []Change{}
+	for _, current := range currents {
+		// Skip anybody a car (or HQ) already has, and *only* those. Deliberately not
+		// `InOurCare()`, which is true for `waiting` as well — a waiting scout is precisely
+		// who this command is for, and using that helper here silently accepted nobody. Found
+		// by the test that expected two changes and got none.
+		switch current.Status {
+		case types.MemberStatusTransit, types.MemberStatusSheltered,
+			types.MemberStatusReunited, types.MemberStatusReleased:
+			continue
+		}
+		change, err := c.change(ctx, year, current, types.MemberStatusTransit)
+		if err != nil {
+			return nil, err
+		}
+		body := &PickupAccepted{
+			MemberID:     current.MemberID,
+			TeamID:       current.CurrentTeamID,
+			SectionSlug:  unit,
+			DriverUserID: driver,
+			Actor:        actor,
+		}
+		if err := c.publish(actor, year, current.MemberID, "pickup.accepted", body); err != nil {
+			// Returned rather than swallowed, and whatever was published stays published — the
+			// log is the record. The caller must be able to tell the operator the pickup was
+			// only half recorded, because the difference matters to whoever is standing at the
+			// roadside.
+			return nil, err
+		}
+		changes = append(changes, *change)
+	}
+	return changes, nil
 }
 
 // CompleteHandover records that somebody else has taken charge of the member, which is what

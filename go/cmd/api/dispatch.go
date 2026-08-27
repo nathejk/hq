@@ -443,7 +443,7 @@ func (app *application) patchDispatchTaskHandler(w http.ResponseWriter, r *http.
 // dispatchTaskPickedUpHandler records people aboard.
 //
 // @Summary     People aboard
-// @Description Records that the people a pickup is for are in the car. A distinct moment from completion — the car still has to get to HQ — and the moment custody changes, which is why it is recorded at all. The unit is a section slug rather than a vehicle id: the unit is who took them, and it survives a car being swapped mid-night. Only a pickup can record this, and pressing it twice is harmless. Until the drivers have their own screen the dispatcher records it on the driver's behalf; the member transitions to transit hang off this endpoint (task 118).
+// @Description Records that the people a pickup is for are in the car, and transitions them to `transit` — which is what fills Hønsegården's *På vej* from the cars instead of from an operator remembering to override a status (PRD 007 §8). A distinct moment from completion, because the car still has to get to HQ, and the moment custody changes. The unit is a section slug rather than a vehicle id: the unit is who took them, and it survives a car being swapped mid-night. Only a pickup can record this, and pressing it twice is harmless. The member transitions are published first, so the task's own record is never readable before the changes it describes.
 // @Tags        dispatch
 // @Accept      json
 // @Produce     json
@@ -469,7 +469,34 @@ func (app *application) dispatchTaskPickedUpHandler(w http.ResponseWriter, r *ht
 		app.BadRequestResponse(w, r, err)
 		return
 	}
-	err := app.commands.Dispatch.MarkPickedUp(r.Context(), app.dispatchActor(r), app.YearSlug(r), id, input.SectionSlug, input.AtUts)
+	year := app.YearSlug(r)
+
+	// The members go to `transit` *before* the task records the pickup, following the house
+	// order for anything that summarises per-member events (PRD 006 §8): the summary must not be
+	// readable before the changes it describes are in the log.
+	//
+	// The consequence if the second write fails is deliberate rather than accidental. An orphan
+	// `transit` — scouts recorded as being in a car, with the task still merely underway — is the
+	// safer of the two failures: custody is the fact Hønsegården acts on, and a scout who is in a
+	// car and not on the board is better than a scout on the board and nowhere.
+	task, err := app.models.Dispatch.GetTask(r.Context(), year, id)
+	if err != nil {
+		app.dispatchCommandError(w, r, err)
+		return
+	}
+	if len(task.MemberIDs) > 0 && task.PickedUpUts == nil && task.Kind == dispatch.KindPickup {
+		// The driver is the unit's own driver, resolved from the vehicle rather than asked for:
+		// the dispatcher already said which unit, and asking who is driving it is a question the
+		// Organisation page has already answered.
+		_, err := app.commands.Member.AcceptPickup(r.Context(), app.memberActor(r), year,
+			task.MemberIDs, input.SectionSlug, app.unitDriver(r, year, input.SectionSlug))
+		if err != nil {
+			app.memberCommandError(w, r, err)
+			return
+		}
+	}
+
+	err = app.commands.Dispatch.MarkPickedUp(r.Context(), app.dispatchActor(r), year, id, input.SectionSlug, input.AtUts)
 	if err != nil {
 		app.dispatchCommandError(w, r, err)
 		return
@@ -477,6 +504,26 @@ func (app *application) dispatchTaskPickedUpHandler(w http.ResponseWriter, r *ht
 	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"taskId": id}, nil); err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}
+}
+
+// unitDriver is the user behind the wheel of a dispatch unit's vehicle, or empty.
+//
+// Empty is fine and common: a unit may have no vehicle recorded yet, and hq authenticates
+// nobody, so this field is recorded for the day it means something rather than depended on now.
+func (app *application) unitDriver(r *http.Request, year types.YearSlug, unit types.Slug) types.UserID {
+	if unit == "" {
+		return ""
+	}
+	vehicles, err := app.models.Vehicle.GetAll(r.Context(), vehicle.Filter{YearSlug: year, SectionSlug: unit})
+	if err != nil {
+		return ""
+	}
+	for _, v := range vehicles {
+		if v.DriverUserID != "" {
+			return v.DriverUserID
+		}
+	}
+	return ""
 }
 
 // cancelDispatchTaskHandler withdraws a task.

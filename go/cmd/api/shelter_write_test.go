@@ -31,8 +31,30 @@ type fakeMemberCommands struct {
 	handoverTo        types.MemberStatus
 	handoverCalls     int
 
+	// The car's acceptance (task 118).
+	pickupIDs   []types.MemberID
+	pickupUnit  types.Slug
+	pickupCalls int
+
 	change *spejderstatus.Change
 	err    error
+}
+
+func (f *fakeMemberCommands) AcceptPickup(_ context.Context, _ spejderstatus.Actor, _ types.YearSlug, ids []types.MemberID, unit types.Slug, _ types.UserID) ([]spejderstatus.Change, error) {
+	f.pickupCalls++
+	f.pickupIDs = ids
+	f.pickupUnit = unit
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.change == nil {
+		return []spejderstatus.Change{}, nil
+	}
+	changes := make([]spejderstatus.Change, 0, len(ids))
+	for range ids {
+		changes = append(changes, *f.change)
+	}
+	return changes, nil
 }
 
 func (f *fakeMemberCommands) AcceptIntoShelter(_ context.Context, _ spejderstatus.Actor, _ types.YearSlug, _ types.MemberID, placement string) (*spejderstatus.Change, error) {

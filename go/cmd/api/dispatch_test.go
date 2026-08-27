@@ -390,8 +390,9 @@ func TestPickedUpPassesTheUnit(t *testing.T) {
 	// "Which car has my scout" is the question the feature exists to answer, and the unit is
 	// what answers it — a section slug, so it survives a car being swapped mid-night.
 	cmd := &fakeDispatchCommands{}
+	q := &fakeDispatchQueries{task: &dispatch.Task{ID: "disp-1", Kind: dispatch.KindPickup}}
 	rec := httptest.NewRecorder()
-	dispatchApp(cmd, &fakeDispatchQueries{}).dispatchTaskPickedUpHandler(rec,
+	dispatchApp(cmd, q).dispatchTaskPickedUpHandler(rec,
 		dispatchRequest(t, http.MethodPost, "/api/dispatch/task/disp-1/pickedup", "disp-1",
 			map[string]any{"sectionSlug": "bil-2"}))
 
@@ -403,10 +404,82 @@ func TestPickedUpPassesTheUnit(t *testing.T) {
 	}
 }
 
+func TestPickedUpMovesTheNamedMembersIntoTransit(t *testing.T) {
+	// This is the whole point of task 118, and of PRD 007 §8's "biggest risk": before it,
+	// nothing in hq published `transit` except an operator remembering to override a status, so
+	// Hønsegården's *På vej* sat empty while cars were on their way.
+	member := &fakeMemberCommands{}
+	cmd := &fakeDispatchCommands{}
+	app := dispatchApp(cmd, &fakeDispatchQueries{task: &dispatch.Task{
+		ID: "disp-1", Kind: dispatch.KindPickup, MemberIDs: []types.MemberID{"m-1", "m-2"},
+	}})
+	app.commands.Member = member
+
+	rec := httptest.NewRecorder()
+	app.dispatchTaskPickedUpHandler(rec, dispatchRequest(t, http.MethodPost,
+		"/api/dispatch/task/disp-1/pickedup", "disp-1", map[string]any{"sectionSlug": "bil-2"}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", rec.Code, rec.Body.String())
+	}
+	// One call for the batch, not one per member: two members of one patrol leaving together is
+	// one act.
+	if member.pickupCalls != 1 || len(member.pickupIDs) != 2 {
+		t.Fatalf("AcceptPickup called %d times with %v", member.pickupCalls, member.pickupIDs)
+	}
+	if member.pickupUnit != "bil-2" {
+		t.Errorf("unit = %q, want bil-2", member.pickupUnit)
+	}
+}
+
+func TestPickedUpDoesNotRepeatTheTransitionOnASecondPress(t *testing.T) {
+	// Pressing Hentet twice — plausible on a phone, at night, with a driver still talking — must
+	// not put two custody changes on the log.
+	already := int64(1787865300)
+	member := &fakeMemberCommands{}
+	app := dispatchApp(&fakeDispatchCommands{}, &fakeDispatchQueries{task: &dispatch.Task{
+		ID: "disp-1", Kind: dispatch.KindPickup, MemberIDs: []types.MemberID{"m-1"},
+		PickedUpUts: &already,
+	}})
+	app.commands.Member = member
+
+	rec := httptest.NewRecorder()
+	app.dispatchTaskPickedUpHandler(rec, dispatchRequest(t, http.MethodPost,
+		"/api/dispatch/task/disp-1/pickedup", "disp-1", map[string]any{"sectionSlug": "bil-2"}))
+
+	if member.pickupCalls != 0 {
+		t.Errorf("AcceptPickup called %d times for an already-collected task", member.pickupCalls)
+	}
+}
+
+func TestPickedUpOnATaskNamingNobodyStillRecordsThePickup(t *testing.T) {
+	// The operator wrote down a scout without linking the member record, which is common at 3am.
+	// The pickup is still a fact worth recording; there is simply nobody to transition.
+	member := &fakeMemberCommands{}
+	cmd := &fakeDispatchCommands{}
+	app := dispatchApp(cmd, &fakeDispatchQueries{task: &dispatch.Task{ID: "disp-1", Kind: dispatch.KindPickup}})
+	app.commands.Member = member
+
+	rec := httptest.NewRecorder()
+	app.dispatchTaskPickedUpHandler(rec, dispatchRequest(t, http.MethodPost,
+		"/api/dispatch/task/disp-1/pickedup", "disp-1", map[string]any{"sectionSlug": "bil-2"}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", rec.Code, rec.Body.String())
+	}
+	if member.pickupCalls != 0 {
+		t.Errorf("AcceptPickup called for a task naming nobody")
+	}
+	if cmd.pickedUp != 1 {
+		t.Errorf("the pickup itself was not recorded")
+	}
+}
+
 func TestPickedUpOnADeliveryIsRefusedInDanish(t *testing.T) {
 	cmd := &fakeDispatchCommands{err: dispatch.ErrNotPickup}
+	q := &fakeDispatchQueries{task: &dispatch.Task{ID: "disp-1", Kind: dispatch.KindDelivery}}
 	rec := httptest.NewRecorder()
-	dispatchApp(cmd, &fakeDispatchQueries{}).dispatchTaskPickedUpHandler(rec,
+	dispatchApp(cmd, q).dispatchTaskPickedUpHandler(rec,
 		dispatchRequest(t, http.MethodPost, "/api/dispatch/task/disp-1/pickedup", "disp-1", map[string]any{}))
 
 	if rec.Code != http.StatusUnprocessableEntity {

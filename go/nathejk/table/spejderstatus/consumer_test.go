@@ -235,7 +235,7 @@ func TestLifecycleEventsWriteTheirStatus(t *testing.T) {
 	}{
 		{"NATHEJK.2026.spejder.m-1.withdrawal.requested", WithdrawalRequested{MemberID: "m-1", TeamID: "team-1"}, types.MemberStatusWaiting},
 		{"NATHEJK.2026.spejder.m-1.withdrawal.cancelled", WithdrawalCancelled{MemberID: "m-1", TeamID: "team-1"}, types.MemberStatusRacing},
-		{"NATHEJK.2026.spejder.m-1.pickup.accepted", PickupAccepted{MemberID: "m-1", TeamID: "team-1", Car: "bil-3"}, types.MemberStatusTransit},
+		{"NATHEJK.2026.spejder.m-1.pickup.accepted", PickupAccepted{MemberID: "m-1", TeamID: "team-1", SectionSlug: "bil-3"}, types.MemberStatusTransit},
 		{"NATHEJK.2026.spejder.m-1.shelter.accepted", ShelterAccepted{MemberID: "m-1", TeamID: "team-1", Placement: "Telt 4"}, types.MemberStatusSheltered},
 		{"NATHEJK.2026.spejder.m-1.shelter.placed", ShelterPlaced{MemberID: "m-1", TeamID: "team-1", Placement: "Telt 4"}, types.MemberStatusSheltered},
 		{"NATHEJK.2026.spejder.m-1.status.overridden", StatusOverridden{MemberID: "m-1", TeamID: "team-1", To: types.MemberStatusSheltered}, types.MemberStatusSheltered},

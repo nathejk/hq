@@ -180,22 +180,27 @@ func (TeamMoved) Status() types.MemberStatus { return types.MemberStatusRacing }
 
 // PickupAccepted records that a car has taken the member aboard.
 //
-// Published by the future car interface, not by hq — the driver accepts the
-// member, and only they can say so. Defined here because this package's
-// projection consumes it and because the seam has to be stated somewhere for that
-// interface to be built against; PRD 006 explicitly does not design its screens or
-// its workflow.
+// Published by the dispatch desk (PRD 009, task 118) via spejderstatus.AcceptPickup, and
+// eventually by the driver's own app — the driver accepts the member, and until they have a
+// screen the dispatcher records it on their behalf. Defined here because this package's
+// projection consumes it, and it was defined here *before* anything could publish it, so that
+// the seam existed for the interface to be built against.
 //
 // This is the point of no return. It is the first outside help the member has
 // taken, so there is no way back onto the route and no finish to be had: the
-// endings available from here are reunited and released. The Car field names who
-// holds the member, which is the question a dashboard actually needs answered
-// while somebody is in transit.
+// endings available from here are reunited and released.
+//
+// SectionSlug names the dispatch unit holding the member — the question a dashboard actually
+// needs answered while somebody is in transit. A unit and not a vehicle id, deliberately: the
+// unit is who took them, and it survives a car being swapped mid-night. (It replaced a `Car`
+// string during task 118, which was safe to change outright because nothing had ever published
+// this event.)
 type PickupAccepted struct {
-	MemberID types.MemberID `json:"memberId"`
-	TeamID   types.TeamID   `json:"teamId"`
-	Car      string         `json:"car,omitempty"`
-	Actor    Actor          `json:"actor"`
+	MemberID     types.MemberID `json:"memberId"`
+	TeamID       types.TeamID   `json:"teamId"`
+	SectionSlug  types.Slug     `json:"sectionSlug,omitempty"`
+	DriverUserID types.UserID   `json:"driverUserId,omitempty"`
+	Actor        Actor          `json:"actor"`
 }
 
 func (PickupAccepted) Status() types.MemberStatus { return types.MemberStatusTransit }

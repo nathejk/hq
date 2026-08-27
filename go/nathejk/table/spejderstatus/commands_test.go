@@ -704,3 +704,175 @@ func TestCollectTeamIsANoOpWhenNobodyIsRacing(t *testing.T) {
 		t.Errorf("published %v", p.subjects)
 	}
 }
+
+// --- the car's acceptance (PRD 009, task 118) ---
+
+// One stop collecting two scouts is one act, and it produces one event per member: the summary
+// belongs to the case (PRD 006), the per-member events belong here.
+func TestAcceptPickupTransitionsEveryMemberToTransit(t *testing.T) {
+	team := []SpejderStatus{
+		withStatus("m-1", "team-1", types.MemberStatusWaiting),
+		withStatus("m-2", "team-1", types.MemberStatusWaiting),
+	}
+	c, p := newCommander(&team[0], team)
+
+	changes, err := c.AcceptPickup(context.Background(), Actor{}, "2026",
+		[]types.MemberID{"m-1", "m-2"}, "bil-2", "u-driver")
+	if err != nil {
+		t.Fatalf("AcceptPickup: %v", err)
+	}
+	if len(changes) != 2 {
+		t.Fatalf("got %d changes, want 2: %+v", len(changes), changes)
+	}
+	for _, change := range changes {
+		if change.To != types.MemberStatusTransit {
+			t.Errorf("To = %q, want transit", change.To)
+		}
+		if change.From != types.MemberStatusWaiting {
+			t.Errorf("From = %q — the timeline has to say where they came from", change.From)
+		}
+	}
+	if len(p.subjects) != 2 {
+		t.Fatalf("published %v, want one event per member", p.subjects)
+	}
+	for _, subject := range p.subjects {
+		if !strings.HasSuffix(subject, ".pickup.accepted") {
+			t.Errorf("unexpected subject %q", subject)
+		}
+	}
+}
+
+// The unit is what answers "which car has my scout", and it is a section slug rather than a
+// vehicle id so that it survives a car being swapped mid-night.
+func TestAcceptPickupCarriesTheUnitAndDriver(t *testing.T) {
+	team := []SpejderStatus{withStatus("m-1", "team-1", types.MemberStatusWaiting)}
+	c, p := newCommander(&team[0], team)
+
+	if _, err := c.AcceptPickup(context.Background(), Actor{}, "2026",
+		[]types.MemberID{"m-1"}, "bil-2", "u-driver"); err != nil {
+		t.Fatalf("AcceptPickup: %v", err)
+	}
+	body, ok := p.bodies[0].(*PickupAccepted)
+	if !ok {
+		t.Fatalf("unexpected body type %T", p.bodies[0])
+	}
+	if body.SectionSlug != "bil-2" {
+		t.Errorf("SectionSlug = %q, want the unit that took them", body.SectionSlug)
+	}
+	if body.DriverUserID != "u-driver" {
+		t.Errorf("DriverUserID = %q, want the unit's driver", body.DriverUserID)
+	}
+	if body.TeamID != "team-1" {
+		t.Errorf("TeamID = %q, want the member's team", body.TeamID)
+	}
+}
+
+// **The race ErrAlreadyCollected exists for.** An operator presses resume in the same moment the
+// driver accepts the member aboard. The acceptance wins, because it reflects a member physically
+// sitting in a car — and the way that precedence is expressed is that this command never asks
+// whether the member is `waiting`: a member whose resume landed first is still accepted.
+func TestAcceptPickupBeatsAResume(t *testing.T) {
+	team := []SpejderStatus{withStatus("m-1", "team-1", types.MemberStatusRacing)}
+	c, p := newCommander(&team[0], team)
+
+	changes, err := c.AcceptPickup(context.Background(), Actor{}, "2026", []types.MemberID{"m-1"}, "bil-2", "")
+	if err != nil {
+		t.Fatalf("AcceptPickup after a resume: %v", err)
+	}
+	if len(changes) != 1 || changes[0].From != types.MemberStatusRacing {
+		t.Fatalf("expected an acceptance from racing, got %+v", changes)
+	}
+	if len(p.subjects) != 1 {
+		t.Errorf("published %v, want the acceptance", p.subjects)
+	}
+}
+
+// Pressing Hentet twice — plausible on a phone, at night, with a driver still talking — must not
+// put two custody changes on the log.
+func TestAcceptPickupIsIdempotent(t *testing.T) {
+	team := []SpejderStatus{withStatus("m-1", "team-1", types.MemberStatusTransit)}
+	c, p := newCommander(&team[0], team)
+
+	changes, err := c.AcceptPickup(context.Background(), Actor{}, "2026", []types.MemberID{"m-1"}, "bil-2", "")
+	if err != nil {
+		t.Fatalf("AcceptPickup: %v", err)
+	}
+	if len(changes) != 0 || len(p.subjects) != 0 {
+		t.Errorf("re-accepting produced %d changes and published %v", len(changes), p.subjects)
+	}
+}
+
+// A scout already at HQ is not picked up again by a car that has not been anywhere. The test is
+// "somebody already has them" — transit, sheltered, reunited, released — and pointedly *not*
+// `InOurCare()`, which is also true for `waiting`: a waiting scout is exactly who a car is sent
+// for.
+func TestAcceptPickupSkipsAnybodyAlreadyCollected(t *testing.T) {
+	for _, from := range []types.MemberStatus{
+		types.MemberStatusTransit,
+		types.MemberStatusSheltered,
+		types.MemberStatusReunited,
+		types.MemberStatusReleased,
+	} {
+		t.Run(string(from), func(t *testing.T) {
+			team := []SpejderStatus{withStatus("m-1", "team-1", from)}
+			c, p := newCommander(&team[0], team)
+
+			if _, err := c.AcceptPickup(context.Background(), Actor{}, "2026", []types.MemberID{"m-1"}, "bil-2", ""); err != nil {
+				t.Fatalf("AcceptPickup from %s: %v", from, err)
+			}
+			if len(p.subjects) != 0 {
+				t.Errorf("published %v for a member already in our care", p.subjects)
+			}
+		})
+	}
+}
+
+// **The batch is refused whole, before anything is published.** A member who never started means
+// the dispatcher has the wrong task open; publishing the first member's transit before finding
+// that out would leave a scout recorded as sitting in a car nobody sent for them.
+func TestAcceptPickupRefusesTheWholeBatchForAMemberWhoNeverStarted(t *testing.T) {
+	team := []SpejderStatus{
+		withStatus("m-1", "team-1", types.MemberStatusWaiting),
+		withStatus("m-2", "team-1", types.MemberStatusRegistered),
+	}
+	c, p := newCommander(&team[0], team)
+
+	_, err := c.AcceptPickup(context.Background(), Actor{}, "2026", []types.MemberID{"m-1", "m-2"}, "bil-2", "")
+	if !errors.Is(err, ErrNotStarted) {
+		t.Fatalf("err = %v, want ErrNotStarted", err)
+	}
+	if len(p.subjects) != 0 {
+		t.Errorf("published %v despite refusing the batch", p.subjects)
+	}
+	// And the message names the member, because "somebody in this batch never started" is not
+	// something an operator can act on.
+	if !strings.Contains(err.Error(), "m-2") {
+		t.Errorf("error %q does not name the member at fault", err)
+	}
+}
+
+// A waiting scout is the ordinary case, and the one the whole feature exists for.
+func TestAcceptPickupAcceptsAWaitingMember(t *testing.T) {
+	team := []SpejderStatus{withStatus("m-1", "team-1", types.MemberStatusWaiting)}
+	c, p := newCommander(&team[0], team)
+
+	changes, err := c.AcceptPickup(context.Background(), Actor{}, "2026", []types.MemberID{"m-1"}, "bil-2", "")
+	if err != nil {
+		t.Fatalf("AcceptPickup: %v", err)
+	}
+	if len(changes) != 1 || len(p.subjects) != 1 {
+		t.Fatalf("a waiting member was not accepted: %d changes, %v", len(changes), p.subjects)
+	}
+}
+
+func TestAcceptPickupOfNobodyIsANoOp(t *testing.T) {
+	c, p := newCommander(nil, nil)
+
+	changes, err := c.AcceptPickup(context.Background(), Actor{}, "2026", nil, "bil-2", "")
+	if err != nil {
+		t.Fatalf("AcceptPickup with no members: %v", err)
+	}
+	if len(changes) != 0 || len(p.subjects) != 0 {
+		t.Errorf("produced %d changes and published %v", len(changes), p.subjects)
+	}
+}
