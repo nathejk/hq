@@ -1,10 +1,10 @@
 # 108 — `dispatchable` flag on sections
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-08-27
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (Zed)
+**Started:** 2026-08-27
 **Completed:**
 
 ## Description
@@ -31,3 +31,7 @@ kørsel (same decision as PRD 001).
 ## Progress Log
 
 - 2026-08-27 — Task created from PRD 009 §10.
+- 2026-08-27 — Picked up. Plan: new `go/nathejk/table/dispatch/` package holding only the
+  dispatchable-section flag (the rest of the entity is task 109), mirroring `sos`'s
+  `assignable.sql` / `SectionAssignableSet` / `SetSectionAssignable` triple; then the
+  organisation payload field, the route, and the tree toggle.
