@@ -46,6 +46,7 @@ import (
 	"nathejk.dk/nathejk/table/checkgroup"
 	"nathejk.dk/nathejk/table/checkpersonnel"
 	"nathejk.dk/nathejk/table/checkpoint"
+	"nathejk.dk/nathejk/table/dispatch"
 	"nathejk.dk/nathejk/table/lok"
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/patruljenumber"
@@ -193,6 +194,9 @@ func main() {
 	crewmembertable := crewmember.New(publisher, writer, db.DB())
 	vehicletable := vehicle.New(publisher, writer, db.DB())
 	sostable := sos.New(publisher, writer, db.DB())
+	// Kørsel: the dispatch desk (PRD 009). Owns the tasks and tours, and which
+	// organisation subsections are dispatch units.
+	dispatchtable := dispatch.New(publisher, writer, db.DB())
 	producttable := product.New(writer, db.DB())
 	if err := producttable.Seed(product.Seeds2026()); err != nil {
 		logger.PrintFatal(err, nil)
@@ -280,6 +284,7 @@ func main() {
 		vehicletable,
 		ordertable,
 		sostable,
+		dispatchtable,
 	}
 	for _, consumer := range live.NotifyAll(livehub, projections...) {
 		mux.AddConsumer(consumer)
@@ -298,7 +303,7 @@ func main() {
 		logger.PrintFatal(err, nil)
 	}
 
-	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, vehicletable, ordertable, sostable, spejderstatustable, sheltertable, spejdernotetable)
+	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, vehicletable, ordertable, sostable, spejderstatustable, sheltertable, spejdernotetable, dispatchtable)
 	cmds := commands.New(publisher, models)
 	cmds.Year = year
 	cmds.Checkpoint = checkpoint
@@ -311,6 +316,7 @@ func main() {
 	cmds.Member = spejderstatustable
 	cmds.Shelter = sheltertable
 	cmds.Note = spejdernotetable
+	cmds.Dispatch = dispatchtable
 	// Both arguments are klantable: it is the read model the override dirty-checks
 	// against *and* the entity that owns what deleting a klan means.
 	cmds.Klan = commands.NewKlan(publisher, klantable, klantable)

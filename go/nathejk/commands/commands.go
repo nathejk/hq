@@ -12,6 +12,7 @@ import (
 	"nathejk.dk/nathejk/table/checkgroup"
 	"nathejk.dk/nathejk/table/checkpersonnel"
 	"nathejk.dk/nathejk/table/checkpoint"
+	"nathejk.dk/nathejk/table/dispatch"
 	"nathejk.dk/nathejk/table/shelter"
 	"nathejk.dk/nathejk/table/sos"
 	"nathejk.dk/nathejk/table/spejdernote"
@@ -38,6 +39,10 @@ type Commands struct {
 	// Note is the prose trail about a scout (PRD 008). Its own package for the same reason:
 	// notes are neither a status nor a case.
 	Note spejdernote.Commands
+
+	// Dispatch is kørsel (PRD 009): the tasks and tours, and which organisation
+	// subsections are dispatch units.
+	Dispatch dispatch.Commands
 
 	Team interface {
 		UpdatePatrulje(types.TeamID, Patrulje, Contact, []Spejder) error

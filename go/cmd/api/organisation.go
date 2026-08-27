@@ -63,6 +63,15 @@ func (app *application) showOrganisationHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// Which sections are dispatch units (PRD 009): a subsection of logistics holding a
+	// vehicle, a driver and possibly a co-driver, that tours may be assigned to. Beside
+	// the sections for the same reason as the sos flag above.
+	dispatchable, err := app.models.Dispatch.DispatchableSections(r.Context(), year)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+
 	// Which crew members came through the public signup form, as ready-made links
 	// to the page they filled in.
 	//
@@ -93,6 +102,7 @@ func (app *application) showOrganisationHandler(w http.ResponseWriter, r *http.R
 		"vehicles":              vehicles,
 		"availableYearsForCopy": otherYears,
 		"sosAssignableSections": assignable,
+		"dispatchableSections":  dispatchable,
 		"crewSignupUrls":        signupUrls,
 		// The canonical korps list, so the edit form offers the same eight options
 		// the signup form does and stores the same slugs. Sent from here rather than
@@ -508,6 +518,51 @@ func (app *application) setSectionSosAssignableHandler(w http.ResponseWriter, r 
 	envelope := jsonapi.Envelope{
 		"slug":       slug,
 		"assignable": input.Assignable,
+	}
+	if err := app.WriteJSON(w, http.StatusOK, envelope, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
+// setSectionDispatchableHandler toggles whether a section is a dispatch unit (PRD 009 §6).
+//
+// PUT /api/section/:slug/dispatchable
+//
+//	request:  {"dispatchable": true|false}
+//	response: 200 {"slug": "bil-2", "dispatchable": true}
+//	          400 invalid slug or body, 404 no such section for the year
+//
+// Owned by the dispatch domain rather than by the section itself: "holds a car and can be
+// sent out" is a fact about kørsel, and a section does not become a different thing because
+// logistics can dispatch it. The route lives under /api/section/ anyway, because the
+// Organisation page is the screen an operator sets it from — exactly as the sos flag does.
+func (app *application) setSectionDispatchableHandler(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		Dispatchable bool `json:"dispatchable"`
+	}
+	if err := app.ReadJSON(w, r, &input); err != nil {
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+	year := app.YearSlug(r)
+	slug := types.Slug(app.ReadNamedParam(r, "slug"))
+	if !slug.Valid() {
+		app.BadRequestResponse(w, r, errFromString("invalid section slug"))
+		return
+	}
+	// The section must exist for the year, or a typo would mark a section nobody can see
+	// as a dispatch unit — invisible in the UI and impossible to turn off from it.
+	if _, err := app.models.Section.GetBySlug(r.Context(), year, slug); err != nil {
+		app.NotFoundResponse(w, r)
+		return
+	}
+	if err := app.commands.Dispatch.SetSectionDispatchable(r.Context(), app.dispatchActor(r), year, slug, input.Dispatchable); err != nil {
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+	envelope := jsonapi.Envelope{
+		"slug":         slug,
+		"dispatchable": input.Dispatchable,
 	}
 	if err := app.WriteJSON(w, http.StatusOK, envelope, nil); err != nil {
 		app.ServerErrorResponse(w, r, err)

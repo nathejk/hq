@@ -134,6 +134,9 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPatch, "/api/section/:slug", app.updateSectionHandler)
 	router.HandlerFunc(http.MethodPut, "/api/section/:slug/parent", app.moveSectionHandler)
 	router.HandlerFunc(http.MethodPut, "/api/section/:slug/sos-assignable", app.setSectionSosAssignableHandler)
+	// Kørsel (PRD 009): which subsections are dispatch units — a vehicle, a driver and
+	// possibly a co-driver — that tours may be assigned to.
+	router.HandlerFunc(http.MethodPut, "/api/section/:slug/dispatchable", app.setSectionDispatchableHandler)
 	router.HandlerFunc(http.MethodDelete, "/api/section/:slug", app.deleteSectionHandler)
 	router.HandlerFunc(http.MethodPost, "/api/crewmember", app.registerCrewMemberHandler)
 	router.HandlerFunc(http.MethodPatch, "/api/crewmember/:userId", app.updateCrewMemberHandler)

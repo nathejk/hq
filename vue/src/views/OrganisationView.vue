@@ -65,6 +65,10 @@ type OrganisationResponse = {
   // the sections rather than a field on each one: the section entity belongs to
   // shared-go and knows nothing about the nødtelefon.
   sosAssignableSections?: string[]
+  // Which sections are dispatch units (PRD 009) — a subsection holding a vehicle,
+  // a driver and possibly a co-driver, that a tour may be assigned to. Beside the
+  // sections for the same reason: kørsel is not a property of a section.
+  dispatchableSections?: string[]
   /**
    * Signup page per crew member, keyed by userId, for those who came through the
    * public form. Absent for anybody an HQ operator typed in, who has no signup
@@ -334,6 +338,46 @@ async function toggleSosAssignable(slug?: string, label?: string) {
   }
 }
 
+// Sections that are dispatch units (PRD 009 §6).
+//
+// Off by default and opted into per section, exactly as the nødråb flag above, so a
+// fresh year has no dispatch capacity until somebody says which subsections hold a
+// car. The flag is a fact about kørsel, not about the section.
+const dispatchable = ref<Set<string>>(new Set())
+
+const isDispatchable = (slug?: string) => !!slug && dispatchable.value.has(slug)
+
+async function toggleDispatchable(slug?: string, label?: string) {
+  if (!slug) return
+  const name = label ?? slug
+  const next = !dispatchable.value.has(slug)
+  // Optimistic, as the nødråb toggle is — and here it is also necessary: the command
+  // dirty-checks before publishing, so a toggle that changes nothing emits no event
+  // and therefore no live signal to confirm it by.
+  const snapshot = new Set(dispatchable.value)
+  const updated = new Set(dispatchable.value)
+  if (next) updated.add(slug)
+  else updated.delete(slug)
+  dispatchable.value = updated
+
+  try {
+    await http.put(`/section/${slug}/dispatchable`, { dispatchable: next })
+    toast.add({
+      severity: 'success',
+      summary: next ? `${name} kan køre ture` : `${name} kan ikke længere køre ture`,
+      life: 2500
+    })
+  } catch (err: any) {
+    dispatchable.value = snapshot
+    toast.add({
+      severity: 'error',
+      summary: 'Kunne ikke ændre kørsels-enhed',
+      detail: err?.response?.data?.error ?? String(err),
+      life: 5000
+    })
+  }
+}
+
 // The whole screen is one live resource (PRD 004).
 //
 // One key, not one per collection: sections, crew members and vehicles arrive in
@@ -395,6 +439,7 @@ function applyPayload(res: OrganisationResponse) {
   corpsOptions.value = res.corpsOptions ?? []
   availableYearsForCopy.value = res.availableYearsForCopy ?? []
   sosAssignable.value = new Set(res.sosAssignableSections ?? [])
+  dispatchable.value = new Set(res.dispatchableSections ?? [])
   if (!selectedCopyYear.value && availableYearsForCopy.value.length > 0) {
     selectedCopyYear.value = availableYearsForCopy.value[0]
   }
@@ -1157,6 +1202,17 @@ function quickAssignVehicleFromDropdown(vehicleId: string, slug: string) {
                         size="small" severity="secondary" text rounded :disabled="busy"
                         v-tooltip.top="isSosAssignable(node.data.slug) ? 'Kan ikke tildeles nødråb' : 'Kan tildeles nødråb'"
                         @click.stop="toggleSosAssignable(node.data.slug, node.label)" />
+                <!--
+                  Kørsels-enhed (PRD 009). Same treatment as the nødråb flag: a
+                  persistent icon when the subsection is a dispatch unit, and a hover
+                  action when it is not.
+                -->
+                <i v-if="isDispatchable(node.data.slug)" class="pi pi-truck text-primary-500"
+                   v-tooltip.top="'Kørsels-enhed'" />
+                <Button class="row-action" icon="pi pi-truck"
+                        size="small" :severity="isDispatchable(node.data.slug) ? 'danger' : 'secondary'" text rounded :disabled="busy"
+                        v-tooltip.top="isDispatchable(node.data.slug) ? 'Er ikke kørsels-enhed' : 'Er kørsels-enhed'"
+                        @click.stop="toggleDispatchable(node.data.slug, node.label)" />
                 <Button class="row-action" icon="pi pi-pencil" size="small" severity="secondary" text rounded :disabled="busy" @click.stop="openEditDialog(node.data.slug, node.label)" />
                 <Button class="row-action" icon="pi pi-trash" size="small" severity="danger" text rounded :disabled="busy" @click.stop="deleteSection(node.data.slug, node.label)" />
               </template>
