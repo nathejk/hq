@@ -132,7 +132,28 @@ type Queries interface {
 	// the one that matters (PRD 009 §6). Batched rather than per task: a case with four
 	// waiting members must not be four round trips.
 	StopsByTask(context.Context, types.YearSlug, []TaskID) (map[TaskID][]TaskStop, error)
+
+	// Duty windows, whole roster for the year. Ordered by start, so the caller can answer both
+	// "who is on now" and "when does the next unit come on" from one list rather than two
+	// queries — there are fewer than ten units and a night's worth of shifts.
+	DutyWindows(context.Context, types.YearSlug) ([]Duty, error)
 }
+
+// Duty is one window in which a unit is available.
+type Duty struct {
+	ID          DutyID         `json:"id"`
+	YearSlug    types.YearSlug `json:"year"`
+	SectionSlug types.Slug     `json:"sectionSlug"`
+	StartUts    int64          `json:"startUts"`
+	EndUts      int64          `json:"endUts"`
+}
+
+// Covers reports whether the window includes an instant.
+//
+// Half-open on the end: a shift ending at 22.00 does not include 22.00, so two consecutive
+// windows do not both claim the same minute — which would make "who is on now" answer twice for
+// one unit and read as a configuration error on the strip.
+func (d Duty) Covers(uts int64) bool { return d.StartUts <= uts && uts < d.EndUts }
 
 type querier struct {
 	db *sql.DB
@@ -416,6 +437,26 @@ func (q *querier) DispatchableSections(ctx context.Context, year types.YearSlug)
 		slugs = append(slugs, s)
 	}
 	return slugs, rows.Err()
+}
+
+func (q *querier) DutyWindows(ctx context.Context, year types.YearSlug) ([]Duty, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT id, year, sectionSlug, startUts, endUts FROM dispatch_duty
+		 WHERE (year = ? OR ? = '') ORDER BY startUts ASC, sectionSlug ASC`, year, year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	windows := []Duty{}
+	for rows.Next() {
+		var d Duty
+		if err := rows.Scan(&d.ID, &d.YearSlug, &d.SectionSlug, &d.StartUts, &d.EndUts); err != nil {
+			return nil, err
+		}
+		windows = append(windows, d)
+	}
+	return windows, rows.Err()
 }
 
 func (q *querier) taskTimeline(ctx context.Context, id TaskID) ([]Activity, error) {

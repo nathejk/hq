@@ -29,10 +29,12 @@ import DispatchTourCard from '@/components/DispatchTourCard.vue'
 import DispatchTaskDialog, { type PlaceOption } from '@/components/DispatchTaskDialog.vue'
 import {
   type Board,
+  type Duty,
   type Task,
   type Tour,
   type TourStop,
   type Unit,
+  formatUts,
   formatUtsTime,
   kindIcon,
   kindLabel,
@@ -75,6 +77,7 @@ const tasks = ref<Task[]>([])
 const tours = ref<Tour[]>([])
 const units = ref<Unit[]>([])
 const places = ref<PlaceOption[]>([])
+const duty = ref<Duty[]>([])
 
 // True while the board must not be redrawn underneath the operator: a write in flight, a local
 // arrangement not yet saved, or a dialog holding a half-typed form. A drag is short, but the round
@@ -89,8 +92,15 @@ const editingTask = ref<Task | undefined>(undefined)
 // error on mount, which is a blank screen rather than a warning.
 const cancelling = ref<{ kind: 'task' | 'tour'; id: string; label: string } | null>(null)
 const boarding = ref<Task | null>(null)
+const dutyDialog = ref(false)
 const paused = computed(
-  () => saving.value || dragging.value || taskDialogOpen.value || !!cancelling.value || !!boarding.value,
+  () =>
+    saving.value ||
+    dragging.value ||
+    taskDialogOpen.value ||
+    dutyDialog.value ||
+    !!cancelling.value ||
+    !!boarding.value,
 )
 
 const { updatesWaiting } = useDeferredApply(data, paused, (board: Board) => {
@@ -98,7 +108,69 @@ const { updatesWaiting } = useDeferredApply(data, paused, (board: Board) => {
   tours.value = board.tours ?? []
   units.value = board.units ?? []
   places.value = (board as Board & { places?: PlaceOption[] }).places ?? []
+  duty.value = board.duty ?? []
 })
+
+// --- duty windows (task 115) ---
+//
+// A roster agreed in advance with the logistics crew, recorded per unit. The editor is a dialog
+// rather than a panel on the board: it is set up once an evening and then read all night, and a
+// permanent form would take space from the two things that are read constantly. (`dutyDialog`
+// itself is declared with the other pause flags above, because `paused` reads it.)
+const dutyDraft = ref<{ unit: string; from: Date | null; to: Date | null }>({
+  unit: '',
+  from: null,
+  to: null,
+})
+
+const dutyByUnit = computed<Record<string, Duty[]>>(() => {
+  const map: Record<string, Duty[]> = {}
+  for (const window of [...duty.value].sort((a, b) => a.startUts - b.startUts)) {
+    ;(map[window.sectionSlug] ??= []).push(window)
+  }
+  return map
+})
+
+async function saveDuty() {
+  const draft = dutyDraft.value
+  if (!draft.unit || !draft.from || !draft.to) return
+  saving.value = true
+  try {
+    await http.put('/dispatchduty', {
+      sectionSlug: draft.unit,
+      startUts: Math.floor(draft.from.getTime() / 1000),
+      endUts: Math.floor(draft.to.getTime() / 1000),
+    })
+    dutyDraft.value = { unit: draft.unit, from: null, to: null }
+    await refresh()
+  } catch (err: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Kunne ikke gemme vagten',
+      detail: errorDetail(err),
+      life: 6000,
+    })
+  } finally {
+    saving.value = false
+  }
+}
+
+async function removeDuty(id: string) {
+  saving.value = true
+  try {
+    await http.delete(`/dispatchduty/${id}`)
+    await refresh()
+  } catch (err: any) {
+    toast.add({
+      severity: 'error',
+      summary: 'Kunne ikke fjerne vagten',
+      detail: errorDetail(err),
+      life: 6000,
+    })
+  } finally {
+    saving.value = false
+  }
+}
 
 function newTask() {
   editingTask.value = undefined
@@ -378,6 +450,14 @@ function errorDetail(err: any) {
       <div class="flex-1" />
       <Button label="Ny opgave" icon="pi pi-plus" size="small" @click="newTask()" />
       <Button
+        label="Vagter"
+        icon="pi pi-clock"
+        size="small"
+        severity="secondary"
+        outlined
+        @click="dutyDialog = true"
+      />
+      <Button
         icon="pi pi-refresh"
         label="Opdater"
         size="small"
@@ -577,6 +657,78 @@ function errorDetail(err: any) {
         </template>
       </section>
     </div>
+
+    <!--
+      The roster (PRD 009 §6). Per unit, and per unit only: the unit is what is available or
+      asleep, and a window per person would have to be intersected with the co-driver's to answer
+      the one question the board asks of it.
+    -->
+    <Dialog
+      v-model:visible="dutyDialog"
+      modal
+      header="Vagter"
+      :style="{ width: '34rem' }"
+    >
+      <div class="flex flex-wrap items-end gap-2 pb-3">
+        <div>
+          <label class="block text-xs text-gray-600">Enhed</label>
+          <Select
+            v-model="dutyDraft.unit"
+            :options="unitOptions"
+            optionLabel="label"
+            optionValue="value"
+            placeholder="Vælg enhed…"
+            size="small"
+            class="w-40"
+          />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600">Fra</label>
+          <DatePicker v-model="dutyDraft.from" showTime hourFormat="24" size="small" class="w-40" />
+        </div>
+        <div>
+          <label class="block text-xs text-gray-600">Til</label>
+          <DatePicker v-model="dutyDraft.to" showTime hourFormat="24" size="small" class="w-40" />
+        </div>
+        <Button
+          label="Tilføj"
+          icon="pi pi-plus"
+          size="small"
+          :disabled="!dutyDraft.unit || !dutyDraft.from || !dutyDraft.to || saving"
+          @click="saveDuty()"
+        />
+      </div>
+
+      <div v-for="unit in units" :key="unit.sectionSlug" class="border-t py-2">
+        <div class="font-medium">{{ unit.label }}</div>
+        <ul v-if="dutyByUnit[unit.sectionSlug]?.length" class="text-sm">
+          <li
+            v-for="window in dutyByUnit[unit.sectionSlug]"
+            :key="window.id"
+            class="flex items-center gap-2"
+          >
+            <!-- Weekday-bearing, because the race runs through a night and "21.40 til 02.00"
+                 alone does not say which evening. -->
+            <span class="flex-1 tabular-nums">
+              {{ formatUts(window.startUts) }} – {{ formatUts(window.endUts) }}
+            </span>
+            <Button
+              icon="pi pi-trash"
+              size="small"
+              text
+              rounded
+              severity="danger"
+              :disabled="saving"
+              @click="removeDuty(window.id)"
+            />
+          </li>
+        </ul>
+        <small v-else class="text-gray-500">Ingen vagter aftalt.</small>
+      </div>
+      <small v-if="units.length === 0" class="text-gray-600">
+        Ingen kørsels-enheder endnu. Marker en underafdeling som kørsels-enhed på Organisation.
+      </small>
+    </Dialog>
 
     <DispatchTaskDialog
       v-model:visible="taskDialogOpen"

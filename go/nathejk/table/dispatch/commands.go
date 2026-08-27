@@ -41,6 +41,11 @@ type Commands interface {
 	MarkPickedUp(ctx context.Context, actor Actor, year types.YearSlug, id TaskID, unit types.Slug, atUts int64) error
 
 	CancelTask(ctx context.Context, actor Actor, year types.YearSlug, id TaskID, reason string) error
+
+	// Duty windows (task 115). SetDuty both creates and edits: an id given is an edit, an empty
+	// one is a new window, because the editor's two gestures are the same gesture to the roster.
+	SetDuty(ctx context.Context, actor Actor, year types.YearSlug, id DutyID, unit types.Slug, startUts, endUts int64) (DutyID, error)
+	RemoveDuty(ctx context.Context, actor Actor, year types.YearSlug, id DutyID) error
 }
 
 // CreateTaskCommand opens a task.
@@ -330,6 +335,43 @@ func (c commander) SetSectionDispatchable(ctx context.Context, actor Actor, year
 		return err
 	}
 	return c.p.Publish(msg)
+}
+
+// ErrBadWindow is returned for a window that ends before it begins, or has no length.
+//
+// Overlapping windows are *not* refused: a unit rostered twice over the same hour is untidy and
+// harmless — they are on duty either way — and refusing it would block an operator fixing a
+// roster in the order that makes sense to them.
+var ErrBadWindow = errors.New("the duty window must end after it starts")
+
+// SetDuty records or edits a unit's duty window.
+func (c commander) SetDuty(ctx context.Context, actor Actor, year types.YearSlug, id DutyID, unit types.Slug, startUts, endUts int64) (DutyID, error) {
+	if unit == "" || !unit.Valid() {
+		return "", ErrUnitRequired
+	}
+	if endUts <= startUts {
+		return "", ErrBadWindow
+	}
+	if id == "" {
+		id = NewDutyID()
+	}
+	body := &DutySet{DutyID: id, SectionSlug: unit, StartUts: startUts, EndUts: endUts}
+	if err := c.publish(actor, fmt.Sprintf("NATHEJK.%s.dispatchduty.%s.set", year, id), body); err != nil {
+		return "", err
+	}
+	return id, nil
+}
+
+// RemoveDuty deletes a window.
+//
+// Not dirty-checked against the current roster, unlike most commands here: removing a window that
+// is already gone is a no-op the desk cannot distinguish from success, and reading the roster back
+// first would buy nothing but a round trip.
+func (c commander) RemoveDuty(ctx context.Context, actor Actor, year types.YearSlug, id DutyID) error {
+	if id == "" {
+		return tables.ErrRecordNotFound
+	}
+	return c.publish(actor, fmt.Sprintf("NATHEJK.%s.dispatchduty.%s.removed", year, id), &DutyRemoved{DutyID: id})
 }
 
 func (c commander) publishTask(actor Actor, year types.YearSlug, id TaskID, event string, body any) error {

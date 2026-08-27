@@ -33,6 +33,7 @@ type fakeDispatchQueries struct {
 	tasks        []*dispatch.Task
 	task         *dispatch.Task
 	tours        []*dispatch.Tour
+	duty         []dispatch.Duty
 	err          error
 }
 
@@ -54,6 +55,9 @@ func (f *fakeDispatchQueries) Tours(context.Context, dispatch.TourFilter) ([]*di
 func (f *fakeDispatchQueries) GetTour(context.Context, types.YearSlug, dispatch.TourID) (*dispatch.Tour, error) {
 	return nil, tables.ErrRecordNotFound
 }
+func (f *fakeDispatchQueries) DutyWindows(context.Context, types.YearSlug) ([]dispatch.Duty, error) {
+	return f.duty, f.err
+}
 func (f *fakeDispatchQueries) StopsByTask(context.Context, types.YearSlug, []dispatch.TaskID) (map[dispatch.TaskID][]dispatch.TaskStop, error) {
 	return map[dispatch.TaskID][]dispatch.TaskStop{}, nil
 }
@@ -72,6 +76,11 @@ type fakeDispatchCommands struct {
 	visited     dispatch.StopID
 	completed   int
 	tourReason  string
+
+	dutyUnit    types.Slug
+	dutyStart   int64
+	dutyEnd     int64
+	dutyRemoved dispatch.DutyID
 
 	err error
 }
@@ -97,6 +106,21 @@ func (f *fakeDispatchCommands) MarkPickedUp(_ context.Context, _ dispatch.Actor,
 }
 func (f *fakeDispatchCommands) CancelTask(_ context.Context, _ dispatch.Actor, _ types.YearSlug, _ dispatch.TaskID, reason string) error {
 	f.cancelled = reason
+	return f.err
+}
+
+func (f *fakeDispatchCommands) SetDuty(_ context.Context, _ dispatch.Actor, _ types.YearSlug, id dispatch.DutyID, unit types.Slug, start, end int64) (dispatch.DutyID, error) {
+	f.dutyUnit, f.dutyStart, f.dutyEnd = unit, start, end
+	if f.err != nil {
+		return "", f.err
+	}
+	if id == "" {
+		return "dispatchduty-minted", nil
+	}
+	return id, nil
+}
+func (f *fakeDispatchCommands) RemoveDuty(_ context.Context, _ dispatch.Actor, _ types.YearSlug, id dispatch.DutyID) error {
+	f.dutyRemoved = id
 	return f.err
 }
 

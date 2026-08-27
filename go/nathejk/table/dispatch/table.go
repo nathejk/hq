@@ -36,6 +36,9 @@ func New(p stream.Publisher, w cqrs.Writer, r *sql.DB) *table {
 	if err := w.Consume(dispatchableSchema); err != nil {
 		log.Printf("Error creating table %q", err)
 	}
+	if err := w.Consume(dutySchema); err != nil {
+		log.Printf("Error creating table %q", err)
+	}
 	for _, stmt := range schemaMigrations {
 		if err := w.Consume(stmt); err != nil {
 			log.Printf("Error migrating dispatch tables %q", err)
@@ -63,6 +66,12 @@ var tableSchema string
 //
 //go:embed dispatchable.sql
 var dispatchableSchema string
+
+// Duty windows likewise live apart from the tasks and tours: a roster agreed days in advance is
+// configuration of capacity, not a record of what happened on the night.
+//
+//go:embed duty.sql
+var dutySchema string
 
 func (t *table) CreateTableSql() string { return tableSchema }
 

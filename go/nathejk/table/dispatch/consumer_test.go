@@ -128,11 +128,11 @@ func TestDispatchableUnsetDeletesTheSection(t *testing.T) {
 	}
 }
 
-func TestConsumesTheDispatchAndTourSubjects(t *testing.T) {
-	// The entity tokens the SPA depends on are derived from position 3 of these patterns,
-	// so they are `dispatch` and `tour` — not the projection's name, and not `section`.
-	// A wildcard in that position would make the advertised set non-exhaustive, so there
-	// must not be one.
+func TestConsumesTheDispatchTourAndDutySubjects(t *testing.T) {
+	// The entity tokens the SPA depends on are derived from position 3 of these patterns, so they
+	// are `dispatch`, `tour` and `dispatchduty` — not the projection's name, and not `section`.
+	// A wildcard in that position would make the advertised set non-exhaustive, so there must not
+	// be one.
 	c := &consumer{}
 	entities := map[string]int{}
 	for _, s := range c.Consumes() {
@@ -142,8 +142,13 @@ func TestConsumesTheDispatchAndTourSubjects(t *testing.T) {
 		}
 		entities[parts[2]]++
 	}
-	if len(entities) != 2 || entities["dispatch"] == 0 || entities["tour"] == 0 {
-		t.Errorf("entity tokens %v, want exactly dispatch and tour", entities)
+	for _, want := range []string{"dispatch", "tour", "dispatchduty"} {
+		if entities[want] == 0 {
+			t.Errorf("no subscription emits %q; tokens are %v", want, entities)
+		}
+	}
+	if len(entities) != 3 {
+		t.Errorf("entity tokens %v, want exactly three", entities)
 	}
 }
 

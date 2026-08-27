@@ -56,6 +56,11 @@ func NewTaskID() TaskID { return TaskID("dispatchtask-" + uuid.New().String()) }
 func NewTourID() TourID { return TourID("dispatchtour-" + uuid.New().String()) }
 func NewStopID() StopID { return StopID("dispatchstop-" + uuid.New().String()) }
 
+// DutyID identifies one duty window.
+type DutyID types.ID
+
+func NewDutyID() DutyID { return DutyID("dispatchduty-" + uuid.New().String()) }
+
 // Kind is what sort of job a task is.
 //
 // Four values because they read differently on a board and default their places

@@ -133,6 +133,10 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPost, "/api/dispatch/tour/:id/stop/:stopId/visited", app.visitDispatchTourStopHandler)
 	router.HandlerFunc(http.MethodPost, "/api/dispatch/tour/:id/completed", app.completeDispatchTourHandler)
 	router.HandlerFunc(http.MethodPost, "/api/dispatch/tour/:id/cancelled", app.cancelDispatchTourHandler)
+	// Duty windows per unit. No GET of their own: the roster travels with the board, because the
+	// capacity strip that reads it is part of the same screen.
+	router.HandlerFunc(http.MethodPut, "/api/dispatchduty", app.setDispatchDutyHandler)
+	router.HandlerFunc(http.MethodDelete, "/api/dispatchduty/:id", app.deleteDispatchDutyHandler)
 
 	// Nødtelefon / SOS (PRD 001)
 	router.HandlerFunc(http.MethodGet, "/api/sos", app.listSosHandler)

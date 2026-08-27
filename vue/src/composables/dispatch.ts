@@ -124,10 +124,21 @@ export interface Unit {
   people: UnitPerson[]
 }
 
+/** One window in which a unit is available. Per unit, not per person: the unit is what is
+ * available or asleep (PRD 009 §6). */
+export interface Duty {
+  id: string
+  year: string
+  sectionSlug: string
+  startUts: number
+  endUts: number
+}
+
 export interface Board {
   tasks: Task[]
   tours: Tour[]
   units: Unit[]
+  duty: Duty[]
   kinds: TaskKind[]
   priorities: string[]
 }

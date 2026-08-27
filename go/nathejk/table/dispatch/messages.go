@@ -206,3 +206,21 @@ type TourCancelled struct {
 	Reason string `json:"reason"`
 	AtUts  int64  `json:"atUts"`
 }
+
+// --- Duty windows: NATHEJK.{year}.dispatchduty.{id}.{set|removed} ---
+
+// DutySet records when a unit is on duty.
+//
+// A whole window per event rather than a start and a later end: the roster is agreed in advance
+// (PRD 009 §11, answer 3), so both ends are known when it is entered, and a half-open window
+// would make "who is on now" depend on an event that may never arrive.
+type DutySet struct {
+	DutyID      DutyID     `json:"dutyId"`
+	SectionSlug types.Slug `json:"sectionSlug"`
+	StartUts    int64      `json:"startUts"`
+	EndUts      int64      `json:"endUts"`
+}
+
+type DutyRemoved struct {
+	DutyID DutyID `json:"dutyId"`
+}

@@ -58,6 +58,11 @@ func (c *consumer) Consumes() []stream.Subject {
 		subject.FromStr("NATHEJK:*.tour.*.stop.visited"),
 		subject.FromStr("NATHEJK:*.tour.*.completed"),
 		subject.FromStr("NATHEJK:*.tour.*.cancelled"),
+
+		// Duty windows. Their own entity token, `dispatchduty`, so the capacity strip can
+		// depend on the roster without being woken by every task edit.
+		subject.FromStr("NATHEJK:*.dispatchduty.*.set"),
+		subject.FromStr("NATHEJK:*.dispatchduty.*.removed"),
 	}
 }
 
@@ -342,6 +347,35 @@ func (c *consumer) HandleMessage(msg stream.Message) error {
 			return err
 		}
 		return c.activity(msg, ActivityTourCancelled, body.Reason)
+	case msg.Subject().Match("NATHEJK.*.dispatchduty.*.set"):
+		var body DutySet
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		insert := goqu.Record{
+			"id":          c.entityID(msg),
+			"year":        c.year(msg),
+			"sectionSlug": string(body.SectionSlug),
+			"startUts":    body.StartUts,
+			"endUts":      body.EndUts,
+			"setBy":       string(c.actor(msg)),
+			"setUts":      c.uts(msg),
+		}
+		// An upsert of the window itself: editing a shift republishes it with the same id, and
+		// the latest event is the roster. Nothing here is a clock the desk reads, so unlike the
+		// task tables there is no field that must survive replay.
+		update := goqu.Record{}
+		for _, col := range []string{"sectionSlug", "startUts", "endUts", "setBy", "setUts"} {
+			update[col] = goqu.L("VALUES(" + col + ")")
+		}
+		return c.exec(goqu.Dialect("mysql").
+			Insert("dispatch_duty").Rows(insert).
+			OnConflict(goqu.DoUpdate("id", update)))
+
+	case msg.Subject().Match("NATHEJK.*.dispatchduty.*.removed"):
+		return c.exec(goqu.Dialect("mysql").
+			Delete("dispatch_duty").
+			Where(goqu.C("id").Eq(c.entityID(msg)), goqu.C("year").Eq(c.year(msg))))
 	}
 	return nil
 }

@@ -104,6 +104,14 @@ func (app *application) showDispatchBoardHandler(w http.ResponseWriter, r *http.
 		app.ServerErrorResponse(w, r, err)
 		return
 	}
+	duty, err := app.models.Dispatch.DutyWindows(r.Context(), year)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+	if duty == nil {
+		duty = []dispatch.Duty{}
+	}
 	// Never null, always an array. The queries already promise this, and the handler promises
 	// it again: a null collection has broken rendering in this repo three times, and the cost
 	// of the belt as well as the braces is two lines.
@@ -117,6 +125,9 @@ func (app *application) showDispatchBoardHandler(w http.ResponseWriter, r *http.
 	envelope := jsonapi.Envelope{
 		"tasks": tasks,
 		"tours": tours,
+		// The roster, so the board can say who is on duty now and when the next unit comes on.
+		// Sent with the board because the capacity strip is part of the same screen.
+		"duty":  duty,
 		"units": units,
 		// The places the picker offers as groups. Sent with the board rather than fetched
 		// separately: the dialog must open instantly at 3am, and a picker that has to load its
@@ -563,6 +574,69 @@ func (app *application) cancelDispatchTaskHandler(w http.ResponseWriter, r *http
 	}
 }
 
+// --- duty windows (task 115) ---
+
+// setDispatchDutyHandler records or edits a unit's duty window.
+//
+// @Summary     Set a duty window
+// @Description Records when a dispatch unit is available, agreed in advance with the logistics crew. Per unit, not per person: the unit is what is available or asleep. An id in the body edits that window; without one a new window is created. Overlapping windows are allowed — a unit rostered twice over the same hour is on duty either way, and refusing it would block an operator fixing a roster in whatever order makes sense to them. A window must end after it starts.
+// @Tags        dispatch
+// @Accept      json
+// @Produce     json
+// @Param       body body object{dutyId=string,sectionSlug=string,startUts=int,endUts=int} true "The window"
+// @Success     200 {object} map[string]interface{} "envelope with \"dutyId\""
+// @Failure     400 {object} map[string]interface{}
+// @Failure     422 {object} map[string]interface{}
+// @Failure     500 {object} map[string]interface{}
+// @Router      /api/dispatchduty [put]
+func (app *application) setDispatchDutyHandler(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		DutyID      dispatch.DutyID `json:"dutyId"`
+		SectionSlug types.Slug      `json:"sectionSlug"`
+		StartUts    int64           `json:"startUts"`
+		EndUts      int64           `json:"endUts"`
+	}
+	if err := app.ReadJSON(w, r, &input); err != nil {
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+	id, err := app.commands.Dispatch.SetDuty(r.Context(), app.dispatchActor(r), app.YearSlug(r),
+		input.DutyID, input.SectionSlug, input.StartUts, input.EndUts)
+	if err != nil {
+		app.dispatchCommandError(w, r, err)
+		return
+	}
+	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"dutyId": id}, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
+// deleteDispatchDutyHandler removes a duty window.
+//
+// @Summary     Remove a duty window
+// @Description Deletes one window from the roster. Removing a window that is already gone answers 200: the desk cannot tell the two apart, and it should not have to.
+// @Tags        dispatch
+// @Produce     json
+// @Param       id path string true "Duty window id"
+// @Success     200 {object} map[string]interface{} "envelope with \"dutyId\""
+// @Failure     404 {object} map[string]interface{}
+// @Failure     500 {object} map[string]interface{}
+// @Router      /api/dispatchduty/{id} [delete]
+func (app *application) deleteDispatchDutyHandler(w http.ResponseWriter, r *http.Request) {
+	id := dispatch.DutyID(app.ReadNamedParam(r, "id"))
+	if id == "" {
+		app.NotFoundResponse(w, r)
+		return
+	}
+	if err := app.commands.Dispatch.RemoveDuty(r.Context(), app.dispatchActor(r), app.YearSlug(r), id); err != nil {
+		app.dispatchCommandError(w, r, err)
+		return
+	}
+	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"dutyId": id}, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
 // showSosDispatchHandler serves one case's kørsel tasks.
 //
 // Its own endpoint on the case rather than a field on GET /api/sos/:id, and its own live cache
@@ -639,6 +713,8 @@ func (app *application) dispatchCommandError(w http.ResponseWriter, r *http.Requ
 	// The tour refusals (task 111).
 	case errors.Is(err, dispatch.ErrUnitRequired):
 		app.FailedValidationResponse(w, r, map[string]string{"sectionSlug": "vælg en enhed til turen"})
+	case errors.Is(err, dispatch.ErrBadWindow):
+		app.FailedValidationResponse(w, r, map[string]string{"endUts": "vagten skal slutte efter den begynder"})
 	case errors.Is(err, dispatch.ErrTourFinished):
 		app.FailedValidationResponse(w, r, map[string]string{"state": "turen er afsluttet"})
 	case errors.Is(err, dispatch.ErrVisitedStopChanged):
