@@ -8,31 +8,12 @@
 
 export type Severity = '' | 'green' | 'yellow' | 'red'
 
-// Danish labels, kept in one place so the list badge and the detail select cannot
-// drift apart. The values themselves are the API's (PRD 001 §11 Decisions).
-const severityLabels: Record<string, string> = {
-  green: 'Grøn',
-  yellow: 'Gul',
-  red: 'Rød',
-}
-
-export const severityLabel = (severity: string) => severityLabels[severity] ?? severity
-
-// PrimeVue Tag severities, which are the theme's own semantic colours rather than
-// hardcoded hex — a red case should look like the theme's danger, not like #ff0000.
-const severityTags: Record<string, string> = {
-  green: 'success',
-  yellow: 'warn',
-  red: 'danger',
-}
-
-export const severityTagSeverity = (severity: string) => severityTags[severity] ?? 'secondary'
-
-export const severityOptions = [
-  { value: 'green', label: 'Grøn' },
-  { value: 'yellow', label: 'Gul' },
-  { value: 'red', label: 'Rød' },
-]
+// The grøn/gul/rød vocabulary lives in `composables/severity.ts` (task 112) and is
+// re-exported here so every existing nødtelefon call site keeps working. It moved because
+// kørsel (PRD 009) uses the same three values for a task's priority — two race-night desks
+// should not have two words for urgent — and a dispatch view importing `sos.ts` for them
+// would be the wrong dependency to read.
+export { severityLabel, severityTagSeverity, severityOptions } from './severity'
 
 // da-DK throughout, matching the rest of the SPA. The API sends UTC with an
 // explicit offset, so the browser renders the operator's own clock.
