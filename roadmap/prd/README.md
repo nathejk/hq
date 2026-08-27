@@ -65,6 +65,7 @@ Two habits worth keeping, both learned the hard way on PRD 004:
 | 006 Member lifecycle, team strength & discontinuation | draft | split from 001; four blocking open questions; 001 has shipped, so it is unblocked |
 | 007 Hønsegården: the shelter interface | doing | approved 2026-08-23; tasks 086–098; the shelter half of the custody chain 006 deferred |
 | 008 Member notes | doing | approved 2026-08-23; tasks 099–106; prose trail per scout, shared by the shelter and the nødtelefon |
+| 009 Dispatch (Kørsel): vehicle tours and tasks | draft | tasks + tours, dispatched by logistics to dispatchable subsections; the car half of the custody chain 006/007 deferred; driver app is out of scope (another repo) |
 
 Kept short on purpose, and easy to forget — the folders are authoritative if this
 table and they disagree.
