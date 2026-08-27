@@ -62,7 +62,16 @@ type fakeDispatchCommands struct {
 	pickedUp  int
 	cancelled string
 	unit      types.Slug
-	err       error
+
+	tour        *dispatch.CreateTourCommand
+	tourPatched *dispatch.PatchTourCommand
+	stops       []dispatch.StopInput
+	started     int
+	visited     dispatch.StopID
+	completed   int
+	tourReason  string
+
+	err error
 }
 
 func (f *fakeDispatchCommands) SetSectionDispatchable(context.Context, dispatch.Actor, types.YearSlug, types.Slug, bool) error {
@@ -86,6 +95,41 @@ func (f *fakeDispatchCommands) MarkPickedUp(_ context.Context, _ dispatch.Actor,
 }
 func (f *fakeDispatchCommands) CancelTask(_ context.Context, _ dispatch.Actor, _ types.YearSlug, _ dispatch.TaskID, reason string) error {
 	f.cancelled = reason
+	return f.err
+}
+
+func (f *fakeDispatchCommands) CreateTour(_ context.Context, _ dispatch.Actor, _ types.YearSlug, cmd dispatch.CreateTourCommand) (dispatch.TourID, error) {
+	f.tour = &cmd
+	if f.err != nil {
+		return "", f.err
+	}
+	return "dispatchtour-minted", nil
+}
+func (f *fakeDispatchCommands) PatchTour(_ context.Context, _ dispatch.Actor, _ types.YearSlug, _ dispatch.TourID, cmd dispatch.PatchTourCommand) error {
+	f.tourPatched = &cmd
+	return f.err
+}
+func (f *fakeDispatchCommands) SetStops(_ context.Context, _ dispatch.Actor, _ types.YearSlug, _ dispatch.TourID, stops []dispatch.StopInput) ([]dispatch.Warning, error) {
+	f.stops = stops
+	if f.err != nil {
+		return nil, f.err
+	}
+	return []dispatch.Warning{}, nil
+}
+func (f *fakeDispatchCommands) StartTour(context.Context, dispatch.Actor, types.YearSlug, dispatch.TourID) error {
+	f.started++
+	return f.err
+}
+func (f *fakeDispatchCommands) VisitStop(_ context.Context, _ dispatch.Actor, _ types.YearSlug, _ dispatch.TourID, stop dispatch.StopID, _ int64) error {
+	f.visited = stop
+	return f.err
+}
+func (f *fakeDispatchCommands) CompleteTour(context.Context, dispatch.Actor, types.YearSlug, dispatch.TourID) error {
+	f.completed++
+	return f.err
+}
+func (f *fakeDispatchCommands) CancelTour(_ context.Context, _ dispatch.Actor, _ types.YearSlug, _ dispatch.TourID, reason string) error {
+	f.tourReason = reason
 	return f.err
 }
 
@@ -386,4 +430,203 @@ func TestShowTaskAnswers404ForAnUnknownID(t *testing.T) {
 	if rec.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404; body: %s", rec.Code, rec.Body.String())
 	}
+}
+
+// --- tours (task 111) ---
+
+func TestSetStopsPassesTheOrderedListThrough(t *testing.T) {
+	// The array order is the order. If the handler reordered or dropped anything, a
+	// dispatcher's drag would land somewhere else — and the board would be lying about a
+	// route somebody has to drive.
+	cmd := &fakeDispatchCommands{}
+	rec := httptest.NewRecorder()
+	planned := int64(1787864100)
+	dispatchApp(cmd, &fakeDispatchQueries{}).setDispatchTourStopsHandler(rec,
+		dispatchRequest(t, http.MethodPut, "/api/dispatch/tour/tour-1/stops", "tour-1", map[string]any{
+			"stops": []any{
+				map[string]any{
+					"stopId": "stop-a",
+					"place":  map[string]any{"kind": "checkpoint", "refId": "cp-2a", "label": "Post 2A"},
+					"tasks":  []any{map[string]any{"taskId": "disp-9", "role": "load"}},
+				},
+				map[string]any{
+					"place":      map[string]any{"kind": "text", "label": "ved Post 2B"},
+					"plannedUts": planned,
+					"tasks": []any{
+						map[string]any{"taskId": "disp-1", "role": "load"},
+						map[string]any{"taskId": "disp-9", "role": "unload"},
+					},
+				},
+			},
+		}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", rec.Code, rec.Body.String())
+	}
+	if len(cmd.stops) != 2 {
+		t.Fatalf("got %d stops, want 2: %+v", len(cmd.stops), cmd.stops)
+	}
+	if cmd.stops[0].StopID != "stop-a" {
+		t.Errorf("an existing stop lost its id, so a reorder would lose its identity: %+v", cmd.stops[0])
+	}
+	if cmd.stops[1].StopID != "" {
+		t.Errorf("a new stop arrived with an id; the server mints those: %+v", cmd.stops[1])
+	}
+	if cmd.stops[1].PlannedUts == nil || *cmd.stops[1].PlannedUts != planned {
+		t.Errorf("the override time was lost: %+v", cmd.stops[1].PlannedUts)
+	}
+	if len(cmd.stops[1].Tasks) != 2 || cmd.stops[1].Tasks[1].Role != dispatch.RoleUnload {
+		t.Errorf("stop tasks and roles lost: %+v", cmd.stops[1].Tasks)
+	}
+}
+
+func TestSetStopsAnswersWithAWarningsArrayEvenWhenEmpty(t *testing.T) {
+	rec := httptest.NewRecorder()
+	dispatchApp(&fakeDispatchCommands{}, &fakeDispatchQueries{}).setDispatchTourStopsHandler(rec,
+		dispatchRequest(t, http.MethodPut, "/api/dispatch/tour/tour-1/stops", "tour-1", map[string]any{"stops": []any{}}))
+
+	if strings.Contains(rec.Body.String(), `"warnings": null`) {
+		t.Errorf("warnings serialised as null: %s", rec.Body.String())
+	}
+}
+
+func TestMovingAVisitedStopIsRefusedInDanish(t *testing.T) {
+	cmd := &fakeDispatchCommands{err: dispatch.ErrVisitedStopChanged}
+	rec := httptest.NewRecorder()
+	dispatchApp(cmd, &fakeDispatchQueries{}).setDispatchTourStopsHandler(rec,
+		dispatchRequest(t, http.MethodPut, "/api/dispatch/tour/tour-1/stops", "tour-1", map[string]any{"stops": []any{}}))
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422; body: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "besøgt stop") {
+		t.Errorf("unhelpful refusal: %s", rec.Body.String())
+	}
+}
+
+func TestCompletingATourWithUnvisitedStopsIsRefused(t *testing.T) {
+	// A tour marked done with a stop nobody visited strands the task on it, and the desk
+	// never sees the job it dropped.
+	cmd := &fakeDispatchCommands{err: dispatch.ErrStopsRemaining}
+	rec := httptest.NewRecorder()
+	dispatchApp(cmd, &fakeDispatchQueries{}).completeDispatchTourHandler(rec,
+		dispatchRequest(t, http.MethodPost, "/api/dispatch/tour/tour-1/completed", "tour-1", nil))
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422; body: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "ikke er besøgt") {
+		t.Errorf("unhelpful refusal: %s", rec.Body.String())
+	}
+}
+
+func TestVisitingAStopWorksWithNoBody(t *testing.T) {
+	// "Reached, now" is the ordinary call, and a driver app sending no body must not get a 400
+	// for it.
+	cmd := &fakeDispatchCommands{}
+	req := httptest.NewRequest(http.MethodPost, "/api/dispatch/tour/tour-1/stop/stop-a/visited", nil)
+	req.Header.Set("X-YearSlug", "2026")
+	req = req.WithContext(context.WithValue(req.Context(), httprouter.ParamsKey, httprouter.Params{
+		{Key: "id", Value: "tour-1"}, {Key: "stopId", Value: "stop-a"},
+	}))
+
+	rec := httptest.NewRecorder()
+	dispatchApp(cmd, &fakeDispatchQueries{}).visitDispatchTourStopHandler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", rec.Code, rec.Body.String())
+	}
+	if cmd.visited != "stop-a" {
+		t.Errorf("visited stop = %q, want stop-a", cmd.visited)
+	}
+}
+
+func TestCancellingATourRequiresAReason(t *testing.T) {
+	cmd := &fakeDispatchCommands{err: dispatch.ErrReasonRequired}
+	rec := httptest.NewRecorder()
+	dispatchApp(cmd, &fakeDispatchQueries{}).cancelDispatchTourHandler(rec,
+		dispatchRequest(t, http.MethodPost, "/api/dispatch/tour/tour-1/cancelled", "tour-1", map[string]any{"reason": ""}))
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422; body: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestATourWithoutAUnitIsRefused(t *testing.T) {
+	// A tour nobody is driving is not a plan, and "which car" is the question the board exists
+	// to answer.
+	cmd := &fakeDispatchCommands{err: dispatch.ErrUnitRequired}
+	rec := httptest.NewRecorder()
+	dispatchApp(cmd, &fakeDispatchQueries{}).createDispatchTourHandler(rec,
+		dispatchRequest(t, http.MethodPost, "/api/dispatch/tour", "", map[string]any{}))
+
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("status = %d, want 422; body: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "enhed") {
+		t.Errorf("the operator is not asked for a unit: %s", rec.Body.String())
+	}
+}
+
+func TestSeatOverrunIsAWarningNotARefusal(t *testing.T) {
+	// PRD 009 §11 answer 8: warn, never refuse. Seats fold down, a member sits with a leader,
+	// and a platform that refuses the real world gets worked around — which means the job
+	// happens and is not written down, the one failure this feature exists to prevent.
+	app := dispatchApp(&fakeDispatchCommands{}, &fakeDispatchQueries{})
+	stop := dispatch.TourStop{StopID: "stop-a", Tasks: []dispatch.StopTask{
+		{TaskID: "disp-1", Role: dispatch.RoleLoad},
+	}}
+	q := &seatQueries{
+		tour: &dispatch.Tour{ID: "tour-1", SectionSlug: "bil-2", Stops: []dispatch.TourStop{stop}},
+		task: &dispatch.Task{ID: "disp-1", Kind: dispatch.KindPickup, MemberIDs: []types.MemberID{"m-1", "m-2", "m-3", "m-4", "m-5"}},
+	}
+	app.models.Dispatch = q
+	app.models.Vehicle = &fakeVehicleQueries{vehicles: []vehicle.Vehicle{{VehicleID: "v-1", SectionSlug: "bil-2", SeatCount: 4}}}
+
+	rec := httptest.NewRecorder()
+	app.setDispatchTourStopsHandler(rec, dispatchRequest(t, http.MethodPut,
+		"/api/dispatch/tour/tour-1/stops", "tour-1", map[string]any{"stops": []any{}}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 — a seat overrun must not block the plan; body: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "pladser") {
+		t.Errorf("no seat warning reached the desk: %s", rec.Body.String())
+	}
+}
+
+func TestAPickupNamingNobodyStillCountsAsAPerson(t *testing.T) {
+	// Linking the member record is common to skip at 3am. Counting an unlinked pickup as zero
+	// people is how a full car looks empty.
+	app := dispatchApp(&fakeDispatchCommands{}, &fakeDispatchQueries{})
+	app.models.Dispatch = &seatQueries{
+		tour: &dispatch.Tour{ID: "tour-1", SectionSlug: "bil-2", Stops: []dispatch.TourStop{
+			{StopID: "s", Tasks: []dispatch.StopTask{{TaskID: "disp-1", Role: dispatch.RoleLoad}}},
+		}},
+		task: &dispatch.Task{ID: "disp-1", Kind: dispatch.KindPickup},
+	}
+	app.models.Vehicle = &fakeVehicleQueries{vehicles: []vehicle.Vehicle{{SectionSlug: "bil-2", SeatCount: 0}}}
+
+	// With no seats recorded there is nothing to compare against, so nothing is warned about —
+	// asserted so the "unlinked counts as one" rule cannot be mistaken for "no seats warns".
+	rec := httptest.NewRecorder()
+	app.setDispatchTourStopsHandler(rec, dispatchRequest(t, http.MethodPut,
+		"/api/dispatch/tour/tour-1/stops", "tour-1", map[string]any{"stops": []any{}}))
+	if strings.Contains(rec.Body.String(), "pladser") {
+		t.Errorf("warned about seats for a unit whose car has none recorded: %s", rec.Body.String())
+	}
+}
+
+// seatQueries serves one tour and one task, for the seat arithmetic.
+type seatQueries struct {
+	fakeDispatchQueries
+	tour *dispatch.Tour
+	task *dispatch.Task
+}
+
+func (s *seatQueries) GetTour(context.Context, types.YearSlug, dispatch.TourID) (*dispatch.Tour, error) {
+	return s.tour, nil
+}
+func (s *seatQueries) GetTask(context.Context, types.YearSlug, dispatch.TaskID) (*dispatch.Task, error) {
+	return s.task, nil
 }

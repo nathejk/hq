@@ -27,6 +27,11 @@ import (
 type Commands interface {
 	SetSectionDispatchable(ctx context.Context, actor Actor, year types.YearSlug, slug types.Slug, dispatchable bool) error
 
+	// TourCommands is embedded rather than listed here: the tour transitions are a coherent
+	// surface of their own (tours.go), and the driver's app will use that half and almost none
+	// of this one.
+	TourCommands
+
 	CreateTask(ctx context.Context, actor Actor, year types.YearSlug, cmd CreateTaskCommand) (TaskID, error)
 	PatchTask(ctx context.Context, actor Actor, year types.YearSlug, id TaskID, cmd PatchTaskCommand) error
 

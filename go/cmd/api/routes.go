@@ -123,6 +123,16 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPatch, "/api/dispatch/task/:id", app.patchDispatchTaskHandler)
 	router.HandlerFunc(http.MethodPost, "/api/dispatch/task/:id/pickedup", app.dispatchTaskPickedUpHandler)
 	router.HandlerFunc(http.MethodPost, "/api/dispatch/task/:id/cancelled", app.cancelDispatchTaskHandler)
+	router.HandlerFunc(http.MethodPost, "/api/dispatch/tour", app.createDispatchTourHandler)
+	router.HandlerFunc(http.MethodPatch, "/api/dispatch/tour/:id", app.patchDispatchTourHandler)
+	// The whole ordered list in one call: a reorder is one operator intent, and per-stop
+	// endpoints would make a half-applied reorder representable. Same shape as
+	// /api/sections/sorted.
+	router.HandlerFunc(http.MethodPut, "/api/dispatch/tour/:id/stops", app.setDispatchTourStopsHandler)
+	router.HandlerFunc(http.MethodPost, "/api/dispatch/tour/:id/underway", app.startDispatchTourHandler)
+	router.HandlerFunc(http.MethodPost, "/api/dispatch/tour/:id/stop/:stopId/visited", app.visitDispatchTourStopHandler)
+	router.HandlerFunc(http.MethodPost, "/api/dispatch/tour/:id/completed", app.completeDispatchTourHandler)
+	router.HandlerFunc(http.MethodPost, "/api/dispatch/tour/:id/cancelled", app.cancelDispatchTourHandler)
 
 	// Nødtelefon / SOS (PRD 001)
 	router.HandlerFunc(http.MethodGet, "/api/sos", app.listSosHandler)

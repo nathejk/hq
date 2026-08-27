@@ -460,6 +460,9 @@ func (app *application) cancelDispatchTaskHandler(w http.ResponseWriter, r *http
 //
 // Danish, and phrased as what is wrong with the request rather than as the rule it broke —
 // the operator reading it is tired and is not going to read the source.
+//
+// One switch for tasks and tours, rather than one each: two mappings drift, and the way that
+// shows up is a 500 in front of an operator who could have fixed the request themselves.
 func (app *application) dispatchCommandError(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case errors.Is(err, dispatch.ErrEmptyDescription):
@@ -474,6 +477,21 @@ func (app *application) dispatchCommandError(w http.ResponseWriter, r *http.Requ
 		app.FailedValidationResponse(w, r, map[string]string{"kind": "kun en hentning kan have folk med i bilen"})
 	case errors.Is(err, dispatch.ErrTaskFinished):
 		app.FailedValidationResponse(w, r, map[string]string{"state": "opgaven er afsluttet"})
+
+	// The tour refusals (task 111).
+	case errors.Is(err, dispatch.ErrUnitRequired):
+		app.FailedValidationResponse(w, r, map[string]string{"sectionSlug": "vælg en enhed til turen"})
+	case errors.Is(err, dispatch.ErrTourFinished):
+		app.FailedValidationResponse(w, r, map[string]string{"state": "turen er afsluttet"})
+	case errors.Is(err, dispatch.ErrVisitedStopChanged):
+		app.FailedValidationResponse(w, r, map[string]string{"stops": "et besøgt stop kan ikke flyttes eller fjernes"})
+	case errors.Is(err, dispatch.ErrUnloadBeforeLoad):
+		app.FailedValidationResponse(w, r, map[string]string{"stops": "en opgave kan ikke leveres før den er hentet"})
+	case errors.Is(err, dispatch.ErrStopsRemaining):
+		app.FailedValidationResponse(w, r, map[string]string{"stops": "turen har stop der ikke er besøgt"})
+	case errors.Is(err, dispatch.ErrUnknownStop):
+		app.NotFoundResponse(w, r)
+
 	case errors.Is(err, tables.ErrRecordNotFound):
 		app.NotFoundResponse(w, r)
 	default:
