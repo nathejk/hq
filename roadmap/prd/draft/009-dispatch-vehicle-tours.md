@@ -3,7 +3,7 @@
 **Status:** draft
 **Author:** agent session (with the product owner's request)
 **Created:** 2026-08-27
-**Last updated:** 2026-08-27 (revised twice after the product owner's answers: tours, dispatchable subsections, logistics as the operator, desk-only in this repo, English names in source — see §11)
+**Last updated:** 2026-08-27 (revised three times during drafting as the product owner answered — tours, dispatchable subsections, logistics as the operator, desk-only in this repo, English names in source, SOS priority vocabulary, one allowance for all vehicles — see §11)
 **Approved:**
 **Shipped:**
 **Target users:** organizer (logistics crew — the dispatch desk and the drivers), organizer (nødtelefon operator, as the originator of pickups), organizer (Hønsegården crew, as a reader)
@@ -237,6 +237,10 @@ know at 16:00 that it needs two cars, which is the entire point.
       lok, HQ, or free text. Free text is the normal case for "på Slangerupvej ved skovbrynet",
       not a fallback for missing data.
 - [ ] A task has a **description**, a **priority**, and optional **space needs** in words.
+- [ ] Priority uses the **same vocabulary as an SOS case**: grøn / gul / rød. Two race-night
+      desks should not have two ways of saying urgent, and a task that came from a red case
+      should be able to arrive carrying that word. Same values, same Danish labels, same theme
+      colours — see §8 for how that is shared rather than copied.
 - [ ] A `pickup` task may reference **the members being collected** and the SOS case it came
       from.
 - [ ] Times, all optional except the first: **oprettet** (the waiting clock), **tidligst** (not
@@ -473,6 +477,26 @@ dispatchable subsection, and the driver comes from that unit's vehicle. When aut
 arrives it can fill in the *actor*; the *unit* stays an explicit choice, because the person at
 the keyboard is not the person in the car.
 
+### Priority: mirrored from SOS, shared not copied
+
+A task's priority is the SOS severity vocabulary — `green` / `yellow` / `red`, labelled Grøn /
+Gul / Rød, rendered with the theme's `success` / `warn` / `danger` rather than hex. Two desks
+working the same night should not have two words for urgent, and a pickup created from a red
+case should be able to arrive red.
+
+**Front end.** `composables/sos.ts` already holds `severityLabel`, `severityTagSeverity` and
+`severityOptions`, with a comment saying they are kept in one place *"so the list badge and the
+detail select cannot drift apart"* — exactly the drift a second copy in a dispatch view would
+reintroduce. But importing `sos.ts` from a delivery task is the wrong dependency to read. So:
+move those three helpers to a neutral `composables/severity.ts` and re-export them from
+`sos.ts`, leaving the nødtelefon's call sites untouched. Small task, listed in §10.
+
+**Back end.** `dispatch` defines its own three-value `Priority` rather than importing the `sos`
+package: a delivery of dinner must not depend on the emergency-phone entity to know what "rød"
+means. Three duplicated string constants is the cheaper wrong thing. When `sos` is lifted to
+shared-go (task 055) a shared `types.Severity` becomes the obvious home for both, and that is
+the moment to converge them — noted here so it is a decision rather than a discovery.
+
 ### The estimate, and why it stays crude
 
 For a task **in a tour**, the expected time is the tour's planned time at its stop. That is the
@@ -485,13 +509,20 @@ For a task **not yet in a tour**:
 estimate = max(now, tidligst, next unit on duty) + allowance(kind)
 ```
 
-with `allowance` a small configured table (pickup 30 min, transport 20, …). It ignores
-distance, traffic and where the car is.
+with `allowance` a small configured table (pickup 30 min, transport 20, …). It ignores distance,
+traffic and where the car is.
 
-That is honesty about the inputs, not laziness. There are no positions, so a distance term
-would be invented; and an estimate that looks precise gets quoted down a phone to a patrol in
-the dark, who then stop making their own plans. So it is coarse, labelled *anslået*, and always
-shown beside the fact that needs no model — how long they have already waited.
+**One allowance for every vehicle.** A minibus and an estate do not drive alike, and we are
+ignoring that on purpose: the difference between two cars is far smaller than the difference
+between an accurate ETA and the guess we are actually making, so encoding it would add a column
+and a maintenance burden while moving the number by less than its own error. If the desk ever
+finds itself planning around one particular slow vehicle, that is the evidence to revisit — and
+the measured gap between planned and visited stop times (§9) is where it would show up.
+
+That crudeness is honesty about the inputs, not laziness. There are no positions, so a distance
+term would be invented; and an estimate that looks precise gets quoted down a phone to a patrol
+in the dark, who then stop making their own plans. So it is coarse, labelled *anslået*, and
+always shown beside the fact that needs no model — how long they have already waited.
 
 **Rejected alternative:** showing nothing until GPS exists. Rejected because the feature is
 needed for this race, and "nothing" is what the desk has now.
@@ -624,6 +655,7 @@ Proposed tasks for `roadmap/tasks/open/` (created on approval, not now):
 - [ ] Task: deadline warnings and the at-risk filter
 - [ ] Task: `AcceptPickup` on `spejderstatus.Commands` → `transit`
 - [ ] Task: `Bestil kørsel` from an SOS case, and the case's task list
+- [ ] Task: extract `composables/severity.ts` from `sos.ts` and share the grøn/gul/rød vocabulary
 - [ ] Task: vehicle position seam (Phase 4, blocked on tracker access)
 
 ## 11. Open Questions
@@ -651,22 +683,23 @@ Answered by the product owner 2026-08-27:
    `/hoensegaard`.
 8. ~~Seats versus headcount.~~ **Warn.** Counted across a tour's unvisited pickups, and a
    warning rather than a refusal — seats fold down and the desk knows things we do not.
+9. ~~Priority scheme.~~ **Mirror the SOS vocabulary**, grøn / gul / rød. Shared through a
+   neutral `composables/severity.ts` on the front end rather than copied; a separate
+   three-value type in Go until `sos` is lifted to shared-go (§8).
+10. ~~Where do the per-leg allowances live?~~ **One constant for every vehicle.** Per-vehicle
+    speed is deliberately ignored: the difference between two cars is smaller than the error in
+    the estimate itself (§8).
 
 Still open:
 
-9. **Can a tour serve two units?** Assumed no — one tour, one unit. A car handing over mid-tour
-   would be two tours.
-10. **Is a co-driver explicit?** Proposed: no — the unit's people are whoever is in the
+11. **Can a tour serve two units?** Assumed no — one tour, one unit. A car handing over mid-tour
+    would be two tours.
+12. **Is a co-driver explicit?** Proposed: no — the unit's people are whoever is in the
     subsection, and the vehicle's `driverUserId` names the driver. If who drove matters after
     the fact, it needs recording per tour.
-11. **Priority scheme.** Reuse the SOS severity vocabulary (red/yellow/green), or a simpler
-    urgent/normal?
-12. **Recurring deliveries.** Dinner happens every day at the same time. Templates, or fresh
+13. **Recurring deliveries.** Dinner happens every day at the same time. Templates, or fresh
     tasks each evening? Phase 1 assumes fresh.
-13. **Should a pickup's drop-off ever be somewhere other than HQ?** A scout handed back to
+14. **Should a pickup's drop-off ever be somewhere other than HQ?** A scout handed back to
     their own leaders at a lok, for instance.
-14. **What closes a delivery — arrival, or handover to a named person?** The shelter models
+15. **What closes a delivery — arrival, or handover to a named person?** The shelter models
     handover explicitly; dinner probably does not need it.
-15. **Where do the per-leg allowances live?** A constant in code, a year setting, or per unit
-    (a minibus is slower than an estate)? Phase 2 needs an answer; a constant is enough to
-    start.
