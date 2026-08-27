@@ -1,10 +1,10 @@
 # PRD 009 — Dispatch (Kørsel): vehicle tours and tasks
 
-**Status:** draft
+**Status:** doing
 **Author:** agent session (with the product owner's request)
 **Created:** 2026-08-27
 **Last updated:** 2026-08-27 (revised three times during drafting as the product owner answered — tours, dispatchable subsections, logistics as the operator, desk-only in this repo, English names in source, SOS priority vocabulary, one allowance for all vehicles — see §11)
-**Approved:**
+**Approved:** 2026-08-27
 **Shipped:**
 **Target users:** organizer (logistics crew — the dispatch desk and the drivers), organizer (nødtelefon operator, as the originator of pickups), organizer (Hønsegården crew, as a reader)
 
@@ -642,21 +642,21 @@ it needs Phase 1's state machine to hang off.
 **Phase 4 — positions.** When the tracker feed is available: the vehicle position event, last
 known position on the capacity strip, a distance term in the leg allowance.
 
-Proposed tasks for `roadmap/tasks/open/` (created on approval, not now):
+Tasks created in `roadmap/tasks/` on approval (2026-08-27):
 
-- [ ] Task: `dispatchable` flag on sections — table, endpoint, Organisation page toggle
-- [ ] Task: `dispatch` entity — tasks, tours, stops, timeline, projection, live wiring
-- [ ] Task: dispatch API — board, task create/edit/cancel (with OpenAPI annotations)
-- [ ] Task: tour API — create, stops (whole-list PUT), underway, stop visited, complete
-- [ ] Task: `DispatchView` — queue + tour panes, live + deferred while rearranging
-- [ ] Task: task dialog with the place picker (checkpoint / lok / HQ / free text)
-- [ ] Task: `dispatchduty` entity + duty window editor per unit
-- [ ] Task: capacity strip, unit readiness, and the queued wait-time estimate
-- [ ] Task: deadline warnings and the at-risk filter
-- [ ] Task: `AcceptPickup` on `spejderstatus.Commands` → `transit`
-- [ ] Task: `Bestil kørsel` from an SOS case, and the case's task list
-- [ ] Task: extract `composables/severity.ts` from `sos.ts` and share the grøn/gul/rød vocabulary
-- [ ] Task: vehicle position seam (Phase 4, blocked on tracker access)
+- [ ] 108 — `dispatchable` flag on sections — table, endpoint, Organisation page toggle
+- [ ] 109 — `dispatch` entity — tasks, tours, stops, timeline, projection, live wiring
+- [ ] 110 — dispatch API — board, task create/edit/cancel (with OpenAPI annotations)
+- [ ] 111 — tour API — create, stops (whole-list PUT), underway, stop visited, complete
+- [ ] 112 — extract `composables/severity.ts` from `sos.ts` and share the grøn/gul/rød vocabulary
+- [ ] 113 — `DispatchView` — queue + tour panes, live + deferred while rearranging
+- [ ] 114 — task dialog with the place picker (checkpoint / lok / HQ / free text)
+- [ ] 115 — `dispatchduty` entity + duty window editor per unit
+- [ ] 116 — capacity strip, unit readiness, and the queued wait-time estimate
+- [ ] 117 — deadline warnings and the at-risk filter
+- [ ] 118 — `AcceptPickup` on `spejderstatus.Commands` → `transit`
+- [ ] 119 — `Bestil kørsel` from an SOS case, and the case's task list
+- [ ] 120 — vehicle position seam (Phase 4, blocked on tracker access)
 
 ## 11. Open Questions
 
