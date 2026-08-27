@@ -3,7 +3,7 @@
 **Status:** doing
 **Author:** agent session (with the product owner's request)
 **Created:** 2026-08-27
-**Last updated:** 2026-08-27 (revised three times during drafting as the product owner answered — tours, dispatchable subsections, logistics as the operator, desk-only in this repo, English names in source, SOS priority vocabulary, one allowance for all vehicles — see §11)
+**Last updated:** 2026-08-27 (revised three times during drafting as the product owner answered — tours, dispatchable subsections, logistics as the operator, desk-only in this repo, English names in source, SOS priority vocabulary, one allowance for all vehicles — see §11; §8's table list amended during task 109 to add `dispatch_stop_task`)
 **Approved:** 2026-08-27
 **Shipped:**
 **Target users:** organizer (logistics crew — the dispatch desk and the drivers), organizer (nødtelefon operator, as the originator of pickups), organizer (Hønsegården crew, as a reader)
@@ -574,8 +574,12 @@ and took the dialog's own close button with it, trapping the operator in a modal
 
 ### Data / storage
 
-- New tables: `dispatch_task`, `dispatch_tour`, `dispatch_stop`, `dispatch_activity` (the
-  timeline), `dispatch_duty`, `dispatchable_section`.
+- New tables: `dispatch_task`, `dispatch_tour`, `dispatch_stop`, `dispatch_stop_task`,
+  `dispatch_activity` (the timeline), `dispatch_duty`, `dispatchable_section`.
+  `dispatch_stop_task` was added during implementation (task 109): "the tasks actioned at a
+  stop" is a many-to-many, since a task occupies both a load and an unload stop, and holding
+  the pairs in a JSON column would make "which stops does this task sit on" — the very
+  question a task's state is derived from — an unindexed scan of every stop of every tour.
 - **Get the columns right before the first race.** `CREATE TABLE IF NOT EXISTS` never alters an
   existing table, so a column added later is silently absent from every database that already
   has the table. PRD 007 §8 made this argument while its table was still free to change; the

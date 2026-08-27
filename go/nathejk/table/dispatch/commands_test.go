@@ -49,14 +49,43 @@ func (m *mutableMessage) SetBody(b any) error         { m.body = b; return nil }
 func (m *mutableMessage) SetMeta(v any) error         { m.meta = v; return nil }
 func (m *mutableMessage) SetTime(t time.Time) error   { m.at = t; return nil }
 
-// stubQueries stands in for the read model the commander dirty-checks against.
+// stubQueries stands in for the read model the commander dirty-checks against. Only the
+// methods a command actually reads through return anything; the rest exist to satisfy
+// Queries, and returning zero values from them is what makes a command that unexpectedly
+// starts reading one show up as a failing test rather than as a plausible answer.
 type stubQueries struct {
 	dispatchable []types.Slug
+	tasks        []*Task
+	task         *Task
+	tours        []*Tour
+	tour         *Tour
 	err          error
 }
 
 func (q stubQueries) DispatchableSections(context.Context, types.YearSlug) ([]types.Slug, error) {
 	return q.dispatchable, q.err
+}
+
+func (q stubQueries) Tasks(context.Context, Filter) ([]*Task, error) { return q.tasks, q.err }
+
+func (q stubQueries) GetTask(context.Context, types.YearSlug, TaskID) (*Task, error) {
+	if q.err != nil {
+		return nil, q.err
+	}
+	return q.task, nil
+}
+
+func (q stubQueries) Tours(context.Context, TourFilter) ([]*Tour, error) { return q.tours, q.err }
+
+func (q stubQueries) GetTour(context.Context, types.YearSlug, TourID) (*Tour, error) {
+	if q.err != nil {
+		return nil, q.err
+	}
+	return q.tour, nil
+}
+
+func (q stubQueries) StopsByTask(context.Context, types.YearSlug, []TaskID) (map[TaskID][]TaskStop, error) {
+	return map[TaskID][]TaskStop{}, q.err
 }
 
 // --- tests ---

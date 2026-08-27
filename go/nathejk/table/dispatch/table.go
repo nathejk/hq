@@ -30,6 +30,9 @@ func New(p stream.Publisher, w cqrs.Writer, r *sql.DB) *table {
 		consumer:  consumer{w: w},
 		querier:   q,
 	}
+	if err := w.Consume(t.CreateTableSql()); err != nil {
+		log.Printf("Error creating table %q", err)
+	}
 	if err := w.Consume(dispatchableSchema); err != nil {
 		log.Printf("Error creating table %q", err)
 	}
@@ -51,12 +54,17 @@ func New(p stream.Publisher, w cqrs.Writer, r *sql.DB) *table {
 // Entries must be idempotent: they run on every boot, against both shapes.
 var schemaMigrations = []string{}
 
+//go:embed table.sql
+var tableSchema string
+
 // The dispatchable-section flag lives in its own file rather than with the tasks and
 // tours, because it is a different kind of thing: configuration of which organisation
 // sections are dispatch units, not a record of anything that happened.
 //
 //go:embed dispatchable.sql
 var dispatchableSchema string
+
+func (t *table) CreateTableSql() string { return tableSchema }
 
 // Assert the consumer contract at compile time. The mux accepts anything shaped vaguely
 // right, so a drifting signature would surface as a projection that silently never runs.
