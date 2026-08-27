@@ -55,6 +55,12 @@ kørsel (same decision as PRD 001).
   response code, which is the shape a generator would read later. Recorded here because PRD 009
   §8 leans on the annotations as the driver app's contract, and that promise is now a doc comment
   until somebody adds the tooling.
+- 2026-08-27 — **Correction to the entry above: I was wrong, and the reason is worth recording.**
+  My grep for annotations passed `@Summary` through a shell that ate the `@`, so it reported
+  nothing while `note.go`, `shelter.go` and `order.go` are full of swag comments. The handler now
+  carries proper `@Summary` / `@Description` / `@Router` annotations in the house style. The
+  lesson generalises: a grep that finds *nothing* is evidence about the grep at least as often as
+  about the code.
 - 2026-08-27 — A fourth `Actor` conversion (`dispatchActor` in `cmd/api/dispatch.go`). `actor.go`
   says three is a pattern worth converging; still not done, because a shared `types.Actor` is a
   shared-go change and every one of these packages is deliberately unable to import another. The

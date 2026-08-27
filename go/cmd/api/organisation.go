@@ -526,16 +526,23 @@ func (app *application) setSectionSosAssignableHandler(w http.ResponseWriter, r 
 
 // setSectionDispatchableHandler toggles whether a section is a dispatch unit (PRD 009 §6).
 //
-// PUT /api/section/:slug/dispatchable
-//
-//	request:  {"dispatchable": true|false}
-//	response: 200 {"slug": "bil-2", "dispatchable": true}
-//	          400 invalid slug or body, 404 no such section for the year
-//
 // Owned by the dispatch domain rather than by the section itself: "holds a car and can be
 // sent out" is a fact about kørsel, and a section does not become a different thing because
 // logistics can dispatch it. The route lives under /api/section/ anyway, because the
 // Organisation page is the screen an operator sets it from — exactly as the sos flag does.
+//
+// @Summary     Mark a section as a dispatch unit
+// @Description Opts an organisation subsection into kørsel (PRD 009): a unit holding a vehicle, a driver and possibly a co-driver, that tours may be assigned to. Off by default and per year, so a fresh year has no dispatch capacity until somebody says which subsections hold a car. Sending the state it already has changes nothing and answers 200 — the command dirty-checks, so it also publishes no event and emits no live signal, which is why the UI toggle is optimistic. The section must exist for the year.
+// @Tags        dispatch
+// @Accept      json
+// @Produce     json
+// @Param       slug path string true "Section slug"
+// @Param       body body object{dispatchable=bool} true "The new state"
+// @Success     200 {object} map[string]interface{} "envelope with \"slug\" and \"dispatchable\""
+// @Failure     400 {object} map[string]interface{}
+// @Failure     404 {object} map[string]interface{}
+// @Failure     500 {object} map[string]interface{}
+// @Router      /api/section/{slug}/dispatchable [put]
 func (app *application) setSectionDispatchableHandler(w http.ResponseWriter, r *http.Request) {
 	var input struct {
 		Dispatchable bool `json:"dispatchable"`
