@@ -23,6 +23,7 @@ declare module 'vue' {
     DatePicker: typeof import('primevue/datepicker')['default']
     DayTimePicker: typeof import('./src/components/DayTimePicker.vue')['default']
     Dialog: typeof import('primevue/dialog')['default']
+    DispatchCapacityStrip: typeof import('./src/components/DispatchCapacityStrip.vue')['default']
     DispatchPlacePicker: typeof import('./src/components/DispatchPlacePicker.vue')['default']
     DispatchTaskDialog: typeof import('./src/components/DispatchTaskDialog.vue')['default']
     DispatchTourCard: typeof import('./src/components/DispatchTourCard.vue')['default']

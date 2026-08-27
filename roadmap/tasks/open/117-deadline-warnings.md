@@ -1,11 +1,11 @@
 # 117 — deadline warnings and the at-risk filter
 
-**Status:** open
+**Status:** done
 **Priority:** medium
 **Created:** 2026-08-27
-**Picked up by:**
-**Started:**
-**Completed:**
+**Picked up by:** agent session (Zed)
+**Started:** 2026-08-27
+**Completed:** 2026-08-27
 
 ## Description
 
@@ -24,13 +24,36 @@ to act.
 
 ## Acceptance Criteria
 
-- [ ] Countdown to `skal leveres` on deadline tasks, advancing live
-- [ ] At-risk flagged for both causes (plan lands late; still queued near the deadline)
-- [ ] Banner with a filter shortcut, matching the existing pattern
-- [ ] Summary counts visible without scrolling
-- [ ] Overdue unvisited stops marked
-- [ ] Threshold configurable rather than hard-coded
+- [x] Countdown to `skal leveres` on deadline tasks, advancing live
+- [x] At-risk flagged for both causes (plan lands late; still queued near the deadline)
+- [x] Banner with a filter shortcut, matching the existing pattern
+- [x] Summary counts visible without scrolling
+- [x] Overdue unvisited stops marked
+- [x] Threshold configurable rather than hard-coded
 
 ## Progress Log
 
 - 2026-08-27 — Task created from PRD 009 §10.
+- 2026-08-27 — `deadlineRisk` returns **why**, not just whether: `late` (the plan lands after the
+  deadline, or it has already passed) and `soon` (still unplanned with the deadline inside the
+  window). They call for different actions — a late plan needs another car, an unplanned task needs
+  a plan — so collapsing them to a boolean would have thrown away the useful half.
+- 2026-08-27 — **Finished and cancelled work is never at risk**, however late it was. A red row for
+  dinner that was delivered is how a board teaches its operator to ignore red rows, which is the
+  failure mode a warning system has to avoid above all others.
+- 2026-08-27 — Deadline trouble is pinned above the oldest wait in the queue. A scout who has waited
+  an hour is a problem the desk already knows about; dinner that is about to be late is one it does
+  not, and the whole point of §5's worked example is knowing at 16:00 rather than at 19:20.
+- 2026-08-27 — The banner's shortcut **filters rather than navigates**, and it is a toggle: the same
+  click that narrows the board widens it again. A navigation would have left the operator to find
+  their way back.
+- 2026-08-27 — `DEADLINE_WARNING_MINUTES = 60`, one constant in one place. Chosen to be useful
+  rather than correct: it catches the dinner run while there is still time to send a second car,
+  without lighting up every delivery entered in the afternoon.
+- 2026-08-27 — Overdue *stops* were already marked when the tour card was written (task 113) — a
+  planned time in the past with the stop unvisited, and only on a tour that has actually set off,
+  because an un-departed plan is not yet a promise. Left as it was rather than reimplemented here.
+- 2026-08-27 — ✅ Verified: the risk rules are covered by the vitest suite added in task 116 (both
+  causes, both exclusions, the threshold boundary), 173 tests green; `vue-tsc` at the 109 baseline
+  and the dev server compiles the view.
+- 2026-08-27 — All criteria met. Moving to done.

@@ -259,3 +259,127 @@ export const placeLine = (place?: Place) => {
   if (place.label) return place.label
   return placeKindLabel(place.kind)
 }
+
+// --- capacity, and the answer to "when?" for a task nobody has planned (task 116) ---
+
+/**
+ * How long a kind of task is assumed to take once somebody sets off.
+ *
+ * Minutes, and deliberately crude: it ignores distance, traffic and where the car actually is,
+ * because there are no vehicle positions to derive any of that from (PRD 009 §8). **One set of
+ * numbers for every vehicle**, per open question 10 — a minibus and an estate do not drive alike
+ * and the difference between them is far smaller than the error in the estimate itself.
+ *
+ * That crudeness is honesty about the inputs, not laziness. An estimate that looks precise gets
+ * quoted down a phone to a patrol in the dark, who then stop making their own plans — so it is
+ * coarse, always labelled *anslået*, and always shown beside the fact that needs no model at all:
+ * how long they have already waited.
+ */
+export const ALLOWANCE_MINUTES: Record<TaskKind, number> = {
+  pickup: 30,
+  transport: 20,
+  collection: 20,
+  delivery: 20,
+}
+
+/** Units on duty at an instant. */
+export const unitsOnDuty = (duty: Duty[], nowMs: number) => {
+  const uts = nowMs / 1000
+  const slugs = new Set<string>()
+  for (const window of duty) {
+    // Half-open, as the server's own Covers is: two consecutive windows must not both claim the
+    // same minute, or one unit reads as being on duty twice.
+    if (window.startUts <= uts && uts < window.endUts) slugs.add(window.sectionSlug)
+  }
+  return slugs
+}
+
+/** When the next unit comes on duty, or null if none is rostered ahead. */
+export const nextDutyStart = (duty: Duty[], nowMs: number): number | null => {
+  const uts = nowMs / 1000
+  let next: number | null = null
+  for (const window of duty) {
+    if (window.startUts <= uts) continue
+    if (next === null || window.startUts < next) next = window.startUts
+  }
+  return next
+}
+
+/**
+ * When a queued task might be dealt with: `max(now, tidligst, next unit on duty) + allowance`.
+ *
+ * Returns unix seconds, and the caller must label it *anslået*. A tour's planned time beats this
+ * whenever one exists — a dispatcher who has built a run knows more than the queue does.
+ *
+ * With no roster at all the estimate degrades to `now + allowance` rather than to nonsense, which
+ * is the mitigation for the roster going stale (PRD 009 §8): a stale roster makes the number
+ * optimistic, a missing one makes it merely crude.
+ */
+export const estimateFor = (task: Task, duty: Duty[], nowMs: number): number => {
+  const nowUts = Math.floor(nowMs / 1000)
+  let from = nowUts
+  if (task.notBeforeUts && task.notBeforeUts > from) from = task.notBeforeUts
+  // Only wait for the next unit if none is on duty now. A unit already driving is capacity, and
+  // pushing the estimate out to the *next* shift would be pessimistic to the point of useless.
+  if (unitsOnDuty(duty, nowMs).size === 0) {
+    const next = nextDutyStart(duty, nowMs)
+    if (next && next > from) from = next
+  }
+  return from + (ALLOWANCE_MINUTES[task.kind] ?? 20) * 60
+}
+
+/**
+ * A unit's readiness: a dispatchable subsection missing a vehicle or a crew is not capacity, and
+ * the board says so rather than silently offering it (PRD 009 §6).
+ *
+ * More than one vehicle is a **configuration mistake, flagged not forbidden** — the desk can still
+ * work, and the Organisation page is where it gets fixed.
+ */
+export const unitReadiness = (unit: Unit) => {
+  const missing: string[] = []
+  if ((unit.vehicles ?? []).length === 0) missing.push('intet køretøj')
+  if ((unit.people ?? []).length === 0) missing.push('ingen mandskab')
+  return {
+    ready: missing.length === 0,
+    missing,
+    tooManyVehicles: (unit.vehicles ?? []).length > 1,
+  }
+}
+
+// --- deadlines (task 117) ---
+
+/**
+ * How close to a deadline a task must be before the board shouts about it.
+ *
+ * One constant in one place, so adopting a different value is an edit here and nowhere else. An
+ * hour is chosen to be useful rather than correct: it catches the dinner run while there is still
+ * time to send a second car, without lighting up every delivery entered in the afternoon.
+ */
+export const DEADLINE_WARNING_MINUTES = 60
+
+export type DeadlineRisk = 'none' | 'soon' | 'late'
+
+/**
+ * Whether a deadline task is at risk, and why.
+ *
+ * Two independent causes, and both matter because they call for different actions:
+ *   - `late` — the plan itself lands after the deadline, or the deadline has simply passed. The
+ *     desk needs another car, and it can know that at 16:00 rather than at 19:20, which PRD 009
+ *     §5 calls "the entire point".
+ *   - `soon` — still unplanned with the deadline inside the warning window. Nothing is wrong yet;
+ *     nothing is happening either.
+ *
+ * A finished or cancelled task is never at risk: it is history, and a red row for dinner that was
+ * delivered on time is how a board teaches its operator to ignore red rows.
+ */
+export const deadlineRisk = (task: Task, plannedUts: number | null, nowMs: number): DeadlineRisk => {
+  if (!task.deadlineUts) return 'none'
+  if (task.state === 'done' || task.state === 'cancelled') return 'none'
+  const nowUts = nowMs / 1000
+  if (task.deadlineUts < nowUts) return 'late'
+  if (plannedUts && plannedUts > task.deadlineUts) return 'late'
+  if (task.state === 'queued' && task.deadlineUts - nowUts < DEADLINE_WARNING_MINUTES * 60) {
+    return 'soon'
+  }
+  return 'none'
+}

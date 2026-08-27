@@ -26,6 +26,7 @@ import { useLiveResource } from '@/composables/useLiveResource'
 import { useDeferredApply } from '@/composables/useDeferredApply'
 import { useNow } from '@/composables/shelter'
 import DispatchTourCard from '@/components/DispatchTourCard.vue'
+import DispatchCapacityStrip from '@/components/DispatchCapacityStrip.vue'
 import DispatchTaskDialog, { type PlaceOption } from '@/components/DispatchTaskDialog.vue'
 import {
   type Board,
@@ -36,6 +37,8 @@ import {
   type Unit,
   formatUts,
   formatUtsTime,
+  deadlineRisk,
+  estimateFor,
   kindIcon,
   kindLabel,
   placeLine,
@@ -62,13 +65,17 @@ const now = useNow()
 // `dispatchduty` is deliberately absent until task 115 creates it: a dependency nothing can emit
 // is exactly what the dev-console warning exists to catch, and adding it early would train
 // whoever sees the warning to ignore it.
+// `dispatchduty` joined the set in task 115, when the entity that emits it came into existence.
+// Until then it was deliberately absent: a dependency nothing can emit is what the dev-console
+// warning exists to catch, and declaring it early would have trained whoever saw that warning to
+// ignore it.
 const { data, pending, error, refresh } = useLiveResource(
   'dispatch',
   async () => {
     const response = await http.get('/dispatch')
     return response.data as Board
   },
-  { dependsOn: ['dispatch', 'tour', 'section', 'crewmember', 'crew', 'vehicle', 'spejder', 'sos'] },
+  { dependsOn: ['dispatch', 'tour', 'dispatchduty', 'section', 'crewmember', 'crew', 'vehicle', 'spejder', 'sos'] },
 )
 
 // --- what the view renders ---
@@ -205,9 +212,19 @@ const unitsBySlug = computed<Record<string, Unit>>(() => {
  * not "what came in last". The API already orders it; the sort is here so a locally-mutated list
  * cannot drift out of order between payloads.
  */
-const queued = computed(() =>
-  tasks.value.filter((t) => t.state === 'queued').sort((a, b) => a.createdUts - b.createdUts),
-)
+const queued = computed(() => {
+  const list = tasks.value
+    .filter((t) => t.state === 'queued')
+    .sort((a, b) => a.createdUts - b.createdUts)
+  if (onlyAtRisk.value) return list.filter((t) => riskOf(t) !== 'none')
+  // Deadline trouble is pinned to the top, above the oldest wait: a scout who has waited an hour
+  // is a problem the desk already knows about, and dinner that is about to be late is one it does
+  // not. The rest keeps its oldest-first order.
+  return [...list].sort((a, b) => {
+    const risk = (t: Task) => (riskOf(t) === 'none' ? 1 : 0)
+    return risk(a) - risk(b)
+  })
+})
 
 /** Tours worth showing: the ones still happening, plus tonight's finished runs at the bottom. */
 const openTours = computed(() =>
@@ -219,6 +236,47 @@ const closedTours = computed(() =>
 
 /** Tasks underway, so the desk can see what is in a car right now. */
 const underway = computed(() => tasks.value.filter((t) => t.state === 'underway'))
+
+// --- "when?", for a task nobody has planned yet (task 116) ---
+//
+// The plan beats the estimate wherever both exist: a dispatcher who has built a tour knows more
+// than the queue does. So this is only ever consulted for `queued` tasks, and what it returns is
+// always labelled *anslået* on screen.
+const estimate = (task: Task) => estimateFor(task, duty.value, now.value)
+
+/** The planned time of a task's first stop, if it is on a tour. */
+const plannedFor = (taskId: string): number | null => {
+  for (const tour of tours.value) {
+    for (const stop of tour.stops) {
+      if (stop.tasks.some((st) => st.taskId === taskId)) return stop.plannedUts
+    }
+  }
+  return null
+}
+
+// --- deadlines (task 117) ---
+
+const riskOf = (task: Task) => deadlineRisk(task, plannedFor(task.id), now.value)
+
+/**
+ * Tasks whose deadline is in trouble, worst first.
+ *
+ * `late` before `soon`, because they need different things: a plan that lands late needs another
+ * car, and an unplanned task near its deadline needs a plan. Both are more urgent than anything
+ * else on the board, which is why they are also pinned to the top of the queue.
+ */
+const atRisk = computed(() =>
+  tasks.value
+    .filter((t) => riskOf(t) !== 'none')
+    .sort((a, b) => {
+      const order = (t: Task) => (riskOf(t) === 'late' ? 0 : 1)
+      return order(a) - order(b) || (a.deadlineUts ?? 0) - (b.deadlineUts ?? 0)
+    }),
+)
+
+// Filtering the board to the tasks at risk — the banner's shortcut. A toggle rather than a
+// navigation, so the operator can get back with the same click that got them here.
+const onlyAtRisk = ref(false)
 
 // The four numbers the board answers at a glance (PRD 009 §6). The oldest wait is the one that
 // matters most, and it is the reason it is a headline rather than a column somebody scrolls to.
@@ -446,6 +504,11 @@ function errorDetail(err: any) {
       <Tag :value="`${queued.length} ikke planlagt`" :severity="queued.length ? 'warn' : 'secondary'" />
       <Tag v-if="oldestWait" :value="`ældste ${oldestWait}`" severity="secondary" />
       <Tag :value="`${openTours.length} ture ude`" severity="secondary" />
+      <Tag
+        v-if="atRisk.length"
+        :value="`${atRisk.length} deadline i fare`"
+        severity="danger"
+      />
 
       <div class="flex-1" />
       <Button label="Ny opgave" icon="pi pi-plus" size="small" @click="newTask()" />
@@ -479,6 +542,34 @@ function errorDetail(err: any) {
       Kunne ikke hente kørselstavlen.
     </Message>
 
+    <!--
+      Deadline banner (PRD 009 §7). Deliberately the same vocabulary and shape as the checkgroup
+      teams dialog: two race-night screens should not invent two ways to say "you are about to be
+      late". The shortcut filters the board rather than navigating, so the same click undoes it.
+    -->
+    <Message v-if="atRisk.length" severity="warn" :closable="false">
+      <div class="flex flex-wrap items-center gap-2">
+        <span>
+          {{ atRisk.length }}
+          {{ atRisk.length === 1 ? 'opgave' : 'opgaver' }} med deadline i fare:
+          <strong>{{ atRisk[0].description }}</strong>
+          <template v-if="atRisk[0].deadlineUts">
+            — senest {{ formatUtsTime(atRisk[0].deadlineUts) }}
+            ({{ untilUts(atRisk[0].deadlineUts, now) }})
+          </template>
+        </span>
+        <Button
+          :label="onlyAtRisk ? 'Vis alle' : 'Vis kun disse'"
+          size="small"
+          severity="warn"
+          text
+          @click="onlyAtRisk = !onlyAtRisk"
+        />
+      </div>
+    </Message>
+
+    <DispatchCapacityStrip :units="units" :duty="duty" :nowMs="now" />
+
     <div class="grid gap-4 md:grid-cols-2">
       <!-- Ikke planlagt -->
       <section class="space-y-2">
@@ -497,6 +588,10 @@ function errorDetail(err: any) {
             <template #body="{ data: task }">
               <div
                 class="cursor-move"
+                :class="{
+                  'border-l-4 border-red-500 pl-2': riskOf(task) === 'late',
+                  'border-l-4 border-amber-400 pl-2': riskOf(task) === 'soon',
+                }"
                 :draggable="true"
                 @dragstart="
                   dragging = true;
@@ -520,12 +615,25 @@ function errorDetail(err: any) {
               </div>
             </template>
           </Column>
-          <Column header="Ventet" style="width: 8rem">
+          <Column header="Ventet" style="width: 10rem">
             <template #body="{ data: task }">
               <!-- Always shown, from oprettet: the number that needs no model and is never
                    wrong. It advances because the whole screen shares one clock. -->
               <span class="tabular-nums">{{ waitedFor(task, now) }}</span>
-              <div v-if="task.deadlineUts" class="text-xs text-gray-600">
+              <!--
+                The estimate, and it says so. `max(nu, tidligst, næste enhed på vagt) + tillæg`,
+                which ignores distance and traffic because there are no vehicle positions to
+                derive them from. Labelled because an estimate that looks precise gets quoted down
+                a phone — and shown beside the waited-for time, which needs no model at all.
+              -->
+              <div class="text-xs text-gray-500">
+                anslået {{ formatUtsTime(estimate(task)) }}
+              </div>
+              <div
+                v-if="task.deadlineUts"
+                class="text-xs"
+                :class="riskOf(task) === 'none' ? 'text-gray-600' : 'text-red-600 font-medium'"
+              >
                 senest {{ formatUtsTime(task.deadlineUts) }} ({{ untilUts(task.deadlineUts, now) }})
               </div>
               <div v-if="task.notBeforeUts" class="text-xs text-gray-500">
