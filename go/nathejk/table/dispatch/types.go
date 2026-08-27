@@ -12,9 +12,19 @@
 package dispatch
 
 import (
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/nathejk/shared-go/types"
 )
+
+// nowUts is the clock, as a variable so tests can pin it.
+//
+// A package variable rather than a field on the commander: every caller would otherwise have
+// to supply a clock it does not care about, and the alternative — letting the projection take
+// the time from the message — is wrong for the fields that matter here. A task's waiting
+// clock must not move when history is replayed.
+var nowUts = func() int64 { return time.Now().Unix() }
 
 // Actor is who performed an action. Passed in by the HTTP handler, as in `sos`.
 //

@@ -115,6 +115,15 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPost, "/api/sos/:id/team/:teamId/move", app.moveMembersHandler)
 	router.HandlerFunc(http.MethodGet, "/api/mail/recipients", app.mailRecipientsHandler)
 
+	// Kørsel — the dispatch desk (PRD 009). The transitions are first-class routes rather
+	// than fields on a PATCH, because the driver's app will call them from another repo.
+	router.HandlerFunc(http.MethodGet, "/api/dispatch", app.showDispatchBoardHandler)
+	router.HandlerFunc(http.MethodPost, "/api/dispatch/task", app.createDispatchTaskHandler)
+	router.HandlerFunc(http.MethodGet, "/api/dispatch/task/:id", app.showDispatchTaskHandler)
+	router.HandlerFunc(http.MethodPatch, "/api/dispatch/task/:id", app.patchDispatchTaskHandler)
+	router.HandlerFunc(http.MethodPost, "/api/dispatch/task/:id/pickedup", app.dispatchTaskPickedUpHandler)
+	router.HandlerFunc(http.MethodPost, "/api/dispatch/task/:id/cancelled", app.cancelDispatchTaskHandler)
+
 	// Nødtelefon / SOS (PRD 001)
 	router.HandlerFunc(http.MethodGet, "/api/sos", app.listSosHandler)
 	router.HandlerFunc(http.MethodPost, "/api/sos", app.createSosHandler)
