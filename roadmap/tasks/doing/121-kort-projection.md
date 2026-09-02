@@ -1,10 +1,10 @@
 # 121 — `nathejk/table/kort` projection and local message types
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (Zed)
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -45,3 +45,8 @@ to the mux outside that slice emits no live signal at all (`.rules` → Live upd
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 010 §10.
+- 2026-09-03 — Picked up. Plan: model on `nathejk/table/spejdernote` (the most recent projection
+  shape — local `messages.go`, `table.go`, `consumer.go`, `querier.go`, `table.sql`,
+  `schemaMigrations`), and on `dispatch` for the JSON-array-in-TEXT precedent
+  (`dispatch_task.memberIds`). Kort events only in this task; the `kortsaet` table and the
+  reorder event are 122, the delete cascades 123, commands 124.
