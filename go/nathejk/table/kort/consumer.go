@@ -25,6 +25,12 @@ func (c *consumer) Consumes() []stream.Subject {
 		subject.FromStr("NATHEJK.*.kortsaet.*.updated"),
 		subject.FromStr("NATHEJK.*.kortsaet.*.deleted"),
 		subject.FromStr("NATHEJK.*.kortsaet.sorted"),
+		// A deleted checkpoint must leave every sheet that showed it. The id is in the subject, so
+		// this needs no read and does not care whether the checkpoint projection has applied yet.
+		//
+		// There is deliberately no subscription to checkgroup.*.deleted — see pruneCheckpoint and
+		// querier.Maps for where that case is handled instead, and why it cannot be handled here.
+		subject.FromStr("NATHEJK.*.checkpoint.*.deleted"),
 	}
 }
 
@@ -92,6 +98,12 @@ func (c *consumer) HandleMessage(msg stream.Message) error {
 				goqu.C("id").Eq(string(c.entityID(msg))),
 				goqu.C("year").Eq(c.year(msg)),
 			))
+
+	case msg.Subject().Match("NATHEJK.*.checkpoint.*.deleted"):
+		// The checkpoint id comes from the subject, so this is correct regardless of whether the
+		// checkpoint projection has already removed the row — the two consumers see the same event
+		// and neither waits for the other.
+		return c.pruneCheckpoint(c.year(msg), msg.Subject().Parts()[3])
 
 	case msg.Subject().Match("NATHEJK.*.kort.*.created"):
 		var body Created
@@ -182,6 +194,50 @@ func (c *consumer) HandleMessage(msg stream.Message) error {
 		log.Printf("Unhandled message %q", msg.Subject().Subject())
 	}
 	return nil
+}
+
+// pruneCheckpoint removes one checkpoint id from every sheet in the year that shows it.
+//
+// This is the cascade the JSON array costs us: a join table would have made it
+// `DELETE WHERE checkpointId = ?`. Instead it is JSON_SEARCH to locate the element and JSON_REMOVE
+// to cut it out, guarded by a WHERE so that only sheets actually carrying the id are written —
+// which keeps a deleted checkpoint from touching every row in the table.
+//
+// JSON_SEARCH with 'one' and no wildcards matches whole values, so deleting `cp-1` leaves `cp-10`
+// and `cp-100` alone. That is verified against MariaDB 10.8 rather than assumed; a LIKE-based
+// approach would quietly have removed all three.
+//
+// # Why deleting a *checkgroup* is not handled here
+//
+// A checkgroup delete publishes one event naming the group, and its checkpoints are removed by the
+// checkpoint projection with `DELETE FROM checkpoint WHERE checkgroupId = ?` — no per-checkpoint
+// events. So a cascade here would have to learn the group's members from the checkpoint table,
+// which means either:
+//
+//   - depending on whether the checkpoint projection has applied first, which the mux does not
+//     guarantee and which no comment can make true; or
+//   - JSON_TABLE over the array, which is *broken* for this on MariaDB 10.8: a JSON_TABLE
+//     correlated with a column is not re-evaluated per row, so an UPDATE using it writes another
+//     row's result into rows it should not have touched. Verified, and not subtle in effect — a
+//     sheet with no checkpoints acquired one.
+//
+// The array is therefore filtered on read instead (querier.Maps). A stale id left in the column is
+// inert: it names a checkpoint that no longer exists, no reader can resolve it, and the next edit
+// to the sheet rewrites the array anyway.
+func (c *consumer) pruneCheckpoint(year, checkpointID string) error {
+	if checkpointID == "" {
+		return nil
+	}
+	locate := goqu.L("JSON_SEARCH(checkpointIds, 'one', ?)", checkpointID)
+	return c.exec(goqu.Dialect("mysql").
+		Update("kort").
+		Set(goqu.Record{
+			"checkpointIds": goqu.L("JSON_REMOVE(checkpointIds, JSON_UNQUOTE(?))", locate),
+		}).
+		Where(
+			goqu.C("year").Eq(year),
+			goqu.L("? IS NOT NULL", locate),
+		))
 }
 
 // applyOrder writes a collection's new order in one statement.

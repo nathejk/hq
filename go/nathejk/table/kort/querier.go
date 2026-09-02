@@ -48,9 +48,27 @@ const selectKort = `SELECT id, year, version, kortsaetId, name, format, note, so
 // mid-reorder — come back in a stable order rather than whatever the storage engine feels like.
 // Two consecutive loads disagreeing about the order of the maps would look like a bug in the
 // drag-and-drop.
+//
+// # Unknown checkpoint ids are filtered out here
+//
+// A second small query reads the year's checkpoint ids, and any id in a sheet's array that no
+// longer resolves is dropped from the result. That is not belt-and-braces: it is where deleting a
+// *checkgroup* is actually handled, because that event names only the group and its members cannot
+// be cascaded out of the JSON array safely (see consumer.pruneCheckpoint for the two ways that
+// fail, one of them a MariaDB bug).
+//
+// Filtering on read rather than on write also self-heals every other cause of a stale id — a
+// checkpoint deleted while the API was down, a half-finished replay — and it does so without
+// depending on the order two independent projections happen to run in. The cost is one indexed
+// query over a table with tens of rows.
 func (q *querier) Maps(ctx context.Context, year types.YearSlug) ([]Kort, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
+
+	known, err := q.knownCheckpointIDs(ctx, year)
+	if err != nil {
+		return nil, err
+	}
 
 	query := selectKort + `
 		WHERE (year = ? OR ? = '')
@@ -68,9 +86,49 @@ func (q *querier) Maps(ctx context.Context, year types.YearSlug) ([]Kort, error)
 		if err != nil {
 			return nil, err
 		}
+		k.CheckpointIDs = filterKnown(k.CheckpointIDs, known)
 		maps = append(maps, *k)
 	}
 	return maps, rows.Err()
+}
+
+// knownCheckpointIDs reads the year's checkpoint ids.
+//
+// Reading another projection's table, which this package otherwise does not do. Justified because
+// the question is about referential integrity between the two, and the alternative — teaching the
+// checkpoint projection to publish per-checkpoint deletes so this one could cascade — would change
+// an event contract that other consumers already read, to fix a problem only this table has.
+func (q *querier) knownCheckpointIDs(ctx context.Context, year types.YearSlug) (map[types.CheckpointID]bool, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT id FROM checkpoint WHERE (year = ? OR ? = '')`,
+		string(year), string(year))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	known := map[types.CheckpointID]bool{}
+	for rows.Next() {
+		var id types.CheckpointID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		known[id] = true
+	}
+	return known, rows.Err()
+}
+
+// filterKnown drops ids that no longer resolve, preserving order.
+//
+// Returns a non-nil slice even when everything was dropped, so the JSON encoder still emits `[]`.
+func filterKnown(ids []types.CheckpointID, known map[types.CheckpointID]bool) []types.CheckpointID {
+	kept := make([]types.CheckpointID, 0, len(ids))
+	for _, id := range ids {
+		if known[id] {
+			kept = append(kept, id)
+		}
+	}
+	return kept
 }
 
 // GetByID reads one sheet.

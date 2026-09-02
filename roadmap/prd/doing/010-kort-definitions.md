@@ -349,11 +349,25 @@ containing a given checkpoint. A JSON array column on `kort` therefore costs one
 row per map instead of one per assignment, and the read endpoint needs no join.
 
 The tradeoff is the cascade: deleting a checkpoint must remove its id from every
-map's array. The consumer does this with MariaDB's JSON functions
-(`JSON_SEARCH` + `JSON_REMOVE`) over the year's maps. That is more awkward than a
-`DELETE ... WHERE checkpointId = ?`, and it is the price paid; at ~15 maps per
-year the scan is free, and read models rebuild from JetStream anyway, so a bug
-here is recoverable by replay rather than by migration.
+map's array. For a single checkpoint that is `JSON_SEARCH` + `JSON_REMOVE`, keyed
+off the id in the event's subject, which is order-independent and cheap.
+
+Deleting a **checkgroup** is the hard half, and it is handled on *read* rather
+than on write. That event names only the group — its checkpoints are removed by
+the checkpoint projection in one `DELETE ... WHERE checkgroupId = ?`, with no
+per-checkpoint events — so a write-side cascade would have to learn the group's
+members from another projection's table. Both ways of doing that fail: a
+correlated subquery is correct only if the two projections happen to run in the
+right order, which nothing guarantees; and `JSON_TABLE` over the array is broken
+for this on MariaDB 10.8, where a `JSON_TABLE` correlated with a column is not
+re-evaluated per row and an `UPDATE` using it writes one row's result into others
+(verified — a sheet with no checkpoints acquired one).
+
+So `GET /api/kort` filters out ids that no longer resolve, at the cost of one
+indexed query. That is order-independent, and it self-heals stale ids from any
+cause — a checkpoint deleted while the API was down, a half-finished replay. A
+stale id left in the column is inert: it names a checkpoint that does not exist,
+and the next edit to the sheet rewrites the array anyway.
 
 ### A checkgroup must fit on one map
 
@@ -500,7 +514,9 @@ existing table, so a later column addition needs a dropped table in dev.
   consumes it; the endpoint should ship early so app work can proceed in
   parallel, and its shape should not change afterwards without warning.
 - **JSON cascade correctness.** Removing a deleted checkpoint's id from every
-  map's array is the one piece of non-obvious SQL here and deserves a test.
+  map's array is the one piece of non-obvious SQL here and deserves a test — and
+  it earned one: `JSON_SEARCH` must match whole values, or deleting `cp-1` also
+  removes `cp-10`.
 - **The two-extent cap is a UI convention, not a storage constraint.** A sheet has
   at most two sides, so the editor offers at most two. The column is a JSON array
   and would hold more, which is the right way round: a future three-panel fold
