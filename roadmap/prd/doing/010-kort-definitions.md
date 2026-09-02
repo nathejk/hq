@@ -432,10 +432,10 @@ All new endpoints require **OpenAPI annotations**, per repo convention.
 | PUT | `/api/kort/:id` | Update name, set, format, extents, note |
 | DELETE | `/api/kort/:id` | Delete a map |
 | PUT | `/api/kort/:id/checkpoints` | Replace the map's checkpoint list |
-| PUT | `/api/kort/sorted` | Reorder maps, mirroring `/api/checkgroups/sorted` |
 | POST | `/api/kortsaet` | Create a set |
+| PUT | `/api/kortsaet` | Reorder sets (ids in order) |
 | PUT | `/api/kortsaet/:id` | Update a set's name and team type |
-| PUT | `/api/kortsaet/sorted` | Reorder sets |
+| PUT | `/api/kortsaet/:id/kort` | Reorder the set's maps (ids in order) |
 | DELETE | `/api/kortsaet/:id` | Delete a set; refused while it holds maps |
 
 There is deliberately no `GET /api/kort/:id` and no `GET /api/kortsaet`: the whole
@@ -443,9 +443,24 @@ year is a handful of records, `GET /api/kort` returns all of it, and the modal a
 the hej-app both work from that one cached response. A single-record read would be
 a second code path serving no caller.
 
-Sort order is moved by a dedicated `/sorted` endpoint rather than by `PUT :id`,
-mirroring `/api/checkgroups/sorted`, because a drag reorders several records at
-once and should be one event, not N.
+**Reordering is `PUT` on a collection, not `…/sorted`.** An earlier draft specified
+`PUT /api/kort/sorted` and `PUT /api/kortsaet/sorted`, mirroring the existing
+`/api/checkgroups/sorted`. Those cannot exist: httprouter panics at startup on a
+static segment beside a wildcard at the same level, so registering them next to
+`/api/kort/:id` would stop the whole API booting — not misroute, not 404. The
+checkgroup routes escape it because `checkgroup`/`checkgroups` are two different
+segments, and Danish gives us no such escape: "kort" and "kortsæt" are their own
+plurals, and inventing "kortsaets" to satisfy a router is worse than putting the
+order on the collection that has it. A map's order therefore lives under its set,
+which is also where handout order is actually meaningful.
+
+A consequence worth having: a set that happens to be *named* "sorted" stays an
+ordinary set, reachable at `/api/kortsaet/sorted`. The rejected design could not
+have expressed it.
+
+A reorder is one event for the whole collection, not N single-field updates — one
+operator gesture, and N events would let a replay observe orders that never
+existed on screen.
 
 `GET /api/kort` returns sets with their maps nested, so the hej-app gets the
 `teamType` marking and the maps in one round trip. It is year-scoped by the

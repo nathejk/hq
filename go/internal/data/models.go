@@ -17,6 +17,7 @@ import (
 	"nathejk.dk/nathejk/table/checkpersonnel"
 	"nathejk.dk/nathejk/table/checkpoint"
 	"nathejk.dk/nathejk/table/dispatch"
+	"nathejk.dk/nathejk/table/kort"
 	"nathejk.dk/nathejk/table/lok"
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/personnel"
@@ -87,10 +88,12 @@ type Models struct {
 	Shelter        shelter.Queries
 	Note           spejdernote.Queries
 	Dispatch       dispatch.Queries
-	SpejderStatus  spejderstatus.Queries
+	// Kort is the printed sheets and their sets (PRD 010).
+	Kort          kort.Queries
+	SpejderStatus spejderstatus.Queries
 }
 
-func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface, sec section.Queries, crew crewmember.Queries, veh vehicle.Queries, ord order.Queries, sosq sos.Queries, memberq spejderstatus.Queries, shelterq shelter.Queries, noteq spejdernote.Queries, dispatchq dispatch.Queries) Models {
+func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface, sec section.Queries, crew crewmember.Queries, veh vehicle.Queries, ord order.Queries, sosq sos.Queries, memberq spejderstatus.Queries, shelterq shelter.Queries, noteq spejdernote.Queries, dispatchq dispatch.Queries, kortq kort.Queries) Models {
 	return Models{
 		Year:           y,
 		Teams:          TeamModel{DB: db},
@@ -114,6 +117,7 @@ func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInte
 		Shelter:        shelterq,
 		Note:           noteq,
 		Dispatch:       dispatchq,
+		Kort:           kortq,
 		SpejderStatus:  memberq,
 	}
 }

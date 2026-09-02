@@ -309,7 +309,7 @@ func main() {
 		logger.PrintFatal(err, nil)
 	}
 
-	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, vehicletable, ordertable, sostable, spejderstatustable, sheltertable, spejdernotetable, dispatchtable)
+	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, vehicletable, ordertable, sostable, spejderstatustable, sheltertable, spejdernotetable, dispatchtable, korttable)
 	cmds := commands.New(publisher, models)
 	cmds.Year = year
 	cmds.Checkpoint = checkpoint
@@ -323,6 +323,7 @@ func main() {
 	cmds.Shelter = sheltertable
 	cmds.Note = spejdernotetable
 	cmds.Dispatch = dispatchtable
+	cmds.KortSet = korttable
 	// Both arguments are klantable: it is the read model the override dirty-checks
 	// against *and* the entity that owns what deleting a klan means.
 	cmds.Klan = commands.NewKlan(publisher, klantable, klantable)

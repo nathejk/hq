@@ -19,6 +19,13 @@ type Queries interface {
 	Maps(context.Context, types.YearSlug) ([]Kort, error)
 	// GetByID reads one sheet, which the commands need in order to dirty-check (task 124).
 	GetByID(context.Context, types.YearSlug, KortID) (*Kort, error)
+	// Sets lists a year's sets in their own order, without their sheets.
+	Sets(context.Context, types.YearSlug) ([]Kortsaet, error)
+	// GetSetByID reads one set, for the set commands' dirty-check.
+	GetSetByID(context.Context, types.YearSlug, KortsaetID) (*Kortsaet, error)
+	// CountMapsInSet reports how many sheets a set holds, which is what makes deleting a
+	// non-empty set refusable.
+	CountMapsInSet(context.Context, types.YearSlug, KortsaetID) (int, error)
 }
 
 type querier struct {
@@ -90,6 +97,91 @@ func (q *querier) GetByID(ctx context.Context, year types.YearSlug, id KortID) (
 
 type scanner interface {
 	Scan(dest ...any) error
+}
+
+const selectKortsaet = `SELECT id, year, version, name, teamType, sortOrder
+	FROM kortsaet`
+
+// Sets lists a year's sets in their own order.
+//
+// Without their sheets: nesting is done by the read path that serves them together (task 125),
+// from one query of each table rather than a query per set.
+func (q *querier) Sets(ctx context.Context, year types.YearSlug) ([]Kortsaet, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	rows, err := q.db.QueryContext(ctx,
+		selectKortsaet+`
+		WHERE (year = ? OR ? = '')
+		ORDER BY sortOrder ASC, id ASC`,
+		string(year), string(year))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	sets := []Kortsaet{}
+	for rows.Next() {
+		s, err := scanKortsaet(rows)
+		if err != nil {
+			return nil, err
+		}
+		sets = append(sets, *s)
+	}
+	return sets, rows.Err()
+}
+
+// GetSetByID reads one set.
+func (q *querier) GetSetByID(ctx context.Context, year types.YearSlug, id KortsaetID) (*Kortsaet, error) {
+	if id == "" {
+		return nil, ErrRecordNotFound
+	}
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	row := q.db.QueryRowContext(ctx,
+		selectKortsaet+` WHERE id = ? AND (year = ? OR ? = '')`,
+		string(id), string(year), string(year))
+
+	s, err := scanKortsaet(row)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, ErrRecordNotFound
+	}
+	return s, err
+}
+
+// CountMapsInSet reports how many sheets a set holds.
+//
+// A count rather than a list, because the only caller asks a yes/no question: may this set be
+// deleted? Reading the sheets to answer it would pull every checkpoint list off disk to look at
+// len().
+func (q *querier) CountMapsInSet(ctx context.Context, year types.YearSlug, id KortsaetID) (int, error) {
+	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	var count int
+	err := q.db.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM kort WHERE kortsaetId = ? AND (year = ? OR ? = '')`,
+		string(id), string(year), string(year)).Scan(&count)
+	return count, err
+}
+
+// scanKortsaet reads one set row.
+//
+// teamType is read through sql.NullString and left nil when absent, never coerced to "": the
+// difference between "this set is for patruljer" and "this set is the general one" is the whole
+// point of the column.
+func scanKortsaet(row scanner) (*Kortsaet, error) {
+	var s Kortsaet
+	var teamType sql.NullString
+	if err := row.Scan(&s.KortsaetID, &s.YearSlug, &s.Version, &s.Name, &teamType, &s.SortOrder); err != nil {
+		return nil, err
+	}
+	if teamType.Valid && teamType.String != "" {
+		t := types.TeamType(teamType.String)
+		s.TeamType = &t
+	}
+	return &s, nil
 }
 
 // scanKort reads one row, decoding the two JSON columns.

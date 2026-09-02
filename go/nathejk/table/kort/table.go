@@ -117,22 +117,61 @@ func (k Kort) ContainsAll(ids []types.CheckpointID) bool {
 	return true
 }
 
+// Kortsaet is a set of sheets — most often "Patruljer" and one for everybody else.
+type Kortsaet struct {
+	KortsaetID KortsaetID     `json:"id"`
+	YearSlug   types.YearSlug `json:"year"`
+	Version    uint64         `json:"version"`
+
+	Name      string `json:"name"`
+	SortOrder int    `json:"sortOrder"`
+
+	// TeamType is the team type this set is *specifically for*, or nil.
+	//
+	// Read it as "this set is for patruljer", not "only patruljer use it": an unmarked set is the
+	// general one, and klaner normally draw from the crew set. So a typical year has one set
+	// marked patrulje and one unmarked, and `klan` may never be used at all.
+	//
+	// The consequence for callers, worth stating because it is the obvious bug: filtering by
+	// `klan` will usually return nothing, and that is **not** an error. Fall back to the unmarked
+	// set rather than concluding a team type has no maps.
+	TeamType *types.TeamType `json:"teamType"`
+
+	// Maps is the set's sheets in handout order, filled in by the read path that nests them
+	// (task 125). Empty here is not "no sheets" unless the caller asked for them.
+	Maps []Kort `json:"kort,omitempty"`
+}
+
+// ForTeamType reports whether this set is specifically for the given team type.
+//
+// A method so that the nil-means-general rule is written once. Every caller that reimplemented
+// it would eventually reimplement it as `*s.TeamType == t` and panic on the crew set.
+func (s Kortsaet) ForTeamType(t types.TeamType) bool {
+	return s.TeamType != nil && *s.TeamType == t
+}
+
 type table struct {
+	commander
 	consumer
 	querier
 }
 
 // New builds the projection.
 //
-// The publisher argument is accepted now and used by the commander in task 124, so registering
-// this in main.go does not have to change shape twice.
+// The publisher is only used by the commander, the writer only by the consumer and the *sql.DB
+// only by the querier — and the querier is handed to the commander, which dirty-checks against
+// it and refuses to delete a set that still holds sheets.
 func New(p stream.Publisher, w cqrs.Writer, r *sql.DB) *table {
 	q := querier{db: r, r: goqu.New("mysql", r)}
 	t := &table{
-		consumer: consumer{w: w},
-		querier:  q,
+		commander: commander{p: p, q: &q},
+		consumer:  consumer{w: w},
+		querier:   q,
 	}
 	if err := w.Consume(t.CreateTableSql()); err != nil {
+		log.Printf("Error creating table %q", err)
+	}
+	if err := w.Consume(kortsaetSchema); err != nil {
 		log.Printf("Error creating table %q", err)
 	}
 	for _, stmt := range schemaMigrations {
@@ -156,6 +195,9 @@ var schemaMigrations = []string{}
 
 //go:embed table.sql
 var tableSchema string
+
+//go:embed kortsaet.sql
+var kortsaetSchema string
 
 func (t *table) CreateTableSql() string { return tableSchema }
 

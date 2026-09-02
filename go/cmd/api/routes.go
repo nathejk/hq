@@ -107,6 +107,20 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPost, "/api/member/:memberId/notes", app.createMemberNoteHandler)
 	router.HandlerFunc(http.MethodPatch, "/api/member/:memberId/notes/:noteId", app.updateMemberNoteHandler)
 
+	// Map sets (PRD 010). The sheets themselves are task 125; these are the sets they are grouped
+	// into, carrying the optional teamType that the hej-app matches on instead of a Danish name.
+	//
+	// Reordering is `PUT` on the *collection* rather than `/api/kortsaet/sorted`, and that is not a
+	// stylistic choice: httprouter panics at startup on a static segment beside a wildcard at the
+	// same level, so `/api/kortsaet/sorted` next to `/api/kortsaet/:id` would stop the API booting
+	// at all. `/api/checkgroups/sorted` dodges it with an English plural; "kort" and "kortsæt" are
+	// their own plurals in Danish, so there is no plural to dodge with, and inventing "kortsaets"
+	// to satisfy a router is worse than putting the order on the collection that has it.
+	router.HandlerFunc(http.MethodPost, "/api/kortsaet", app.createKortsaetHandler)
+	router.HandlerFunc(http.MethodPut, "/api/kortsaet", app.sortKortsaetHandler)
+	router.HandlerFunc(http.MethodPut, "/api/kortsaet/:id", app.updateKortsaetHandler)
+	router.HandlerFunc(http.MethodDelete, "/api/kortsaet/:id", app.deleteKortsaetHandler)
+
 	// Collecting a whole patrol is one action on the *case*, not four on members:
 	// three separate calls could half-succeed and split a team across two states.
 	router.HandlerFunc(http.MethodPost, "/api/sos/:id/team/:teamId/collect", app.collectTeamHandler)

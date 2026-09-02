@@ -13,6 +13,7 @@ import (
 	"nathejk.dk/nathejk/table/checkpersonnel"
 	"nathejk.dk/nathejk/table/checkpoint"
 	"nathejk.dk/nathejk/table/dispatch"
+	"nathejk.dk/nathejk/table/kort"
 	"nathejk.dk/nathejk/table/shelter"
 	"nathejk.dk/nathejk/table/sos"
 	"nathejk.dk/nathejk/table/spejdernote"
@@ -43,6 +44,11 @@ type Commands struct {
 	// Dispatch is kørsel (PRD 009): the tasks and tours, and which organisation
 	// subsections are dispatch units.
 	Dispatch dispatch.Commands
+
+	// KortSet is the write side for map sets (PRD 010). Separate from a sheet's own commands
+	// because deleting a set has to be refused while it still holds sheets, which is a question
+	// about the sheets — so the command belongs with the read model that can answer it.
+	KortSet kort.SetCommands
 
 	Team interface {
 		UpdatePatrulje(types.TeamID, Patrulje, Contact, []Spejder) error

@@ -20,11 +20,79 @@ func (c *consumer) Consumes() []stream.Subject {
 		subject.FromStr("NATHEJK.*.kort.*.created"),
 		subject.FromStr("NATHEJK.*.kort.*.updated"),
 		subject.FromStr("NATHEJK.*.kort.*.deleted"),
+		subject.FromStr("NATHEJK.*.kort.sorted"),
+		subject.FromStr("NATHEJK.*.kortsaet.*.created"),
+		subject.FromStr("NATHEJK.*.kortsaet.*.updated"),
+		subject.FromStr("NATHEJK.*.kortsaet.*.deleted"),
+		subject.FromStr("NATHEJK.*.kortsaet.sorted"),
 	}
 }
 
 func (c *consumer) HandleMessage(msg stream.Message) error {
 	switch {
+	// The three-part collection subjects are matched first. `NATHEJK.*.kort.sorted` and
+	// `NATHEJK.*.kort.*.created` are different lengths and would not in fact collide, but
+	// specific-and-shorter-first is the habit that keeps it that way — see the ordering note in
+	// spejderstatus/consumer.go for what happens when it is not.
+	case msg.Subject().Match("NATHEJK.*.kort.sorted"):
+		var body Sorted
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		return c.applyOrder("kort", c.year(msg), stringIDs(body.KortIDs))
+
+	case msg.Subject().Match("NATHEJK.*.kortsaet.sorted"):
+		var body SetsSorted
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		return c.applyOrder("kortsaet", c.year(msg), stringIDs(body.KortsaetIDs))
+
+	case msg.Subject().Match("NATHEJK.*.kortsaet.*.created"):
+		var body SetCreated
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		// Name and teamType are both in the update list, unlike the sheet's create: a set's whole
+		// editable state is carried by its events (see SetUpdated), so a replay reproducing it is
+		// correct rather than destructive.
+		return c.upsertInto("kortsaet", goqu.Record{
+			"id":       string(c.entityID(msg)),
+			"year":     c.year(msg),
+			"name":     body.Name,
+			"teamType": teamTypeValue(body.TeamType),
+		}, "name", "teamType")
+
+	case msg.Subject().Match("NATHEJK.*.kortsaet.*.updated"):
+		var body SetUpdated
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		// A whole-record update, so teamType is always written — nil clearing it. That is the
+		// point of the event's shape: an operator un-marking the spejder set must produce a NULL
+		// here, and a patch could not tell that apart from not mentioning the field.
+		return c.exec(goqu.Dialect("mysql").
+			Update("kortsaet").
+			Set(goqu.Record{
+				"name":     body.Name,
+				"teamType": teamTypeValue(body.TeamType),
+			}).
+			Where(
+				goqu.C("id").Eq(string(c.entityID(msg))),
+				goqu.C("year").Eq(c.year(msg)),
+			))
+
+	case msg.Subject().Match("NATHEJK.*.kortsaet.*.deleted"):
+		// No cascade to the set's sheets, and none wanted: the command refuses to delete a set
+		// that still holds any, so by the time this event exists the set is empty. A cascade here
+		// would silently make that refusal pointless.
+		return c.exec(goqu.Dialect("mysql").
+			Delete("kortsaet").
+			Where(
+				goqu.C("id").Eq(string(c.entityID(msg))),
+				goqu.C("year").Eq(c.year(msg)),
+			))
+
 	case msg.Subject().Match("NATHEJK.*.kort.*.created"):
 		var body Created
 		if err := msg.Body(&body); err != nil {
@@ -116,6 +184,55 @@ func (c *consumer) HandleMessage(msg stream.Message) error {
 	return nil
 }
 
+// applyOrder writes a collection's new order in one statement.
+//
+// A CASE expression rather than a row-per-update loop: a reorder is one gesture, and N statements
+// would let a concurrent reader see an order that never existed on screen — two sheets sharing a
+// sortOrder, or a gap. It also keeps the consumer's cost independent of how far something moved.
+//
+// Ids not named in the event keep their current sortOrder. That is what makes a per-set drag safe
+// to send as "these ids, in this order" without restating every other set.
+func (c *consumer) applyOrder(table, year string, ids []string) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	case_ := goqu.Case().Value(goqu.C("id"))
+	for i, id := range ids {
+		case_ = case_.When(id, i)
+	}
+	return c.exec(goqu.Dialect("mysql").
+		Update(table).
+		Set(goqu.Record{"sortOrder": case_.Else(goqu.C("sortOrder"))}).
+		Where(
+			goqu.C("id").In(ids),
+			goqu.C("year").Eq(year),
+		))
+}
+
+// teamTypeValue renders an optional team type for the column.
+//
+// nil becomes SQL NULL rather than the empty string, because NULL is the meaningful value here:
+// it is the ordinary crew set, not a set whose team type is unknown. An empty string would also
+// make `teamType = ”` a matchable value and invite a caller to filter on it.
+func teamTypeValue(t *types.TeamType) any {
+	if t == nil || *t == "" {
+		return nil
+	}
+	return string(*t)
+}
+
+// stringIDs flattens any id slice for the order statement.
+func stringIDs[T ~string](ids []T) []string {
+	out := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		out = append(out, string(id))
+	}
+	return out
+}
+
 // encodeCheckpointIDs renders a checkpoint list for the JSON column.
 //
 // Never `null`: a nil slice marshals to `null`, which would put a value in the column that every
@@ -145,12 +262,18 @@ func encodeExtents(extents []Extent) (string, error) {
 
 // upsert writes a kort row, updating only the named columns if it already exists.
 func (c *consumer) upsert(row goqu.Record, updates ...string) error {
+	return c.upsertInto("kort", row, updates...)
+}
+
+// upsertInto writes a row to one of the package's two tables, updating only the named columns if
+// it already exists.
+func (c *consumer) upsertInto(table string, row goqu.Record, updates ...string) error {
 	update := goqu.Record{}
 	for _, col := range updates {
 		update[col] = goqu.L("VALUES(" + col + ")")
 	}
 	return c.exec(goqu.Dialect("mysql").
-		Insert("kort").Rows(row).
+		Insert(table).Rows(row).
 		OnConflict(goqu.DoUpdate("id", update)))
 }
 
@@ -168,6 +291,11 @@ func (c *consumer) exec(ds interface {
 // stream routed on.
 func (c *consumer) kortID(msg stream.Message) KortID {
 	return KortID(msg.Subject().Parts()[3])
+}
+
+// entityID is the id position of the subject, for the events whose entity is not a sheet.
+func (c *consumer) entityID(msg stream.Message) string {
+	return msg.Subject().Parts()[3]
 }
 
 // year comes from the subject too, never from msg.Time(): replay crosses year boundaries by
