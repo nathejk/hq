@@ -84,7 +84,7 @@ type commander struct {
 // there. The thing that must not be ambiguous is the team type marking, and that is deliberately
 // not unique either — see Kortsaet.TeamType.
 func (c commander) CreateSet(ctx context.Context, actor Actor, year types.YearSlug, name string, teamType *types.TeamType) (KortsaetID, error) {
-	name = strings.TrimSpace(name)
+	name = trimName(name)
 	if err := validateName(name); err != nil {
 		return "", err
 	}
@@ -108,7 +108,7 @@ func (c commander) CreateSet(ctx context.Context, actor Actor, year types.YearSl
 // make every other open session refetch. That matters here more than it looks, because the set
 // editor is a two-field form an operator will open, read and close without touching.
 func (c commander) UpdateSet(ctx context.Context, actor Actor, year types.YearSlug, id KortsaetID, name string, teamType *types.TeamType) error {
-	name = strings.TrimSpace(name)
+	name = trimName(name)
 	if err := validateName(name); err != nil {
 		return err
 	}
@@ -161,6 +161,9 @@ func (c commander) SortSets(ctx context.Context, actor Actor, year types.YearSlu
 	}
 	return c.publishCollection(actor, year, "kortsaet", "sorted", &SetsSorted{KortsaetIDs: ids})
 }
+
+// trimName trims a name, so that a trailing space cannot make two identical labels sort apart.
+func trimName(name string) string { return strings.TrimSpace(name) }
 
 func validateName(name string) error {
 	if name == "" {
