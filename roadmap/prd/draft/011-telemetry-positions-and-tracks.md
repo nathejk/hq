@@ -133,6 +133,10 @@ member and whether they are still on the team.
 - **Reported once, long ago.** Glyph present; tooltip must make the staleness
   obvious (absolute time plus relative), and the glyph is visually muted beyond
   a staleness threshold rather than hidden.
+- **Unknown personId.** A position may arrive for a `personId` HQ has no row
+      for (a crew member registered elsewhere, a stale install from last year).
+      Store it faithfully; it simply has no name to sit next to, so no indicator
+      appears anywhere. Do not drop the point and do not error.
 - **Member hard-deleted.** `NATHEJK.*.spejder.*.deleted` deletes the `spejder`
   row outright, so a withdrawn scout has no name to show. Their track must still
   appear on the patrol map, labelled from `spejderstatuslog` or as "tidligere
@@ -157,12 +161,15 @@ member and whether they are still on the team.
 - [ ] Two projections, deliberately split by access pattern:
       **latest position per person** (one row per person, read on every list) and
       **the point history** (append-only, read only when a track is requested).
-- [ ] A presence endpoint returns, for the current year, every person who has
-      ever reported a position together with their last-reported timestamp — in
-      one response, keyed by person id.
+- [ ] A presence endpoint returns, for the current year, every `personId` that
+      has ever reported a position together with its last-reported timestamp — in
+      one response, keyed by the raw `personId`, with no name resolution and no
+      join against any people table.
 - [ ] Every HQ list or card that shows a person's name renders the indicator
       from that one response: personnel (`friend`), badut (`gøgler`), bandit,
-      crewmember, spejder and senior. One shared component, one shared
+      crewmember, spejder and senior. Each row already carries the id the
+      indicator needs (`memberId` or `userId`), so no endpoint gains a field and
+      no lookup table is introduced. One shared component, one shared
       composable — not per-view fetching.
 - [ ] Hovering the indicator shows the last-received timestamp, formatted
       `da-DK`, absolute plus relative.
@@ -255,6 +262,24 @@ no library change and no second mux. Three caveats must be handled explicitly:
   to shared live plumbing, and it must not alter existing `NATHEJK` behaviour;
   `live.EntitiesFrom` then advertises the new token automatically.
 
+**Person identity.** A message is keyed by a `personId` which is either a
+**`memberID`** — a spejder or senior, PK `(year, memberId)` in `spejder` /
+`senior` — or a **`crewmemberID`**, which is the `userId` of `crewmember`. Note
+that `personnel` (gøgler, friend, bandit) is keyed by `userId` in the *same*
+space, so one id space covers all of crew, gøgler, friend and bandit.
+
+This is the cheapest possible outcome for HQ: both spaces are opaque
+`VARCHAR(99)` ids that do not collide, and every people-list row already carries
+its own id. So **no identity-mapping step, no resolution endpoint, and no name
+join on the read path** — the presence response is a bare id-to-timestamp map,
+and the frontend simply asks whether its own row's id is present. A `personType`
+column (`member` | `crewmember`) is still stored from the payload for legibility
+and to keep queries scoped, but correctness does not depend on it.
+
+The consequence for the two track endpoints is that `:personId` is accepted from
+either space without qualification, while the *patrulje* endpoint works purely in
+`memberID` space, since only scouts have team membership.
+
 **BFF (Go).**
 
 - New `go/nathejk/table/position/` (or `telemetry/`) following the house layout
@@ -262,7 +287,8 @@ no library change and no second mux. Three caveats must be handled explicitly:
   no `commands.go`, HQ never writes telemetry.
 - Two tables: `position_latest(year, personId PK-part, personType, latitude,
   longitude, accuracy, uts, updatedAt)` and `position_point(year, personId, uts,
-  latitude, longitude, accuracy, PRIMARY KEY (year, personId, uts))` — the PK
+  longitude, accuracy, PRIMARY KEY (year, personId, uts))`, both carrying
+  `personType` — the PK
   giving idempotent `INSERT IGNORE` on replay, and the same index serving the
   track query. Latest is written with a guard so an older point cannot regress
   it.
@@ -296,7 +322,7 @@ must carry OpenAPI annotations** in the same style as existing handlers:
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/api/telemetry/presence` | Every person with ≥1 position this year + last-seen timestamp |
+| GET | `/api/telemetry/presence` | Every `personId` with at least one position this year + last-seen timestamp |
 | GET | `/api/telemetry/person/:personId/track` | One person's ordered points, optional `from`/`to` |
 | GET | `/api/telemetry/patrulje/:teamId/track` | All members' tracks (with membership intervals) + that team's scans |
 
@@ -357,10 +383,11 @@ Proposed tasks for `roadmap/tasks/open/`:
 - **Subject shape.** Is it `TELEMETRY.{year}.position.{personId}.reported`, and
   is the entity token `position` — or something else? Everything in the live
   layer keys off this.
-- **Person identity.** Positions arrive keyed by what? A `UserID` (personnel,
-  crew), a `MemberID` (spejder, senior), a phone number, or a hej-app account id
-  that maps to none of the above? If the last, HQ needs a resolution step and
-  this PRD grows an identity-mapping section.
+- ~~**Person identity.**~~ **Answered (2026-09-03):** `personId` is either a
+  `memberID` or a `crewmemberID`. See Technical Considerations → Person identity.
+  Residual detail: does the payload state which of the two it is (a `personType`
+  or equivalent), or must HQ infer it by lookup? Storing it is cheap if the
+  producer already knows.
 - **Payload fields.** Beyond lat/lng/timestamp: accuracy, altitude, speed,
   heading, battery, foreground/background? Are points batched (many per message)
   or one per message?
@@ -372,10 +399,10 @@ Proposed tasks for `roadmap/tasks/open/`:
   decision for knj, not the implementation.
 - **Staleness threshold.** After how long is the indicator muted rather than
   normal? 15 minutes? An hour? Should it differ for a racing patrol and a gøgler?
-- **`crewmate`.** The request mentions crewmates; in this repo the organisation
-  crew is `crewmember` (`shared-go/tables/crewmember`, token `crewmember`) and
-  there is no `crewmate` entity. Confirming these are the same people is enough
-  to close this.
+- ~~**`crewmate`.**~~ **Answered (2026-09-03):** it is `crewmember`
+  (`shared-go/tables/crewmember`). Residual: a gøgler/friend/bandit lives in
+  `personnel`, not `crewmember`, though both are keyed by `userId` — confirm the
+  producer treats those ids as one space, since the indicator relies on it.
 - **Seniors and klan.** The spejder rule (all members + scans, per patrol) is
   specified. Should a klan behave the same way with its seniors, or is a klan
   member's own track sufficient?

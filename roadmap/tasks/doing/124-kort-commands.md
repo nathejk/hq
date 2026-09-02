@@ -1,10 +1,10 @@
 # 124 — Kort commands with dirty-checking
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (Zed)
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -36,3 +36,6 @@ Two shapes worth care:
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 010 §10.
+- 2026-09-03 — Picked up. Plan: mirror the set commands from task 122 — same commander, same publish
+  helpers, same dirty-check discipline. Reorder is per set, following the route shape task 122
+  landed on (`PUT /api/kortsaet/:id/kort`).
