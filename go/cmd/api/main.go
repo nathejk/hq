@@ -47,6 +47,7 @@ import (
 	"nathejk.dk/nathejk/table/checkpersonnel"
 	"nathejk.dk/nathejk/table/checkpoint"
 	"nathejk.dk/nathejk/table/dispatch"
+	"nathejk.dk/nathejk/table/kort"
 	"nathejk.dk/nathejk/table/lok"
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/patruljenumber"
@@ -187,6 +188,10 @@ func main() {
 	spejdernotetable := spejdernote.New(publisher, writer, db.DB())
 	checkgroup := checkgroup.New(publisher, writer, reader)
 	checkpoint := checkpoint.New(publisher, writer, reader)
+	// The sheets we print and hand out, and which checkpoints are drawn on each (PRD 010).
+	// A second reveal unit alongside the checkgroup, and the thing the hej-app reads to know
+	// what a patrol holding a given map may see.
+	korttable := kort.New(publisher, writer, db.DB())
 	checkpersonnel := checkpersonnel.New(publisher, writer, reader)
 	scantable := scan.New(writer, db.DB())
 	loktable := lok.New(writer, db.DB())
@@ -275,6 +280,7 @@ func main() {
 		spejdertable,
 		checkgroup,
 		checkpoint,
+		korttable,
 		checkpersonnel,
 		scantable,
 		loktable,
