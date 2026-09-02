@@ -1,10 +1,10 @@
 # 123 — Cascade checkpoint and checkgroup deletion into `kort.checkpointIds`
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (Zed)
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -34,3 +34,8 @@ PRD §8 calls this "the one piece of non-obvious SQL here" and asks for a test.
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 010 §10.
+- 2026-09-03 — Picked up. Plan: consume `checkpoint.*.deleted` and `checkgroup.*.deleted` in the
+  kort consumer. The checkgroup case is the awkward one — the event names a group, not its
+  checkpoints, and this package cannot read the checkpoint table. Looking at whether the
+  checkpoint projection emits per-checkpoint deletes on a group delete before inventing a
+  cross-table read.
