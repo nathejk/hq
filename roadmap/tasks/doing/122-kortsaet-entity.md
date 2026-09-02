@@ -1,10 +1,10 @@
 # 122 — `kortsaet` entity with optional `teamType`
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (Zed)
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -43,3 +43,7 @@ season's definitions.
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 010 §10.
+- 2026-09-03 — Picked up. Plan: `kortsaet` lives in the same package as `kort` (one consumer, two
+  tables, as `dispatch` does) since the two are always read together. Reorder follows the
+  `NATHEJK.{year}.checkgroups.sorted` precedent — a collection-level subject with no id, which
+  `live.Signal` already renders as "something of this type changed".
