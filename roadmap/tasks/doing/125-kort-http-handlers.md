@@ -1,10 +1,10 @@
 # 125 — Kort CRUD and read handlers with OpenAPI annotations
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (Zed)
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -19,7 +19,11 @@ so it lands before any frontend work.
 | PUT | `/api/kort/:id` |
 | DELETE | `/api/kort/:id` |
 | PUT | `/api/kort/:id/checkpoints` |
-| PUT | `/api/kort/sorted` |
+| PUT | `/api/kortsaet/:id/kort` — reorder the set's maps |
+
+Note the reorder route: **not** `PUT /api/kort/sorted`, which task 122 established cannot exist —
+httprouter panics at startup on a static segment beside `/:id` at the same level, taking the whole
+API down. Sheet order lives under the set, which is where handout order is meaningful anyway.
 
 Deliberately **no `GET /api/kort/:id`** and no `GET /api/kortsaet`: the whole year is a
 handful of records, `GET /api/kort` returns all of it, and both the modal and the hej-app
@@ -45,3 +49,6 @@ Every endpoint needs **OpenAPI annotations** (repo convention, PRD §8).
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 010 §10.
+- 2026-09-03 — Picked up. Plan: handlers alongside the set handlers in `cmd/api/kort.go`, reusing
+  `kortCommandError`. `GET /api/kort` nests maps under sets from one query of each table, and every
+  array is `[]` rather than null because the hej-app parses this.
