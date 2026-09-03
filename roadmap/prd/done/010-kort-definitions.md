@@ -1,11 +1,11 @@
 # PRD 010 — Kort: defining the maps we hand out
 
-**Status:** doing
+**Status:** done
 **Author:** agent session (with knj)
 **Created:** 2026-09-02
 **Last updated:** 2026-09-03
 **Approved:** 2026-09-03
-**Shipped:**
+**Shipped:** 2026-09-03
 **Target users:** organizer (kortansvarlig, postansvarlig), and — indirectly — participants using the hej-app
 
 <!--
