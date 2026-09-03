@@ -63,10 +63,8 @@ github.com/modern-go/reflect2 v1.0.2 h1:xBagoLtFs94CBntxluKeaWgTMpvLxC4ur3nMaC9G
 github.com/modern-go/reflect2 v1.0.2/go.mod h1:yWuevngMOJpCy52FWWMvUC8ws7m/LJsjYzDa0/r8luk=
 github.com/morikuni/aec v1.0.0 h1:nP9CBfwrvYnBRgY6qfDQkygYDmYwOilePFkwzv4dU8A=
 github.com/morikuni/aec v1.0.0/go.mod h1:BbKIizmSmc5MMPqRYbxO4ZU0S0+P200+tUnFx7PXmsc=
-github.com/nathejk/shared-go v0.0.0-20260813144842-d598b7d310ea h1:XbxNoRBMty9aPtWQkdBawFZMkvoH08ysF5HBgoLHXVY=
-github.com/nathejk/shared-go v0.0.0-20260813144842-d598b7d310ea/go.mod h1:3mupoU3CegkDPSsKmmX+g1Ea4Xn9XB/x45hWdVi5DdU=
-github.com/nathejk/shared-go v0.0.0-20260815075712-35c10e0f6942 h1:EXY4uUygzl6BD1TtzOSWFc5gy0QIJfYZZH5c9sJiq+w=
-github.com/nathejk/shared-go v0.0.0-20260815075712-35c10e0f6942/go.mod h1:3mupoU3CegkDPSsKmmX+g1Ea4Xn9XB/x45hWdVi5DdU=
+github.com/nathejk/shared-go v0.0.0-20260903080848-007c0bd5c2d8 h1:7isibs7JftBTj2fzOvbMh9Y0kSXXWK2Cf35uvAtQwBI=
+github.com/nathejk/shared-go v0.0.0-20260903080848-007c0bd5c2d8/go.mod h1:3mupoU3CegkDPSsKmmX+g1Ea4Xn9XB/x45hWdVi5DdU=
 github.com/nats-io/nats.go v1.52.0 h1:n3avV4VBsCgsdwh71TppsTwtv+QdPs7ntSKM8qJLGsc=
 github.com/nats-io/nats.go v1.52.0/go.mod h1:26HypzazeOkyO3/mqd1zZd53STJN0EjCYF9Uy2ZOBno=
 github.com/nats-io/nkeys v0.4.15 h1:JACV5jRVO9V856KOapQ7x+EY8Jo3qw1vJt/9Jpwzkk4=

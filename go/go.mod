@@ -12,7 +12,7 @@ require (
 	github.com/jrgensen/stream v0.1.2
 	github.com/julienschmidt/httprouter v1.3.0
 	github.com/lib/pq v1.10.7
-	github.com/nathejk/shared-go v0.0.0-20260815075712-35c10e0f6942
+	github.com/nathejk/shared-go v0.0.0-20260903080848-007c0bd5c2d8
 	github.com/wneessen/go-mail v0.6.2
 	github.com/xuri/excelize/v2 v2.9.1
 )
