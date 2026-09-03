@@ -1,10 +1,10 @@
 # 142 — GET /api/telemetry/presence
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -43,3 +43,4 @@ Requires OpenAPI annotations, like every endpoint in this repo.
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 011 §10.
+- 2026-09-03 — Picked up. Plan: add `Track track.Queries` to `data.Models`, a `cmd/api/telemetry.go` handler with swagger annotations in the `dispatch.go` house style, and the route.
