@@ -1,10 +1,10 @@
 # 131 — Defer live payloads while the settings modal is dirty
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (Zed)
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -33,3 +33,7 @@ someone else renamed a checkpoint is far worse than briefly showing older data.
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 010 §10.
+- 2026-09-03 — Picked up. Plan: `composables/useDeferredApply.ts` already exists and is the house
+  mechanism — but `KortView` still has its own `applyDeferred` flag from before it landed. Migrating
+  the view onto the shared composable is the way to satisfy "not a second mechanism", rather than
+  adding a third condition to the home-rolled one.
