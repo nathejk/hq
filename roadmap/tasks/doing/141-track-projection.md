@@ -1,10 +1,10 @@
 # 141 — track projection (track_latest + track_point)
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -60,3 +60,4 @@ Not in scope: vehicle positions, which are a separate seam (task 120).
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 011 §10.
+- 2026-09-03 — Picked up. Plan: `table/track` in the `kort` house style (goqu, documented `table.sql`, `querier` interface), messages struct local to the package since hej-app's `track` package is not in shared-go yet, then wire into `projections`.
