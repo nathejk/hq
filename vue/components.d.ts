@@ -44,6 +44,7 @@ declare module 'vue' {
     InputNumber: typeof import('primevue/inputnumber')['default']
     InputText: typeof import('primevue/inputtext')['default']
     KlanDetailDialog: typeof import('./src/components/KlanDetailDialog.vue')['default']
+    KortSettingsDialog: typeof import('./src/components/kort/KortSettingsDialog.vue')['default']
     MemberDetailDialog: typeof import('./src/components/MemberDetailDialog.vue')['default']
     MemberNotes: typeof import('./src/components/MemberNotes.vue')['default']
     Menu: typeof import('primevue/menu')['default']

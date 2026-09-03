@@ -4,6 +4,8 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { http } from '@/plugins/axios'
 import { useLiveResource } from '@/composables/useLiveResource'
+import { useKort } from '@/composables/kort'
+import KortSettingsDialog from '@/components/kort/KortSettingsDialog.vue'
 
 // ---------------------------------------------------------------------------
 // Types
@@ -45,6 +47,64 @@ const markers = new Map<string, L.Marker>()
 const editMode = ref(false)
 const dirtyCheckpoints = ref<Map<string, DirtyEntry>>(new Map())
 const saving = ref(false)
+
+// ---------------------------------------------------------------------------
+// The printed sheets (PRD 010)
+// ---------------------------------------------------------------------------
+//
+// Loaded through the shared composable rather than another `useLiveResource` call here, so this
+// view and the settings dialog cannot end up with different cache keys or dependency tokens.
+const { data: kortSheets, refresh: refreshKort } = useKort()
+
+const settingsOpen = ref(false)
+/** The sheet whose checkpoints are highlighted; also what the dialog is editing. */
+const selectedKortId = ref<string | undefined>(undefined)
+/** The dialog holds unsaved work. Task 131 uses this to pause applying live payloads. */
+const settingsDirty = ref(false)
+
+/**
+ * Moving markers and describing sheets are mutually exclusive.
+ *
+ * Both own marker interaction — one drags them, the other will click the map to pick corners
+ * (task 130) — and both hold unsaved state. Letting them overlap would mean a drag saving
+ * positions while a half-typed sheet name sits behind it, with no way to tell which "Gem" an
+ * operator meant.
+ */
+const enterSettings = () => {
+  if (editMode.value) return
+  settingsOpen.value = true
+}
+
+/** The checkpoints drawn on the selected sheet, or none when nothing is selected. */
+const highlightedCheckpoints = computed<Set<string>>(() => {
+  const id = selectedKortId.value
+  if (!id || !kortSheets.value) return new Set()
+  const sheets = [...kortSheets.value.kortsaet.flatMap((set) => set.kort), ...kortSheets.value.orphanKort]
+  const sheet = sheets.find((candidate) => candidate.id === id)
+  return new Set(sheet?.checkpointIds ?? [])
+})
+
+/**
+ * Fade every marker not on the selected sheet.
+ *
+ * Applied by walking the existing markers rather than by rebuilding them: a rebuild would drop the
+ * popups and, in edit mode, the drag handlers. Opacity rather than removal, because "this
+ * checkpoint is not on this sheet" is exactly the mistake an operator is looking for, and a hidden
+ * marker cannot be spotted.
+ */
+const applyHighlight = () => {
+  const highlighted = highlightedCheckpoints.value
+  const anySelected = highlighted.size > 0 || selectedKortId.value !== undefined
+  markers.forEach((marker, checkpointId) => {
+    if (!anySelected) {
+      marker.setOpacity(1)
+      return
+    }
+    marker.setOpacity(highlighted.has(checkpointId) ? 1 : 0.35)
+  })
+}
+
+watch([highlightedCheckpoints, selectedKortId], () => applyHighlight())
 
 // Snapshot of original positions so we can revert on cancel
 let originalPositions = new Map<string, { latitude: number | null; longitude: number | null }>()
@@ -176,6 +236,10 @@ const applyPayload = (payload: { checkgroups: Checkgroup[]; checkpoints: Checkpo
     map.fitBounds(L.latLngBounds(bounds), { padding: [50, 50], maxZoom: 15 })
     fitted = true
   }
+
+  // The markers were just rebuilt, so any highlight has to be re-applied — otherwise a live
+  // payload arriving with the settings dialog open would quietly un-fade the map.
+  applyHighlight()
 }
 
 /** Project the current payload onto the map, unless editing or not yet mounted. */
@@ -408,6 +472,9 @@ const clearRouteLines = () => {
 // Edit mode helpers
 // ---------------------------------------------------------------------------
 const enterEditMode = () => {
+  // Refused while the settings dialog is open, for the reason given on enterSettings: both own
+  // marker interaction and both hold unsaved state.
+  if (settingsOpen.value) return
   editMode.value = true
   dirtyCheckpoints.value = new Map()
 
@@ -655,9 +722,15 @@ onBeforeUnmount(() => {
     <!-- Edit-mode toolbar -->
     <div class="edit-toolbar">
       <template v-if="!editMode">
-        <button class="edit-btn edit-btn--enter" @click="enterEditMode">
+        <button class="edit-btn edit-btn--enter" :disabled="settingsOpen" @click="enterEditMode">
           <i class="pi pi-pencil" />
           <span>Redigér</span>
+        </button>
+        <!-- The sheets we print (PRD 010). Beside the edit button because both are about the same
+             map; disabled while editing positions, since the two cannot both own the markers. -->
+        <button class="edit-btn edit-btn--enter" :disabled="editMode" @click="enterSettings">
+          <i class="pi pi-cog" />
+          <span>Kort</span>
         </button>
       </template>
       <template v-else>
@@ -714,6 +787,16 @@ onBeforeUnmount(() => {
       </template>
       <div v-if="checkgroups.length === 0" class="context-menu-empty">Ingen checkpoints fundet</div>
     </div>
+
+    <!-- The printed sheets (PRD 010). Not modal: the map behind it is the feedback surface, and
+         selecting a sheet fades every checkpoint that is not on it. -->
+    <KortSettingsDialog
+      v-model:visible="settingsOpen"
+      v-model:selectedId="selectedKortId"
+      :payload="kortSheets"
+      @saved="refreshKort"
+      @update:dirty="settingsDirty = $event"
+    />
   </div>
 </template>
 
