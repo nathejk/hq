@@ -1,11 +1,11 @@
 # 135 — Index the shared-go read models so list queries stop table-scanning
 
-**Status:** doing
+**Status:** done
 **Priority:** high
 **Created:** 2026-09-03
 **Picked up by:** Zed agent (shared-go)
 **Started:** 2026-09-03
-**Completed:**
+**Completed:** 2026-09-03
 
 ## Description
 
@@ -56,8 +56,10 @@ that query passes year and ownerType, or a narrower key is warranted.
   fine once `senior` is indexed on year (the PK already leads with it).
 
 hq's `personnel/query.go` carries the same correlated payment sum against
-`payment`/`orders`. It stays here for now, but the `payment` index is what makes it
-cheap; re-measure it after the index lands (see also task 014).
+`payment`/`orders`. The `payment` index is necessary but turned out not to be
+sufficient — the `OR` defeats it — so this needs the same union-and-group rewrite.
+That is **subtask 14** of this task, done in hq (see the log), not board task 014,
+which closed on 2026-07-31 having introduced the `OR` for correctness.
 
 ### Important: an index added to `table.sql` does not appear on an existing table
 
@@ -85,7 +87,7 @@ not the fault.
 - [x] `paidAmount` and `memberCount` for a sample of klaner are byte-identical
       before and after the rewrite, including a klan paid directly by `teamId` and
       one paid via an order
-- [ ] `EXPLAIN` on the patrol list, the klan list and the personnel list shows index
+- [x] `EXPLAIN` on the patrol list, the klan list and the personnel list shows index
       use on `spejder`/`senior`/`payment` rather than `ALL`
 - [x] The patrol list and klan list answer well inside the 3-second budget against
       production-sized data, measured and recorded in the log
@@ -115,3 +117,11 @@ not the fault.
 - 2026-09-03 11:50 — shared-go pushed (origin/main now 007c0bd) and the pin in hq/go/go.mod bumped from v0.0.0-20260815075712-35c10e0f6942 to v0.0.0-20260903080848-007c0bd5c2d8, go mod tidy run. go build ./..., go vet ./... and go test ./... all green in hq/go. Worth knowing: the dev api container mounts ../shared-go into /shared-go and go.work points at it, so dev has been running this code all along — the pin only governs the production image build.
 - 2026-09-03 11:55 — Applied the documented ALTERs to the hq dev database (all seven index statements plus the klan column widening; patrulje columns left alone there, since hq owns its own patrulje table.sql and it is already wide). All twelve idx_ keys now present in information_schema. Restarted hq-api-1 and re-checked the endpoints: GET /api/patrulje answers 200 with a single well-formed body in 0.02s, GET /api/klan answers 200 in under 0.01s with sensible memberCount and paidAmount per klan. The 500 is gone.
 - 2026-09-03 11:58 — Everything this repo can close is closed. The one criterion left unchecked is EXPLAIN on the personnel list, which still shows payment type=ALL: the fix is a query rewrite in hq/go/nathejk/table/personnel/query.go, not an index, and it belongs to task 014. Leaving 135 in doing rather than claiming a criterion that is not met — 135 can be closed the moment 014 lands, or the criterion split out if 014 is not imminent.
+- 2026-09-03 12:20 — Correction to the entry above: the personnel rewrite is subtask 14 of this task, not board task 014 (which is in done/, completed 2026-07-31, and is what added the OR in the first place — correctly: it stopped paid gøglere being hidden). Nothing to wait for, so picked the subtask up here.
+- 2026-09-03 12:30 — personnel.GetAll rewritten in hq/go/nathejk/table/personnel/query.go: the two ways a payment reaches a person (direct userId, or via an order they own) unioned into one keyed set, summed once, LEFT JOINed. Same shape as klan, with the same UNION-not-UNION-ALL choice, and orders again unfiltered by ownerType because the replaced predicate was ownerId alone. One hq-specific wrinkle: the derived table's key column is named `ownerId`, not `userId`, because GetAll builds its WHERE from unqualified column names and a joined `userId` makes the existing `userId = ?` filter ambiguous.
+- 2026-09-03 12:40 — Equivalence verified against the dev data (358 personnel, 1190 payment, 277 orders): old and new shapes as views, compared both directions with EXCEPT — 0 differences, both summing 3445000 over 358 rows, 189 people with a non-zero amount. Both branches are exercised by real data (177 payments direct to a userId, 12 via an owned order).
+- 2026-09-03 12:45 — The orderId-equals-userId collision that motivates UNION does not occur in dev data, so it was covered by fixtures in a scratch database: a person whose owned orderId equals their userId (paid 500 → 500, not 1000), one with both a direct and an order payment (300 + 400 → 700), one with only a cancelled payment (→ 0). Old and new agree on all three. Confirmed the choice matters: the same query with UNION ALL returns 1000 for the collision case, double-counting the one payment.
+- 2026-09-03 12:50 — ✅ Final criterion met. EXPLAIN on the personnel list, indexed: old shape gives payment type=ALL with idx_payment_order in possible_keys and key NULL, over 1164 rows per person — the reported symptom. New shape gives payment type=ref on idx_payment_order (Using index condition), orders a covering index scan on idx_orders_owner_id, personnel covering on PRIMARY. No ALL on any base table.
+- 2026-09-03 12:55 — Timing at production scale (1805 personnel, 21492 payment, 5301 orders), both with the indexes present: correlated form 15.27s, joined form 0.036s — the same 400x and the same shape of result as klan (13.77s → 0.035s), and again proof that the index alone does not rescue the correlated form. Sums identical (17231000). Equivalence re-checked by EXCEPT at that scale: 0 differences both ways.
+- 2026-09-03 13:00 — Live check: hq-api-1 hot-reloaded the change, GET /api/personnel answers 200 with a single well-formed body, and GET /api/badut (X-YearSlug 2025) returns 125 gøglere of whom 93 have paidAmount > 0, so the paid-via-order people task 014 rescued are still visible. Scratch database t136 and the two comparison views in hq dropped. go build ./..., go vet and go test ./cmd/api/... green.
+- 2026-09-03 13:05 — Completed. Indexes and the klan rewrite in shared-go (007c0bd, pinned in hq), the patrulje and personnel rewrites in hq. Two follow-ups noted but deliberately not done here: klan.name/groupName widening was precautionary only, and this repo still has no migration mechanism, so index changes remain a documented manual ALTER for existing dev databases.

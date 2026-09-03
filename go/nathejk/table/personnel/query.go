@@ -49,12 +49,37 @@ func (q *querier) GetAll(ctx context.Context, f Filter) ([]*Person, error) {
 	if len(where) == 0 {
 		where = []string{"true"}
 	}
+	// The paid amount is joined as one pre-grouped aggregate rather than computed as a
+	// correlated subquery per person (subtask 14 of task 135).
+	//
+	// The correlated form was correct — task 014 added the OR so gøglere who paid via an
+	// order stopped being hidden — but its predicate is unindexable: with
+	// `orderForeignKey = userId OR orderForeignKey IN (SELECT …)` the optimizer lists
+	// idx_payment_order in possible_keys and declines it, giving type=ALL over every
+	// payment row for every person. Indexing payment (also task 135) was necessary and
+	// not sufficient; only removing the OR lets the key be used.
+	//
+	// So the two ways a payment reaches a person — straight to the userId (legacy) or via
+	// an order owned by them — are unioned into one keyed set and summed once. UNION, not
+	// UNION ALL: should an orderId ever equal a userId, both branches yield the same pair
+	// and the payment must still count once, exactly as the OR counted it once. orders is
+	// not filtered by ownerType, because the predicate replaced here was ownerId alone.
+	//
+	// The derived table's key column is `ownerId`, not `userId`: the filters above are
+	// unqualified column names, and a joined `userId` would make `userId = ?` ambiguous.
 	query := `SELECT userId, userType, armNumber, name, phone, email, groupName, korps, klan, signupStatus, tshirtSize, additionals,
-		(SELECT COALESCE(SUM(pay.amount),0) FROM payment pay
-			WHERE pay.status IN ('reserved', 'received')
-			  AND (pay.orderForeignKey = personnel.userId
-			       OR pay.orderForeignKey IN (SELECT o.orderId FROM orders o WHERE o.ownerId = personnel.userId))) as paidAmount
+		COALESCE(pay.paidAmount, 0) as paidAmount
 		FROM personnel
+		LEFT JOIN (
+			SELECT k.ownerId, SUM(pa.amount) paidAmount
+			FROM (
+				SELECT userId ownerId, userId foreignKey FROM personnel
+				UNION
+				SELECT o.ownerId, o.orderId FROM orders o
+			) k
+			JOIN payment pa ON pa.orderForeignKey = k.foreignKey AND pa.status IN ('reserved', 'received')
+			GROUP BY k.ownerId
+		) pay ON pay.ownerId = personnel.userId
 		WHERE ` + strings.Join(where, " AND ")
 	rows, err := q.db.QueryContext(ctx, query, args...)
 	if err != nil {
