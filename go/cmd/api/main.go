@@ -57,6 +57,7 @@ import (
 	"nathejk.dk/nathejk/table/sos"
 	"nathejk.dk/nathejk/table/spejdernote"
 	"nathejk.dk/nathejk/table/spejderstatus"
+	"nathejk.dk/nathejk/table/track"
 	"nathejk.dk/nathejk/table/year"
 )
 
@@ -194,6 +195,10 @@ func main() {
 	korttable := kort.New(publisher, writer, db.DB())
 	checkpersonnel := checkpersonnel.New(publisher, writer, reader)
 	scantable := scan.New(writer, db.DB())
+	// Where people were: positions reported by the hej-app (PRD 011). The only consumer in this
+	// list that reads a *second* stream — its subject's domain is TELEMETRY, and the stream library
+	// derives the stream name from that, so the stream must exist or mux.Run fails below.
+	tracktable := track.New(writer, db.DB())
 	loktable := lok.New(writer, db.DB())
 	sectiontable := section.New(publisher, writer, db.DB())
 	crewmembertable := crewmember.New(publisher, writer, db.DB())
@@ -283,6 +288,7 @@ func main() {
 		korttable,
 		checkpersonnel,
 		scantable,
+		tracktable,
 		loktable,
 		year,
 		sectiontable,
