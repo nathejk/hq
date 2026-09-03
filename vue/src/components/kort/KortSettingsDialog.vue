@@ -24,10 +24,12 @@ import {
   groupSelectionState,
   orderPicks,
   teamTypeLabel,
+  teamTypeOptions,
   toggleGroupSelection,
   type Kort,
   type Kortsaet,
   type KortPayload,
+  type TeamType,
 } from '@/composables/kort'
 
 /** A checkgroup with its checkpoints, as `/checkgroups` sends it. */
@@ -340,13 +342,112 @@ const unassignedBySet = computed(() =>
   })),
 )
 
+// --- map sets (task 129) ---
+//
+// Edited inline in the list rather than in a nested dialog: a set has two fields, and a modal over
+// a modal over the map would bury the thing the whole screen is about.
+
+/** The set being edited, or 'new' while creating one. */
+const editingSetId = ref<string | 'new' | undefined>(undefined)
+const setDraft = ref<{ name: string; teamType: TeamType | null }>({ name: '', teamType: null })
+
+const editSet = (set: Kortsaet) => {
+  editingSetId.value = set.id
+  setDraft.value = { name: set.name, teamType: set.teamType }
+  fieldErrors.value = {}
+}
+
+const newSet = () => {
+  editingSetId.value = 'new'
+  // Not defaulted to `patrulje`: an unmarked set is the commonest one, and a default here would
+  // quietly mark a crew set as the spejder set — which the hej-app would then serve to patrols.
+  setDraft.value = { name: '', teamType: null }
+  fieldErrors.value = {}
+}
+
+const cancelSetEdit = () => {
+  editingSetId.value = undefined
+  fieldErrors.value = {}
+}
+
+/** Unsaved set edits, so they join the same dirty guard as everything else. */
+const setDirty = computed(() => {
+  if (editingSetId.value === 'new') return setDraft.value.name.trim() !== '' || setDraft.value.teamType !== null
+  const set = sets.value.find((candidate) => candidate.id === editingSetId.value)
+  if (!set) return false
+  return setDraft.value.name !== set.name || setDraft.value.teamType !== set.teamType
+})
+
+const saveSet = async () => {
+  saving.value = true
+  fieldErrors.value = {}
+  try {
+    const body = { name: setDraft.value.name, teamType: setDraft.value.teamType }
+    if (editingSetId.value === 'new') {
+      await http.post('/kortsaet', body, { withCredentials: true })
+    } else {
+      // A whole-record PUT, matching the API: sending only what changed could not express clearing
+      // the team type, because an absent field and "no team type" would look the same.
+      await http.put(`/kortsaet/${editingSetId.value}`, body, { withCredentials: true })
+    }
+    editingSetId.value = undefined
+    emit('saved')
+  } catch (error) {
+    failed(error, 'Kunne ikke gemme kortsættet')
+  } finally {
+    saving.value = false
+  }
+}
+
+const deleteSet = async (set: Kortsaet) => {
+  saving.value = true
+  fieldErrors.value = {}
+  try {
+    await http.delete(`/kortsaet/${set.id}`, { withCredentials: true })
+    editingSetId.value = undefined
+    emit('saved')
+  } catch (error) {
+    // The API refuses a set that still holds sheets, with a Danish message naming what to do about
+    // it. Surfaced as a toast rather than a field error, because it is about the set's contents
+    // rather than anything the operator typed.
+    const detail = (error as { response?: { data?: { error?: unknown } } })?.response?.data?.error
+    const message = detail && typeof detail === 'object' ? Object.values(detail as Record<string, string>)[0] : undefined
+    toast.add({
+      severity: 'warn',
+      summary: 'Kortsættet blev ikke slettet',
+      detail: message ?? 'Kunne ikke slette kortsættet.',
+      life: 6000,
+    })
+  } finally {
+    saving.value = false
+  }
+}
+
+/**
+ * Persist the order of the sets after a drag.
+ *
+ * `PUT /api/kortsaet` — the collection, not a `/sorted` path: httprouter cannot have a static
+ * segment beside `/:id`, and "kortsæt" is its own plural in Danish, so there was no plural to move
+ * the route to.
+ */
+const saveSetOrder = async () => {
+  reordering.value = false
+  try {
+    await http.put('/kortsaet', { kortsaetIds: sets.value.map((set) => set.id) }, { withCredentials: true })
+  } catch (error) {
+    failed(error, 'Kunne ikke gemme rækkefølgen')
+  } finally {
+    emit('saved')
+  }
+}
+
 // --- unsaved state, all of it ---
 //
 // Declared here, after every source, because the emit below runs immediately: a computed that
 // referenced one of these before its `const` was initialised would throw during setup.
 
-/** Anything unsaved: a field, a tick-box, or a drag not yet persisted. */
-const anyDirty = computed(() => dirty.value || picksDirty.value || reordering.value)
+/** Anything unsaved: a field, a tick-box, a set being edited, or a drag not yet persisted. */
+const anyDirty = computed(() => dirty.value || picksDirty.value || setDirty.value || reordering.value)
 
 // The view pauses applying live payloads while this is true (task 131), and the guards above use it
 // to refuse switching sheets or closing rather than discarding work.
@@ -377,36 +478,105 @@ const close = () => {
     @update:visible="close"
   >
     <div class="space-y-4">
-      <p class="text-sm text-gray-600">Kortene vi printer og deler ud. Vælg et kort for at se dets poster på kortet.</p>
-
-      <div v-if="sets.length === 0" class="text-sm text-gray-500">Der er ingen kortsæt endnu.</div>
-
-      <div v-for="set in sets" :key="set.id" class="space-y-1">
-        <div class="flex items-center justify-between">
-          <div class="font-medium">
-            {{ set.name }}
-            <!-- The team-type marking, shown because it is what the hej-app matches on: an
-                 operator needs to see which set is "the spejder set" without opening it. -->
-            <span v-if="set.teamType" class="ml-1 text-xs text-gray-500">({{ teamTypeLabel(set.teamType) }})</span>
-          </div>
-          <Button icon="pi pi-plus" text size="small" :disabled="saving || anyDirty" @click="createSheet(set)" />
-        </div>
-
-        <draggable :list="set.kort" handle=".kort-handle" item-key="id" @start="reordering = true" @end="saveOrder(set)">
-          <template #item="{ element: sheet }">
-            <div
-              class="flex items-center gap-2 rounded px-2 py-1 text-sm"
-              :class="sheet.id === selectedId ? 'bg-blue-50 ring-1 ring-blue-300' : 'hover:bg-gray-50'"
-            >
-              <i class="kort-handle pi pi-bars cursor-move text-xs text-gray-400" />
-              <button class="flex-1 truncate text-left" @click="select(sheet)">{{ sheet.name }}</button>
-              <span class="text-xs text-gray-400">{{ sheet.checkpointIds.length }}</span>
-            </div>
-          </template>
-        </draggable>
-
-        <div v-if="set.kort.length === 0" class="px-2 text-xs text-gray-400">Ingen kort i sættet</div>
+      <div class="flex items-center justify-between">
+        <p class="text-sm text-gray-600">Kortene vi printer og deler ud.</p>
+        <Button label="Nyt sæt" icon="pi pi-plus" text size="small" :disabled="saving || anyDirty" @click="newSet" />
       </div>
+
+      <!-- Creating a set. Same two fields as editing one; the team type deliberately starts empty,
+           because the unmarked crew set is the commonest and a default would silently mark a set as
+           the spejder set. -->
+      <div v-if="editingSetId === 'new'" class="space-y-2 rounded border border-blue-200 bg-blue-50 p-2">
+        <div>
+          <label class="block text-xs text-gray-700">Navn</label>
+          <InputText v-model="setDraft.name" class="w-full" placeholder="fx Patruljer" autofocus />
+          <small v-if="fieldErrors.name" class="text-red-600">{{ fieldErrors.name }}</small>
+        </div>
+        <div>
+          <label class="block text-xs text-gray-700">Holdtype</label>
+          <Select
+            v-model="setDraft.teamType"
+            :options="teamTypeOptions"
+            optionLabel="label"
+            optionValue="value"
+            class="w-full"
+          />
+          <small class="text-gray-500">Afgør hvilke kort hej-appen viser til fx patruljer.</small>
+          <small v-if="fieldErrors.teamType" class="block text-red-600">{{ fieldErrors.teamType }}</small>
+        </div>
+        <div class="flex justify-end gap-2">
+          <Button label="Annullér" severity="secondary" text size="small" :disabled="saving" @click="cancelSetEdit" />
+          <Button label="Opret" size="small" :loading="saving" :disabled="saving || !setDraft.name.trim()" @click="saveSet" />
+        </div>
+      </div>
+
+      <div v-if="sets.length === 0 && editingSetId !== 'new'" class="text-sm text-gray-500">
+        Der er ingen kortsæt endnu. Opret fx „Patruljer” og „Crew”.
+      </div>
+
+      <draggable :list="sets" handle=".kortsaet-handle" item-key="id" @start="reordering = true" @end="saveSetOrder">
+        <template #item="{ element: set }">
+          <div class="mb-3 space-y-1">
+            <!-- Editing this set. -->
+            <div v-if="editingSetId === set.id" class="space-y-2 rounded border border-blue-200 bg-blue-50 p-2">
+              <div>
+                <label class="block text-xs text-gray-700">Navn</label>
+                <InputText v-model="setDraft.name" class="w-full" autofocus />
+                <small v-if="fieldErrors.name" class="text-red-600">{{ fieldErrors.name }}</small>
+              </div>
+              <div>
+                <label class="block text-xs text-gray-700">Holdtype</label>
+                <Select
+                  v-model="setDraft.teamType"
+                  :options="teamTypeOptions"
+                  optionLabel="label"
+                  optionValue="value"
+                  class="w-full"
+                />
+                <small v-if="fieldErrors.teamType" class="block text-red-600">{{ fieldErrors.teamType }}</small>
+              </div>
+              <div class="flex items-center justify-between">
+                <Button label="Slet sæt" severity="danger" text size="small" :disabled="saving" @click="deleteSet(set)" />
+                <div class="flex gap-2">
+                  <Button label="Annullér" severity="secondary" text size="small" :disabled="saving" @click="cancelSetEdit" />
+                  <Button label="Gem" size="small" :loading="saving" :disabled="saving || !setDirty" @click="saveSet" />
+                </div>
+              </div>
+            </div>
+
+            <div v-else class="flex items-center justify-between">
+              <div class="flex min-w-0 items-center gap-2">
+                <i class="kortsaet-handle pi pi-bars cursor-move text-xs text-gray-400" />
+                <div class="truncate font-medium">
+                  {{ set.name }}
+                  <!-- The team-type marking, shown because it is what the hej-app matches on: an
+                       operator needs to see which set is “the spejder set” without opening it. -->
+                  <span v-if="set.teamType" class="ml-1 text-xs text-gray-500">({{ teamTypeLabel(set.teamType) }})</span>
+                </div>
+              </div>
+              <div class="flex items-center">
+                <Button icon="pi pi-pencil" text size="small" :disabled="saving || anyDirty" @click="editSet(set)" />
+                <Button icon="pi pi-plus" text size="small" :disabled="saving || anyDirty" @click="createSheet(set)" />
+              </div>
+            </div>
+
+            <draggable :list="set.kort" handle=".kort-handle" item-key="id" @start="reordering = true" @end="saveOrder(set)">
+              <template #item="{ element: sheet }">
+                <div
+                  class="flex items-center gap-2 rounded px-2 py-1 text-sm"
+                  :class="sheet.id === selectedId ? 'bg-blue-50 ring-1 ring-blue-300' : 'hover:bg-gray-50'"
+                >
+                  <i class="kort-handle pi pi-bars cursor-move text-xs text-gray-400" />
+                  <button class="flex-1 truncate text-left" @click="select(sheet)">{{ sheet.name }}</button>
+                  <span class="text-xs text-gray-400">{{ sheet.checkpointIds.length }}</span>
+                </div>
+              </template>
+            </draggable>
+
+            <div v-if="set.kort.length === 0" class="px-2 text-xs text-gray-400">Ingen kort i sættet</div>
+          </div>
+        </template>
+      </draggable>
 
       <!-- Sheets whose set is gone. Normally absent; shown so a mis-assigned sheet cannot become
            invisible, which is the whole reason the API returns them separately. -->
