@@ -4,6 +4,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { http } from '@/plugins/axios'
 import { useLiveResource } from '@/composables/useLiveResource'
+import { useDeferredApply } from '@/composables/useDeferredApply'
 import { useKort, extentFromCorners, type Extent } from '@/composables/kort'
 import KortSettingsDialog from '@/components/kort/KortSettingsDialog.vue'
 
@@ -289,8 +290,6 @@ watch(kortError, (err) => {
   if (err) console.error('Failed to load checkgroups', err)
 })
 
-/** A payload arrived while editing and still needs applying. */
-let applyDeferred = false
 /** The map has been fitted once; later applies leave the viewport alone. */
 let fitted = false
 
@@ -330,24 +329,27 @@ const applyPayload = (payload: { checkgroups: Checkgroup[]; checkpoints: Checkpo
   applyHighlight()
 }
 
-/** Project the current payload onto the map, unless editing or not yet mounted. */
-const syncMap = () => {
-  const payload = kortData.value
-  if (!payload || !map) return
-  if (editMode.value) {
-    applyDeferred = true
-    return
-  }
-  applyDeferred = false
-  applyPayload(payload)
-}
+/**
+ * Whether applying an incoming payload has to wait.
+ *
+ * Three reasons, and they are all the same reason: something on screen would be destroyed by a
+ * rebuild. Edit mode holds unsaved marker positions; the settings dialog holds unsaved text, ticks
+ * and rectangles; and before the map exists there is nothing to draw onto.
+ *
+ * The map's readiness is part of the *condition* rather than a separate "apply on mount" call. That
+ * is what lets a warm cache render on arrival: the payload is already there at setup, gets held
+ * because the map is not ready, and is applied the moment it is — no request, no empty frame, and
+ * no second code path that can drift from this one.
+ */
+const mapReady = ref(false)
+const applyPaused = computed(() => !mapReady.value || editMode.value || settingsDirty.value)
 
-watch(kortData, () => syncMap())
-
-/** Called when edit mode ends, to pick up anything that arrived meanwhile. */
-const syncMapIfDeferred = () => {
-  if (applyDeferred) syncMap()
-}
+// The house mechanism (`composables/useDeferredApply.ts`), not a flag of this view's own. KortView
+// had its own `applyDeferred` bookkeeping from before that composable existed; keeping it and adding
+// the dialog's dirty state as a third condition would have meant two mechanisms doing one job — and
+// the composable exists precisely because watching the *condition* cannot miss an exit, whereas a
+// helper called from each exit path can.
+const { updatesWaiting } = useDeferredApply(kortData, applyPaused, applyPayload)
 
 // ---------------------------------------------------------------------------
 // Route distance computation
@@ -621,8 +623,9 @@ const cancelEditMode = () => {
   // Clear route lines
   clearRouteLines()
 
-  // Pick up anything that changed while we were editing.
-  syncMapIfDeferred()
+  // Nothing to call here: leaving edit mode flips `applyPaused`, and useDeferredApply applies
+  // whatever arrived meanwhile. That is the point of watching the condition — an exit path cannot
+  // forget to ask.
 }
 
 const saveChanges = async () => {
@@ -632,7 +635,6 @@ const saveChanges = async () => {
       marker.dragging?.disable()
     })
     clearRouteLines()
-    syncMapIfDeferred()
     return
   }
 
@@ -791,9 +793,10 @@ onMounted(async () => {
   map.on('movestart', hideContextMenu)
   document.addEventListener('click', onDocumentClick)
 
-  // The data may already be cached, in which case this renders the map with no
-  // request at all; otherwise the watcher applies it when the fetch resolves.
-  syncMap()
+  // The map exists now, so let payloads through. If the data was already cached this renders it in
+  // the same tick, with no request — see applyPaused for why readiness is a condition rather than a
+  // call.
+  mapReady.value = true
 })
 
 onBeforeUnmount(() => {
@@ -808,6 +811,13 @@ onBeforeUnmount(() => {
 <template>
   <div class="kort-wrapper">
     <div ref="mapContainer" class="kort-map" />
+
+    <!-- Live updates are paused while there is unsaved work. The page has taught its operator to
+         trust that it is current, so it owes them a word the one time it deliberately is not. -->
+    <div v-if="updatesWaiting" class="kort-paused">
+      <i class="pi pi-pause-circle" />
+      <span>Opdateringer sat på pause — der er ugemte ændringer</span>
+    </div>
 
     <!-- Edit-mode toolbar -->
     <div class="edit-toolbar">
@@ -907,6 +917,24 @@ onBeforeUnmount(() => {
 }
 
 /* ---- Edit toolbar ---- */
+.kort-paused {
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: 6px;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+  font-size: 12px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.1);
+}
+
 .edit-toolbar {
   position: absolute;
   top: 10px;

@@ -18,6 +18,7 @@ import { computed, ref, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import draggable from 'vuedraggable'
 import { http } from '@/plugins/axios'
+import { useDeferredApply } from '@/composables/useDeferredApply'
 import {
   checkpointsWithoutMap,
   formatOptions,
@@ -123,14 +124,20 @@ const loadDraft = (sheet?: Kort) => {
   fieldErrors.value = {}
 }
 
-watch(selected, (sheet) => loadDraft(sheet), { immediate: true })
-
-/** Has the operator changed something that is not saved? */
+/**
+ * Has the operator changed something that is not saved?
+ *
+ * The name is compared **trimmed**, matching what the server stores. Without that, typing a trailing
+ * space would leave the draft permanently unequal to the saved row: the save would succeed, the
+ * server would trim, and the dialog would insist there were unsaved changes forever — which, now
+ * that unsaved changes pause live updates, would also freeze the map. Client-side normalisation has
+ * to match the server's for exactly the fields it touches.
+ */
 const dirty = computed(() => {
   const sheet = selected.value
   if (!sheet) return false
   return (
-    draft.value.name !== sheet.name ||
+    draft.value.name.trim() !== sheet.name ||
     draft.value.format !== (sheet.format ?? '') ||
     draft.value.note !== sheet.note ||
     draft.value.kortsaetId !== sheet.kortsaetId
@@ -202,7 +209,7 @@ const saveSheet = async () => {
     await http.put(
       `/kort/${sheet.id}`,
       {
-        name: draft.value.name,
+        name: draft.value.name.trim(),
         // An empty format is omitted rather than sent: "" is not one of the four values and the
         // API would refuse it, and a sheet whose format is not yet decided is normal.
         ...(draft.value.format ? { format: draft.value.format } : {}),
@@ -263,14 +270,6 @@ const cancelEdit = () => loadDraft(selected.value)
 
 /** The selected sheet's checkpoints, as a local set the tick-boxes drive. */
 const picked = ref<Set<string>>(new Set())
-
-watch(
-  selected,
-  (sheet) => {
-    picked.value = new Set(sheet?.checkpointIds ?? [])
-  },
-  { immediate: true },
-)
 
 /** Unsaved tick-box changes. Compared as sets, since order carries no meaning. */
 const picksDirty = computed(() => {
@@ -390,14 +389,16 @@ const setDirty = computed(() => {
   if (editingSetId.value === 'new') return setDraft.value.name.trim() !== '' || setDraft.value.teamType !== null
   const set = sets.value.find((candidate) => candidate.id === editingSetId.value)
   if (!set) return false
-  return setDraft.value.name !== set.name || setDraft.value.teamType !== set.teamType
+  // Trimmed, for the same reason as a sheet's name: the server trims, and an untrimmed comparison
+  // would leave the set editor stuck open with nothing actually unsaved.
+  return setDraft.value.name.trim() !== set.name || setDraft.value.teamType !== set.teamType
 })
 
 const saveSet = async () => {
   saving.value = true
   fieldErrors.value = {}
   try {
-    const body = { name: setDraft.value.name, teamType: setDraft.value.teamType }
+    const body = { name: setDraft.value.name.trim(), teamType: setDraft.value.teamType }
     if (editingSetId.value === 'new') {
       await http.post('/kortsaet', body, { withCredentials: true })
     } else {
@@ -468,15 +469,6 @@ const MAX_EXTENTS = 2
 const draftExtents = ref<Extent[]>([])
 /** Which slot the next drawn rectangle fills, or null when not picking. */
 const pickingIndex = ref<number | null>(null)
-
-watch(
-  selected,
-  (sheet) => {
-    draftExtents.value = (sheet?.extents ?? []).map((extent) => ({ ...extent }))
-    pickingIndex.value = null
-  },
-  { immediate: true },
-)
 
 const extentsDirty = computed(() => {
   const sheet = selected.value
@@ -563,6 +555,34 @@ const extentLabel = (extent: Extent) =>
 const anyDirty = computed(
   () => dirty.value || picksDirty.value || extentsDirty.value || setDirty.value || reordering.value,
 )
+
+/**
+ * Load every buffer from a sheet: the fields, the tick-boxes and the rectangles.
+ *
+ * One function because they are one decision — "show me this sheet" — and three separate watchers
+ * on the same source is how two of them end up with different guards.
+ */
+const loadBuffers = (sheet: Kort) => {
+  loadDraft(sheet)
+  picked.value = new Set(sheet.checkpointIds)
+  draftExtents.value = sheet.extents.map((extent) => ({ ...extent }))
+  pickingIndex.value = null
+}
+
+/**
+ * Follow the selected sheet — unless the operator has unsaved work.
+ *
+ * This is the bug that made task 131 worth doing, and it is not the one the task description
+ * anticipated. The dialog reads the sheets straight from the live cache, so a payload arriving while
+ * someone typed used to re-run the load and **wipe the field under the cursor**: another operator
+ * renaming any sheet, or this operator's own save of a *different* sheet, was enough. Deferring only
+ * the Leaflet markers would have left that untouched.
+ *
+ * The same composable as the map, for the same reason: watching the condition cannot miss an exit.
+ * Selection changes come through here too, which is safe because `select()` refuses to change the
+ * selection while dirty — so a selection change is always a clean moment by construction.
+ */
+useDeferredApply(selected, anyDirty, loadBuffers)
 
 // The view pauses applying live payloads while this is true (task 131), and the guards above use it
 // to refuse switching sheets or closing rather than discarding work.
