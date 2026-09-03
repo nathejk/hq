@@ -151,6 +151,11 @@ let layer: L.LayerGroup | null = null
 
 function draw() {
   if (!map || !layer) return
+
+  // Cheap and idempotent, and needed more than once: the dialog animates in, so a size measured at
+  // mount can be mid-transition, and Leaflet renders grey tiles until something tells it otherwise.
+  map.invalidateSize()
+
   layer.clearLayers()
 
   const bounds: L.LatLngExpression[] = []
@@ -222,11 +227,23 @@ function label(member: ApiTrack): string {
   return member.name || 'tidligere medlem'
 }
 
-/** "3 t 40 min data af 12 t" — how much of the window this member's phone actually covered. */
+/**
+ * "2 positioner · 0 min data af 7 min" — what this member's phone actually gave us.
+ *
+ * The point count leads because coverage alone is misleading for sparse data: recorded time is
+ * deliberately conservative and an isolated fix contributes **zero** — it evidences an instant, not an
+ * interval — so "0 min data" next to a visible dot on the map reads as a contradiction unless the
+ * number of positions is stated too. Both together say the true thing: we have two fixes and know
+ * nothing about the time between them.
+ */
 function coverageText(member: ApiTrack): string {
+  const points = member.coverage.points
+  if (points === 0) return 'ingen positioner'
+
   const span = member.coverage.window.to - member.coverage.window.from
-  if (span <= 0 || member.coverage.points === 0) return 'ingen positioner'
-  return `${duration(member.coverage.recordedMs)} data af ${duration(span)}`
+  const label = `${points} ${points === 1 ? 'position' : 'positioner'}`
+  if (span <= 0) return label
+  return `${label} · ${duration(member.coverage.recordedMs)} data af ${duration(span)}`
 }
 
 function duration(ms: number): string {
@@ -275,54 +292,64 @@ watch([members, scans], () => draw())
 
 <template>
   <div class="flex flex-col gap-3">
-    <!-- Only when nothing is cached: reopening must not flash. -->
+    <!--
+      The notices sit *above* an always-rendered map, rather than replacing it.
+
+      That is a bug fix, not a layout preference (task 155): the map container used to live inside a
+      `v-else`, so on first mount — while `pending` was still true — the div did not exist, `onMounted`
+      found a null ref and returned, and nothing ever created the map afterwards. The result was a white
+      box with a correct legend beside it. Keeping the container unconditional means the ref exists for
+      the whole component's life, which is the only state the map's lifecycle has to cope with.
+
+      It also reads better empty: base tiles centred on the race area say "no data here" far more
+      clearly than a blank rectangle does.
+    -->
     <div v-if="pending && !data" class="text-sm text-gray-500">Henter spor…</div>
 
     <div v-else-if="isEmpty" class="text-sm text-gray-500">
       Ingen positioner og ingen scanninger i det valgte tidsrum.
     </div>
 
-    <template v-else>
-      <div
-        v-if="!hasAnyPoints"
-        class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2"
-      >
-        Ingen positioner rapporteret — viser kun scanninger.
-      </div>
-      <!-- Said out loud rather than left for someone to infer from a thin-looking line. -->
-      <div v-if="anyReduced" class="text-xs text-gray-500">
-        Sporet er forenklet — vælg et kortere tidsrum for flere detaljer.
-      </div>
+    <div
+      v-else-if="!hasAnyPoints"
+      class="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-2"
+    >
+      Ingen positioner rapporteret — viser kun scanninger.
+    </div>
 
-      <div ref="mapContainer" class="track-map w-full rounded border border-gray-200"></div>
+    <!-- Said out loud rather than left for someone to infer from a thin-looking line. -->
+    <div v-if="anyReduced" class="text-xs text-gray-500">
+      Sporet er forenklet — vælg et kortere tidsrum for flere detaljer.
+    </div>
 
-      <!--
-        The legend is not decoration: it is where "this line stops because the scout left the patrol"
-        is distinguished from "this line stops because the phone did", and where coverage says whether
-        the picture is worth reasoning from at all.
-      -->
-      <div class="grid gap-1 text-xs sm:grid-cols-2">
-        <div v-for="(m, i) in members" :key="m.personId" class="flex items-center gap-2 flex-wrap">
-          <span
-            class="inline-block w-3 h-1 rounded"
-            :style="{ backgroundColor: colourOf(i) }"
-            aria-hidden="true"
-          />
-          <span class="font-medium" :class="{ 'italic text-gray-500': !m.name }">
-            {{ label(m) }}
-          </span>
-          <span v-if="m.membershipTo" class="text-gray-500">
-            (forlod patruljen {{ formatClock(m.membershipTo) }})
-          </span>
-          <span class="text-gray-500">· {{ coverageText(m) }}</span>
-          <span v-if="lastSeen(m)" class="text-gray-400">· sidst {{ lastSeen(m) }}</span>
-        </div>
-        <div v-if="scans.length" class="flex items-center gap-2">
-          <i class="pi pi-map-marker text-gray-600" aria-hidden="true" />
-          <span>{{ scans.length }} scanninger (nøjagtige tidspunkter og steder)</span>
-        </div>
+    <div ref="mapContainer" class="track-map w-full rounded border border-gray-200"></div>
+
+    <!--
+      The legend is not decoration: it is where "this line stops because the scout left the patrol"
+      is distinguished from "this line stops because the phone did", and where coverage says whether
+      the picture is worth reasoning from at all.
+    -->
+    <div v-if="members.length" class="grid gap-1 text-xs sm:grid-cols-2">
+      <div v-for="(m, i) in members" :key="m.personId" class="flex items-center gap-2 flex-wrap">
+        <span
+          class="inline-block w-3 h-1 rounded"
+          :style="{ backgroundColor: colourOf(i) }"
+          aria-hidden="true"
+        />
+        <span class="font-medium" :class="{ 'italic text-gray-500': !m.name }">
+          {{ label(m) }}
+        </span>
+        <span v-if="m.membershipTo" class="text-gray-500">
+          (forlod patruljen {{ formatClock(m.membershipTo) }})
+        </span>
+        <span class="text-gray-500">· {{ coverageText(m) }}</span>
+        <span v-if="lastSeen(m)" class="text-gray-400">· sidst {{ lastSeen(m) }}</span>
       </div>
-    </template>
+      <div v-if="scans.length" class="flex items-center gap-2">
+        <i class="pi pi-map-marker text-gray-600" aria-hidden="true" />
+        <span>{{ scans.length }} scanninger (nøjagtige tidspunkter og steder)</span>
+      </div>
+    </div>
   </div>
 </template>
 
