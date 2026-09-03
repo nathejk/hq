@@ -1,10 +1,10 @@
 # 127 — Settings button and `KortSettingsDialog` on `/kort`
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (Zed)
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -37,3 +37,6 @@ other, since both own marker interaction (PRD §8, dependencies & risks).
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 010 §10.
+- 2026-09-03 — Picked up. Plan: dialog in the shape of `DispatchTaskDialog` (PrimeVue `Dialog`,
+  `emit('update:visible')`, writes then tells the owner to refresh). Scope held to the shell plus
+  sheet CRUD, selection highlighting and reorder — checkpoints are 128, sets 129, extents 130.
