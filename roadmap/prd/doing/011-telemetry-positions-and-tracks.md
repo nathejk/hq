@@ -3,7 +3,7 @@
 **Status:** doing
 **Author:** agent session (with knj)
 **Created:** 2026-09-03
-**Last updated:** 2026-09-03
+**Last updated:** 2026-09-03 (all code tasks complete; 139/152/153 outstanding)
 **Approved:** 2026-09-03
 **Shipped:**
 **Target users:** organizer (HQ operators, løbsledelse, SOS/dispatch), and — indirectly — participants whose hej-app reports the positions
@@ -616,21 +616,35 @@ infrastructure question is answered first.
 
 Tasks created in `roadmap/tasks/open/` on approval:
 
-- [ ] 139 — Provision the `TELEMETRY` stream in NATS (dev + stage), correctly cased — blocking, since a missing stream is fatal at API boot
-- [ ] 140 — Widen `live.SignalFromSubject` to accept `TELEMETRY` alongside `NATHEJK`
-- [ ] 141 — Add `table/track` projection (`track_latest` + `track_point`), wired into the `projections` slice
-- [ ] 142 — `GET /api/telemetry/presence`
-- [ ] 143 — `usePositionPresence` composable + `PositionIndicator.vue`
-- [ ] 144 — Drop the indicator into every people list
-- [ ] 145 — Segment tracks on a gap threshold and report per-track coverage
-- [ ] 146 — Server-side track reduction, applied within segments
-- [ ] 147 — `GET /api/telemetry/person/:personId/track`
-- [ ] 148 — Derive patrulje membership intervals (current + former)
-- [ ] 149 — `GET /api/telemetry/patrulje/:teamId/track` — member tracks + scans
-- [ ] 150 — `TrackMapDialog.vue`
-- [ ] 151 — Per-person telemetry erasure (compliance)
+- [x] 139 — Provision the `TELEMETRY` stream in NATS (dev + stage) — **dev confirmed, stage outstanding**
+- [x] 140 — Widen `live.SignalFromSubject` to accept `TELEMETRY` alongside `NATHEJK`
+- [x] 141 — Add `table/track` projection (`track_latest` + `track_point`), wired into the `projections` slice
+- [x] 142 — `GET /api/telemetry/presence`
+- [x] 143 — `usePositionPresence` composable + `PositionIndicator.vue`
+- [x] 144 — Drop the indicator into every people list
+- [x] 145 — Segment tracks on a gap threshold and report per-track coverage
+- [x] 146 — Server-side track reduction, applied within segments
+- [x] 147 — `GET /api/telemetry/person/:personId/track`
+- [x] 148 — Derive patrulje membership intervals (current + former)
+- [x] 149 — `GET /api/telemetry/patrulje/:teamId/track` — member tracks + scans
+- [x] 150 — `TrackMapDialog.vue`
+- [x] 151 — Per-person telemetry erasure (compliance) — `roadmap/api/telemetry-erasure.md`
 - [ ] 152 — Raise the batch-cap sizing with hej-app
 - [ ] 153 — Decide hq's telemetry scope and measure replay cost
+
+### Found along the way
+
+**A pre-existing bug in `scan`'s querier, fixed under task 149.** `GetAll` scanned `uts`
+into a variable declared outside the row loop and never assigned it to the row, so every
+scan it returned carried `uts=0` while the table held the real value. It had been silently
+wrong for `GET /api/patrulje/:id/scans` too. It surfaced here because this PRD puts scans
+and tracks on one time axis, where every marker landed in 1970 rather than merely being an
+unused field — a good example of a new consumer exposing an old defect. `/api/patrulje/:id/scans`
+now returns real timestamps, which is a visible behaviour change to an existing endpoint.
+
+**Membership is year-scoped, `scan.GetAll` is not.** Requesting a previous year's team
+under the current year slug returns its scans with zero members. Harmless today — the SPA
+only navigates to current-year teams — but it is a seam somebody will trip over.
 
 ## 11. Open Questions
 
@@ -662,12 +676,13 @@ Tasks created in `roadmap/tasks/open/` on approval:
   short silence is meaningful, but hour-long gaps are routine, so a tight
   threshold would leave most indicators muted most of the time and the state would
   stop carrying information. 15 minutes? An hour? Should it differ for a racing
-  patrol and a gøgler?
+  patrol and a gøgler? **Implemented as 30 min** (`STALE_AFTER_MS`, task 143) — a
+  default in one place, not a decision.
 - **Gap threshold.** What delta between consecutive points starts a new segment?
   This is the one number the whole track rendering hangs on. Too small and a
   normal track shatters into confetti; too large and we bridge a gap we should
-  have shown. 5 minutes (10× the sampling interval) is my instinct as a starting
-  point, ideally verified against real data once any exists.
+  have shown. **Implemented as 5 minutes** (`GapThresholdMs`, task 145), i.e. ten
+  samples, still to be checked against the real distribution of deltas.
 - ~~**`crewmate`.**~~ **Answered (2026-09-03):** it is `crewmember`
   (`shared-go/tables/crewmember`). Residual: a gøgler/friend/bandit lives in
   `personnel`, not `crewmember`, though both are keyed by `userId` — confirm the
