@@ -179,7 +179,13 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
             <Column field="name" header="Navn" sortable>
                 <template #body="{data}">
                     <span :class="memberNameClass(data)">{{ data.name }}</span>
-                    <PositionIndicator :person-id="data.memberId" class="ml-1" />
+                    <!-- teamId given, so this opens the patrol's map rather than one member's line. -->
+                    <PositionIndicator
+                        :person-id="data.memberId"
+                        :team-id="props.teamId"
+                        :label="patrulje.name || data.name"
+                        class="ml-1"
+                    />
                     <!--
                       Made visible in the collapsed row, not only in the expanded one: a
                       member moved to another patrol is still listed here and still racing,

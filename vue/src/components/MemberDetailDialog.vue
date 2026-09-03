@@ -168,7 +168,13 @@ watch(error, (err) => {
           operator comes to ask "when did we last hear from this phone?" deliberately rather than
           in passing.
         -->
-        <PositionIndicator :person-id="memberId" show-text class="text-base" />
+        <PositionIndicator
+          :person-id="memberId"
+          :team-id="teamId"
+          :label="detail?.member.name || name"
+          show-text
+          class="text-base"
+        />
         <Tag
           v-if="status"
           :icon="statusIcon(status)"

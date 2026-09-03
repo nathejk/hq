@@ -30,6 +30,7 @@ import {
   useNow,
   usePositionPresence,
 } from '@/composables/usePositionPresence'
+import { useTrackViewer } from '@/composables/useTrackViewer'
 
 const props = defineProps<{
   /**
@@ -38,6 +39,19 @@ const props = defineProps<{
    * already has and needs no type hint.
    */
   personId: string | undefined | null
+
+  /**
+   * The team this person is a member of, when the caller knows it.
+   *
+   * This is what decides which map opens: with a team, clicking shows the **patrol's** track — every
+   * member who has ever been on it plus its scans — because for a spejder the patrol is the unit that
+   * matters. Without one, it shows this person's own track, which is the right answer for crew and
+   * gøglere. The rule itself lives in `useTrackViewer`, so a call site only states what it knows.
+   */
+  teamId?: string | null
+
+  /** A name for the dialog's heading, when the caller has one. */
+  label?: string | null
 
   /**
    * Show the timestamp as text beside the glyph instead of only in a tooltip.
@@ -49,6 +63,7 @@ const props = defineProps<{
 }>()
 
 const { hasPosition, lastSeenAt, loading } = usePositionPresence()
+const { show } = useTrackViewer()
 const now = useNow()
 
 const ts = computed(() => lastSeenAt(props.personId))
@@ -63,6 +78,16 @@ const label = computed(() => {
   if (ts.value === undefined) return ''
   return `Sidst set ${formatClock(ts.value)} · ${formatRelative(ts.value, now.value)}`
 })
+
+const title = computed(() => `${label.value} — klik for at se spor`)
+
+function openTrack() {
+  if (!props.personId) return
+  show(props.personId, {
+    teamId: props.teamId ?? undefined,
+    label: props.label ?? undefined,
+  })
+}
 </script>
 
 <template>
@@ -73,15 +98,26 @@ const label = computed(() => {
 
     Sized to the surrounding text (text-xs, no margins of its own beyond a small gap) so dropping it
     into a dense DataTable cell cannot shift a row's height.
+
+    A <button> rather than a clickable <i>: this opens a dialog, so it must be reachable by keyboard
+    and announced as an action. `type="button"` because these sit inside forms in some views, and a
+    default-type button there would submit. `@click.stop` because several call sites put this next to
+    a name that is itself a row-opening control — clicking the glyph should not also open the member.
   -->
   <span v-if="visible" class="inline-flex items-center gap-1 align-baseline">
-    <i
-      class="pi pi-map-marker text-xs"
-      :class="stale ? 'text-gray-400' : 'text-gray-600'"
-      v-tooltip.top="label"
-      :aria-label="label"
-      role="img"
-    />
+    <button
+      type="button"
+      class="inline-flex items-center bg-transparent border-0 p-0 cursor-pointer leading-none"
+      v-tooltip.top="title"
+      :aria-label="title"
+      @click.stop="openTrack"
+    >
+      <i
+        class="pi pi-map-marker text-xs"
+        :class="stale ? 'text-gray-400' : 'text-gray-600'"
+        aria-hidden="true"
+      />
+    </button>
     <span v-if="showText" class="text-xs" :class="stale ? 'text-gray-400' : 'text-gray-600'">
       {{ label }}
     </span>

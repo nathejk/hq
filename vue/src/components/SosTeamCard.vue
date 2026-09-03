@@ -552,7 +552,11 @@ const withdrawTeam = computed<TeamRow | null>(() => {
            class="text-base" :aria-label="statusLabel(member.status)" />
         <span class="font-medium" :class="nameClass(member)">{{ member.name || member.memberId }}</span>
         <!-- Does this scout's phone report positions? The most useful thing to know on a SOS card. -->
-        <PositionIndicator :person-id="member.memberId" />
+        <PositionIndicator
+          :person-id="member.memberId"
+          :team-id="team.teamId"
+          :label="team.name"
+        />
         <!--
           Marked rather than left to be worked out: a name that is not on this patrol's own
           roster is otherwise indistinguishable from one that is, and "who did we put here?"

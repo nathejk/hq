@@ -4,6 +4,7 @@ import { RouterLink, RouterView, useRoute } from 'vue-router'
 import HelloWorld from './components/HelloWorld.vue'
 import Navigation from '@/components/Navigation.vue'
 import Foooter from '@/components/Footer.vue'
+import TrackMapDialog from '@/components/TrackMapDialog.vue'
 import { useToast } from 'primevue/usetoast'
 
 const toast = useToast()
@@ -23,6 +24,12 @@ const isFullbleed = computed(() => route.path === '/kort')
     <foooter />
   </template>
   <Toast />
+  <!--
+    Mounted once, here, rather than in each of the seven places a position glyph appears (PRD 011).
+    Its content is owned by `useTrackViewer`, the same way Toast is driven by the toast service — seven
+    copies would mean seven chances to wire it differently and a Leaflet map instantiated per list.
+  -->
+  <TrackMapDialog />
 </template>
 
 <style scoped>

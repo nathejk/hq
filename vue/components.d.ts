@@ -72,6 +72,8 @@ declare module 'vue' {
     TimePicker: typeof import('./src/components/TimePicker.vue')['default']
     Toast: typeof import('primevue/toast')['default']
     ToggleSwitch: typeof import('primevue/toggleswitch')['default']
+    TrackMapDialog: typeof import('./src/components/TrackMapDialog.vue')['default']
+    TrackMapPanel: typeof import('./src/components/TrackMapPanel.vue')['default']
     Tree: typeof import('primevue/tree')['default']
     TreeSelect: typeof import('primevue/treeselect')['default']
     WelcomeItem: typeof import('./src/components/WelcomeItem.vue')['default']

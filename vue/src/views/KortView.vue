@@ -6,6 +6,12 @@ import { http } from '@/plugins/axios'
 import { useLiveResource } from '@/composables/useLiveResource'
 import { useDeferredApply } from '@/composables/useDeferredApply'
 import { useKort, extentFromCorners, type Extent } from '@/composables/kort'
+import {
+  createBaseLayers,
+  DEFAULT_BASE_LAYER,
+  RACE_AREA_CENTER,
+  RACE_AREA_ZOOM,
+} from '@/composables/mapLayers'
 import KortSettingsDialog from '@/components/kort/KortSettingsDialog.vue'
 
 // ---------------------------------------------------------------------------
@@ -225,29 +231,9 @@ let menuLatLng: L.LatLng | null = null
 // ---------------------------------------------------------------------------
 // Base layers
 // ---------------------------------------------------------------------------
-const baseLayers: Record<string, L.TileLayer | L.TileLayer.WMS> = {
-  'Topografisk 1:25.000': L.tileLayer.wms('https://api.dataforsyningen.dk/dtk_25_DAF', {
-    layers: 'DTK25',
-    format: 'image/png',
-    transparent: true,
-    attribution: '&copy; <a target="_blank" href="https://download.kortforsyningen.dk/content/vilk%C3%A5r-og-betingelser">Styrelsen for Dataforsyning og Effektivisering</a>',
-    // @ts-ignore – extra param passed as query string by Leaflet
-    token: '0d5816d7e175e934301f0277686c43f8',
-    maxZoom: 19
-  } as L.WMSOptions),
-  Luftfoto: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-    attribution: '&copy; Esri &mdash; Sources: Esri, DigitalGlobe, Earthstar Geographics',
-    maxZoom: 19
-  }),
-  OpenStreetMap: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    maxZoom: 19
-  }),
-  Topografisk: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)',
-    maxZoom: 17
-  })
-}
+// Shared with the track dialog (task 150) via a factory rather than a module-level object: a Leaflet
+// layer instance belongs to one map, so two maps sharing instances make the first go blank.
+const baseLayers = createBaseLayers()
 
 // ---------------------------------------------------------------------------
 // Fix default Leaflet marker icons (webpack / vite asset issue)
@@ -791,10 +777,10 @@ onMounted(async () => {
   if (!mapContainer.value) return
 
   map = L.map(mapContainer.value, {
-    center: [55.7, 12.1],
-    zoom: 11,
+    center: RACE_AREA_CENTER,
+    zoom: RACE_AREA_ZOOM,
     zoomControl: false,
-    layers: [baseLayers['Topografisk 1:25.000']]
+    layers: [baseLayers[DEFAULT_BASE_LAYER]]
   })
 
   L.control.zoom({ position: 'topright' }).addTo(map)
