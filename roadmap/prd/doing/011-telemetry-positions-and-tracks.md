@@ -360,6 +360,15 @@ member and whether they are still on the team.
   Access is restricted to authenticated HQ users on the same footing as member
   contact details; retention is bounded (see Open Questions) and stated in the
   schema comment. No position data is exposed on any unauthenticated endpoint.
+
+  > **Qualified during task 142.** "Authenticated" overstates what this repo does.
+  > `app.authenticate` attributes every request to an anonymous user and enforces
+  > nothing — authentication lives in an external service — so telemetry endpoints
+  > are exactly as protected as `/api/patrulje/:id` already is, and no more. That
+  > is the right *relative* position for this data, and it is what the PRD's
+  > "same footing as member contact details" actually means. But if the intent was
+  > that position history be held to a **higher** bar than the rest of the read
+  > model, nothing in hq implements that today and it would need its own task.
 - **Honest absence.** The indicator must distinguish "never reported" from "we
   have not asked yet": while presence is still loading, show nothing rather than
   a wrong negative.

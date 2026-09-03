@@ -60,6 +60,11 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodDelete, "/api/klan/:id", app.deleteKlanHandler)
 	router.HandlerFunc(http.MethodGet, "/api/badut", app.showBadutListHandler)
 
+	// Telemetry: where people were (PRD 011). Presence is one small response keyed by personId,
+	// serving the position glyph on every people list — which is why no other endpoint gained a
+	// field for it.
+	router.HandlerFunc(http.MethodGet, "/api/telemetry/presence", app.listTelemetryPresenceHandler)
+
 	// Members in our care (PRD 006). Event-wide rather than per case: a member we
 	// are responsible for is our problem whether or not anybody opened a case.
 	//

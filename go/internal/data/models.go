@@ -26,6 +26,7 @@ import (
 	"nathejk.dk/nathejk/table/sos"
 	"nathejk.dk/nathejk/table/spejdernote"
 	"nathejk.dk/nathejk/table/spejderstatus"
+	"nathejk.dk/nathejk/table/track"
 	"nathejk.dk/nathejk/table/year"
 )
 
@@ -91,9 +92,11 @@ type Models struct {
 	// Kort is the printed sheets and their sets (PRD 010).
 	Kort          kort.Queries
 	SpejderStatus spejderstatus.Queries
+	// Track is where people were: positions reported by the hej-app (PRD 011).
+	Track track.Queries
 }
 
-func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface, sec section.Queries, crew crewmember.Queries, veh vehicle.Queries, ord order.Queries, sosq sos.Queries, memberq spejderstatus.Queries, shelterq shelter.Queries, noteq spejdernote.Queries, dispatchq dispatch.Queries, kortq kort.Queries) Models {
+func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface, sec section.Queries, crew crewmember.Queries, veh vehicle.Queries, ord order.Queries, sosq sos.Queries, memberq spejderstatus.Queries, shelterq shelter.Queries, noteq spejdernote.Queries, dispatchq dispatch.Queries, kortq kort.Queries, trackq track.Queries) Models {
 	return Models{
 		Year:           y,
 		Teams:          TeamModel{DB: db},
@@ -119,5 +122,6 @@ func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInte
 		Dispatch:       dispatchq,
 		Kort:           kortq,
 		SpejderStatus:  memberq,
+		Track:          trackq,
 	}
 }
