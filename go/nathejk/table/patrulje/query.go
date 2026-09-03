@@ -24,9 +24,9 @@ type Queries interface {
 //
 // Deliberately two columns. The post list's four numbers per line need exactly this
 // and are recomputed on every scan during the race — peak 17 a minute — while GetAll
-// carries three correlated subqueries per row (member count, t-shirt count, a payment
-// sum with a nested IN) and measures 226ms against this season's data, against 0.3ms
-// for the query below. Reaching for the fat row to read two fields is how a page that
+// aggregates over three further tables (member count, t-shirt count and a payment sum
+// unioned across orders) and measures hundreds of milliseconds against this season's
+// data, against 0.3ms for the query below. Reaching for the fat row to read two fields is how a page that
 // answered in milliseconds comes to take a quarter of a second per scan.
 type StartedTeam struct {
 	TeamID types.TeamID
@@ -45,14 +45,37 @@ func (q *querier) GetAll(ctx context.Context, filters Filter) ([]Patrulje, error
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	query := `SELECT p.teamId, teamNumber, name, groupName, korps, liga, contactName, contactPhone, contactEmail, contactRole, signupStatus, activeMemberCount,
-			(SELECT COUNT(*) FROM spejder s where p.teamId = s.teamId) memberCount,
-			(SELECT COUNT(*) FROM spejder s where p.teamId = s.teamId AND s.tshirtSize != '') tshirtCount,
-			(SELECT COALESCE(SUM(pay.amount), 0) FROM payment pay
-				WHERE pay.status IN ('reserved', 'received')
-				  AND (pay.orderForeignKey = p.teamId
-				       OR pay.orderForeignKey IN (SELECT o.orderId FROM orders o WHERE o.ownerType = 'patrulje' AND o.ownerId = p.teamId))) as paidAmount
+	// Aggregates are joined as pre-grouped derived tables rather than computed as
+	// correlated subqueries per row. The correlated form was three subqueries per
+	// patrol against tables that carry no usable index for them — `spejder` is keyed
+	// (year, memberId), so a lookup by teamId is a full scan, and `payment` has no
+	// index on orderForeignKey at all — which made this O(patruljer × rows) and, in
+	// production, exceeded the 3-second budget below: the patrol list answered 500.
+	// Both schemas live in shared-go, so the fix that this repo owns is to scan each
+	// table once and join.
+	//
+	// The payment side unions the two ways a payment reaches a team — straight to the
+	// teamId (older years) or via an order owned by it — into one keyed set before
+	// summing, which is the same set the OR + nested IN described.
+	query := `SELECT p.teamId, p.teamNumber, p.name, p.groupName, p.korps, p.liga, p.contactName, p.contactPhone, p.contactEmail, p.contactRole, p.signupStatus, p.activeMemberCount,
+			COALESCE(m.memberCount, 0) memberCount,
+			COALESCE(m.tshirtCount, 0) tshirtCount,
+			COALESCE(pay.paidAmount, 0) paidAmount
 		FROM patrulje p
+		LEFT JOIN (
+			SELECT s.teamId, COUNT(*) memberCount, SUM(s.tshirtSize != '') tshirtCount
+			FROM spejder s GROUP BY s.teamId
+		) m ON m.teamId = p.teamId
+		LEFT JOIN (
+			SELECT k.teamId, SUM(pa.amount) paidAmount
+			FROM (
+				SELECT o.ownerId teamId, o.orderId foreignKey FROM orders o WHERE o.ownerType = 'patrulje'
+				UNION ALL
+				SELECT p2.teamId, p2.teamId FROM patrulje p2
+			) k
+			JOIN payment pa ON pa.orderForeignKey = k.foreignKey AND pa.status IN ('reserved', 'received')
+			GROUP BY k.teamId
+		) pay ON pay.teamId = p.teamId
 		WHERE (LOWER(p.year) = LOWER(?) OR ? = '')`
 	args := []any{filters.YearSlug, filters.YearSlug}
 	rows, err := q.db.QueryContext(ctx, query, args...)
@@ -209,12 +232,11 @@ func (q *querier) GetContact(teamID types.TeamID) (*Contact, error) {
 // still being rebuilt and the database is at its busiest.
 //
 // GetAll cannot serve that: it carries a hardcoded 3-second timeout that overrides
-// whatever budget the caller set, and it computes three correlated subqueries per
-// row — two counts over spejder and a payment sum containing a nested IN over
-// orders. Under replay load in production that exceeded three seconds, the saga
-// treated it as "cannot read existing numbers", stayed dormant to avoid re-issuing
-// a number, and nothing was ever numbered. This query touches one table and reads
-// two varchar columns.
+// whatever budget the caller set, and it aggregates over spejder, orders and payment
+// to build the fat row. Under replay load in production that exceeded three seconds,
+// the saga treated it as "cannot read existing numbers", stayed dormant to avoid
+// re-issuing a number, and nothing was ever numbered. This query touches one table
+// and reads two varchar columns.
 //
 // Rows with an empty teamNumber are skipped rather than returned as blanks: every
 // caller only cares about numbers that exist.

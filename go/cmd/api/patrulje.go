@@ -85,7 +85,11 @@ func (app *application) showPatruljeListHandler(w http.ResponseWriter, r *http.R
 	filter := patrulje.Filter{YearSlug: app.YearSlug(r)}
 	teams, err := app.models.Patrulje.GetAll(r.Context(), filter)
 	if err != nil {
+		// Return, do not fall through: without this the failing request answered with an
+		// error envelope *and* a second `{"teams": null}` body, which is not JSON any
+		// client can parse — so a database problem surfaced as a mystery in the SPA.
 		app.ServerErrorResponse(w, r, err)
+		return
 	}
 
 	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"teams": teams}, nil)
