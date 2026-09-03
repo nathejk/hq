@@ -10,6 +10,7 @@ import {
   orderPicks,
   sameExtent,
   someMapContainsAll,
+  splitCheckgroups,
   teamTypeLabel,
   teamTypeOptions,
   toggleGroupSelection,
@@ -246,6 +247,61 @@ describe('unionBounds', () => {
 
   it('is undefined with nothing to bound', () => {
     expect(unionBounds([])).toBeUndefined()
+  })
+})
+
+describe('splitCheckgroups', () => {
+  const sheetWith = (id: string, name: string, checkpointIds: string[]): Kort => ({
+    ...sheet(id, checkpointIds),
+    name,
+  })
+
+  // The mistake with a race-day cost: the group reveals as a whole, so the patrol sees a post it has
+  // no sheet for.
+  it('reports a checkgroup split across two sheets', () => {
+    const s = set([sheetWith('k-1', 'Kort 1', ['cp-1']), sheetWith('k-2', 'Kort 2', ['cp-2'])])
+    const splits = splitCheckgroups(s, [group('cg-1', ['cp-1', 'cp-2'])])
+
+    expect(splits).toHaveLength(1)
+    expect(splits[0].checkgroupName).toBe('cg-1')
+    expect(splits[0].sheetNames).toEqual(['Kort 1', 'Kort 2'])
+  })
+
+  // Existential, not partitioning: overlap is designed in, so two sheets that each hold the whole
+  // group is fine. A partitioning test would fire on the normal case and be ignored.
+  it('stays quiet when two overlapping sheets each hold the whole group', () => {
+    const s = set([sheetWith('k-1', 'Kort 1', ['cp-1', 'cp-2']), sheetWith('k-2', 'Kort 2', ['cp-1', 'cp-2'])])
+    expect(splitCheckgroups(s, [group('cg-1', ['cp-1', 'cp-2'])])).toEqual([])
+  })
+
+  it('stays quiet when one sheet holds the whole group', () => {
+    const s = set([sheetWith('k-1', 'Kort 1', ['cp-1', 'cp-2', 'cp-3'])])
+    expect(splitCheckgroups(s, [group('cg-1', ['cp-1', 'cp-2'])])).toEqual([])
+  })
+
+  // Not reported here: that is the unassigned list's job, and saying it twice would train the
+  // operator to skim both.
+  it('ignores a checkgroup that is on no sheet at all', () => {
+    const s = set([sheetWith('k-1', 'Kort 1', ['cp-9'])])
+    expect(splitCheckgroups(s, [group('cg-1', ['cp-1', 'cp-2'])])).toEqual([])
+  })
+
+  it('ignores an empty checkgroup', () => {
+    const s = set([sheetWith('k-1', 'Kort 1', ['cp-1'])])
+    expect(splitCheckgroups(s, [group('cg-empty', [])])).toEqual([])
+  })
+
+  // Membership, never geometry: a group's checkpoints may legitimately sit in the two different
+  // areas of one double-sided sheet, and comparing positions would false-alarm on every one.
+  it('accepts a group spread across the two areas of a single sheet', () => {
+    const doubleSided: Kort = {
+      ...sheetWith('k-1', 'Kort 5', ['cp-1', 'cp-2']),
+      extents: [
+        { northWest: { latitude: 56, longitude: 9.0 }, southEast: { latitude: 55.5, longitude: 9.4 } },
+        { northWest: { latitude: 55, longitude: 10.0 }, southEast: { latitude: 54.5, longitude: 10.4 } },
+      ],
+    }
+    expect(splitCheckgroups(set([doubleSided]), [group('cg-1', ['cp-1', 'cp-2'])])).toEqual([])
   })
 })
 

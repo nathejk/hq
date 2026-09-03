@@ -28,6 +28,7 @@ import {
   orderPicks,
   sameExtent,
   setExtents,
+  splitCheckgroups,
   teamTypeLabel,
   teamTypeOptions,
   toggleGroupSelection,
@@ -577,6 +578,18 @@ watch([overlaySet, overlayGaps], () => {
 /** How many sheets in the set have no area recorded — a skitse, or one nobody has drawn yet. */
 const overlayWithoutExtent = computed(() => overlaySet.value?.kort.filter((sheet) => sheet.extents.length === 0).length ?? 0)
 
+// --- the split-checkgroup warning (task 133) ---
+//
+// A warning, never a block. A half-entered set trips it constantly — the operator ticks one
+// checkpoint of a group and it fires — and a save that refused to complete during data entry would
+// be worse than the mistake it is guarding against.
+
+const splitsBySet = computed(() =>
+  sets.value.map((set) => ({ set, splits: splitCheckgroups(set, props.checkgroups ?? []) })),
+)
+
+const splitsFor = (set: Kortsaet) => splitsBySet.value.find((entry) => entry.set.id === set.id)?.splits ?? []
+
 // --- unsaved state, all of it ---
 //
 // Declared here, after every source, because the emit below runs immediately: a computed that
@@ -763,6 +776,14 @@ const close = () => {
             </draggable>
 
             <div v-if="set.kort.length === 0" class="px-2 text-xs text-gray-400">Ingen kort i sættet</div>
+
+            <!-- No single sheet covers this checkgroup, so a patrol shown the group would see posts
+                 it holds no map for. A warning only: a half-entered set trips this constantly. -->
+            <div v-for="split in splitsFor(set)" :key="split.checkgroupId" class="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
+              <i class="pi pi-exclamation-triangle" />
+              <strong>{{ split.checkgroupName }}</strong> er delt over
+              {{ split.sheetNames.join(', ') }} — ingen af kortene viser hele postgruppen.
+            </div>
           </div>
         </template>
       </draggable>

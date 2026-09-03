@@ -346,6 +346,61 @@ export const gapCells = (extents: Extent[]): Extent[] => {
 /** Whether a set's sheets leave a seam between them. */
 export const hasSeam = (set: Kortsaet): boolean => gapCells(setExtents(set)).length > 0
 
+// --- the split-checkgroup warning ---
+
+/** A checkgroup spread across sheets that no single sheet covers. */
+export interface SplitCheckgroup {
+  checkgroupId: string
+  checkgroupName: string
+  /** The names of the sheets its checkpoints are scattered over. */
+  sheetNames: string[]
+}
+
+/**
+ * Checkgroups that no single sheet in the set covers completely.
+ *
+ * A checkgroup is revealed as a whole, so a patrol shown one that no sheet covers sees checkpoints
+ * it holds no map for. That is a printing mistake with a race-day cost, and it is cheap to detect.
+ *
+ * Two properties of the test, both easy to get wrong:
+ *
+ *   - **Existential, not partitioning.** Satisfied by *any one* sheet containing the whole group, so
+ *     two overlapping sheets that each contain it are fine. Overlap is designed in, so a
+ *     partitioning test would fire constantly and be ignored.
+ *   - **Membership, never geometry.** A checkgroup's checkpoints may legitimately sit in two
+ *     different areas of the same double-sided sheet, so comparing positions would false-alarm on
+ *     every one of them.
+ *
+ * A checkgroup whose checkpoints are on *no* sheet at all is not reported here: that is the
+ * unassigned list's job, and reporting it twice would train the operator to skim both.
+ */
+export const splitCheckgroups = (set: Kortsaet, groups: CheckgroupLike[]): SplitCheckgroup[] => {
+  const split: SplitCheckgroup[] = []
+  for (const group of groups) {
+    const ids = group.checkpoints.map((cp) => cp.id)
+    if (ids.length === 0) continue
+
+    const sheetsWithAny = set.kort.filter((sheet) => ids.some((id) => sheet.checkpointIds.includes(id)))
+    if (sheetsWithAny.length === 0) continue
+    if (someMapContainsAll(set, ids)) continue
+
+    split.push({
+      checkgroupId: group.id,
+      checkgroupName: group.name,
+      sheetNames: sheetsWithAny.map((sheet) => sheet.name),
+    })
+  }
+  return split
+}
+
+/**
+ * The checkpoints to highlight for a split checkgroup — all of the group's.
+ *
+ * All of them rather than only the ones on other sheets, because the operator's next decision is
+ * "which sheet should carry this whole group?", and that needs the group's full shape on the map.
+ */
+export const splitCheckgroupCheckpoints = (group: CheckgroupLike): string[] => group.checkpoints.map((cp) => cp.id)
+
 // --- the checkpoint picker's rules ---
 
 /** Minimal shape the picker needs of a checkgroup. */
