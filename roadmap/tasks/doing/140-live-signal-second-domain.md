@@ -1,10 +1,10 @@
 # 140 — widen live signals to a second stream domain
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -36,3 +36,4 @@ not shift by a hair.
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 011 §10.
+- 2026-09-03 — Picked up. Plan: replace the `domain` const with a set of known domains, keep every shape rule and the case-insensitive compare, extend `signal_test.go`.
