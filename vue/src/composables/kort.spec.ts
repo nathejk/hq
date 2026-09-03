@@ -4,6 +4,7 @@ import {
   checkpointsWithoutMap,
   extentFromCorners,
   formatLabel,
+  gapCells,
   groupSelectionState,
   isDegenerate,
   orderPicks,
@@ -12,6 +13,7 @@ import {
   teamTypeLabel,
   teamTypeOptions,
   toggleGroupSelection,
+  unionBounds,
   KORT_DEPENDENCIES,
   type Extent,
   type Kort,
@@ -159,6 +161,91 @@ describe('isDegenerate', () => {
     expect(
       isDegenerate({ northWest: { latitude: 56.1, longitude: 9.1 }, southEast: { latitude: 55.8, longitude: 9.6 } }),
     ).toBe(false)
+  })
+})
+
+describe('gapCells', () => {
+  const rect = (north: number, west: number, south: number, east: number): Extent => ({
+    northWest: { latitude: north, longitude: west },
+    southEast: { latitude: south, longitude: east },
+  })
+
+  // The failure that matters: a strip of ground no sheet shows, between two sheets that each look
+  // fine on their own. A patrol walking into it has nothing in their hands.
+  it('finds a vertical seam between two side-by-side sheets', () => {
+    const gaps = gapCells([rect(56, 9.0, 55, 9.4), rect(56, 9.5, 55, 9.9)])
+
+    expect(gaps).toHaveLength(1)
+    expect(gaps[0]).toEqual(rect(56, 9.4, 55, 9.5))
+  })
+
+  // Overlap is designed in, so touching or overlapping sheets must be silent — a check that cried
+  // wolf on the normal case would be turned off within a day.
+  it('reports nothing for sheets that touch exactly', () => {
+    expect(gapCells([rect(56, 9.0, 55, 9.4), rect(56, 9.4, 55, 9.8)])).toEqual([])
+  })
+
+  it('reports nothing for overlapping sheets', () => {
+    expect(gapCells([rect(56, 9.0, 55, 9.5), rect(56, 9.4, 55, 9.9)])).toEqual([])
+  })
+
+  // A thin seam is the dangerous one, and exact decomposition catches it at any width — which
+  // sampling on a fixed grid would not.
+  it('catches a very thin seam', () => {
+    const gaps = gapCells([rect(56, 9.0, 55, 9.4), rect(56, 9.4001, 55, 9.8)])
+    expect(gaps).toHaveLength(1)
+  })
+
+  // Two sheets stacked with a horizontal band missing between them.
+  it('finds a horizontal seam', () => {
+    const gaps = gapCells([rect(56.0, 9.0, 55.6, 9.5), rect(55.5, 9.0, 55.0, 9.5)])
+
+    expect(gaps).toHaveLength(1)
+    expect(gaps[0]).toEqual(rect(55.6, 9.0, 55.5, 9.5))
+  })
+
+  // The L-shape: the bounding box has a corner no sheet covers. That corner is *not* a seam between
+  // sheets, but it is genuinely uncovered ground inside the area the set spans, and an operator
+  // should see it and decide. Reporting it is the honest answer; the alternative would be guessing
+  // which uncovered ground is intentional.
+  it('reports the uncovered corner of an L-shaped layout', () => {
+    const gaps = gapCells([rect(56, 9.0, 55.5, 9.4), rect(55.5, 9.0, 55.0, 9.4), rect(56, 9.4, 55.5, 9.8)])
+
+    expect(gaps).toHaveLength(1)
+    expect(gaps[0]).toEqual(rect(55.5, 9.4, 55.0, 9.8))
+  })
+
+  // Merged along the row, so a gap spanning several grid columns is one band rather than a mosaic
+  // of squares an operator has to interpret.
+  it('merges adjacent gap cells in a row', () => {
+    const gaps = gapCells([rect(56, 9.0, 55, 9.2), rect(56, 9.4, 55, 9.6), rect(56, 9.8, 55, 9.9)])
+
+    // Two gaps (9.2–9.4 and 9.6–9.8), not four cells.
+    expect(gaps).toHaveLength(2)
+  })
+
+  // One sheet cannot have a seam with itself, and no sheets is not a seam either — it is a set
+  // nobody has drawn yet.
+  it('reports nothing for fewer than two rectangles', () => {
+    expect(gapCells([])).toEqual([])
+    expect(gapCells([rect(56, 9.0, 55, 9.4)])).toEqual([])
+  })
+})
+
+describe('unionBounds', () => {
+  it('spans every rectangle', () => {
+    const bounds = unionBounds([
+      { northWest: { latitude: 56, longitude: 9.0 }, southEast: { latitude: 55.5, longitude: 9.4 } },
+      { northWest: { latitude: 55.8, longitude: 9.3 }, southEast: { latitude: 55.0, longitude: 9.9 } },
+    ])
+    expect(bounds).toEqual({
+      northWest: { latitude: 56, longitude: 9.0 },
+      southEast: { latitude: 55.0, longitude: 9.9 },
+    })
+  })
+
+  it('is undefined with nothing to bound', () => {
+    expect(unionBounds([])).toBeUndefined()
   })
 })
 

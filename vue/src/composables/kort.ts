@@ -266,6 +266,86 @@ export const isDegenerate = (extent: Extent): boolean =>
   extent.northWest.latitude === extent.southEast.latitude ||
   extent.northWest.longitude === extent.southEast.longitude
 
+// --- the seam check ---
+
+/** Every extent of every sheet in a set. */
+export const setExtents = (set: Kortsaet): Extent[] => set.kort.flatMap((sheet) => sheet.extents)
+
+/** The smallest rectangle containing them all, or undefined when there are none. */
+export const unionBounds = (extents: Extent[]): Extent | undefined => {
+  if (extents.length === 0) return undefined
+  return {
+    northWest: {
+      latitude: Math.max(...extents.map((e) => e.northWest.latitude)),
+      longitude: Math.min(...extents.map((e) => e.northWest.longitude)),
+    },
+    southEast: {
+      latitude: Math.min(...extents.map((e) => e.southEast.latitude)),
+      longitude: Math.max(...extents.map((e) => e.southEast.longitude)),
+    },
+  }
+}
+
+const covers = (extent: Extent, lat: number, lng: number): boolean =>
+  lat <= extent.northWest.latitude &&
+  lat >= extent.southEast.latitude &&
+  lng >= extent.northWest.longitude &&
+  lng <= extent.southEast.longitude
+
+/**
+ * The ground inside the set's own bounding box that no sheet shows.
+ *
+ * This is the seam check, and it is exact rather than approximate — which is possible only because
+ * every rectangle is axis-aligned. Cutting on every distinct latitude and longitude produces a grid
+ * in which each cell is either wholly covered or wholly uncovered, so the uncovered cells *are* the
+ * complement. No polygon clipping, no dependency, no sampling that could miss a thin seam — and a
+ * thin seam is precisely the failure worth catching, since it is a strip of ground no sheet shows
+ * and a patrol walking into it has nothing in their hands.
+ *
+ * Measured against the set's own bounding box, not against "the race area": that has no recorded
+ * boundary, all sheets lie inside it by construction, and a percentage of it would always read
+ * ~100% while a seam went unnoticed (PRD 010 §8).
+ *
+ * Cells are merged along each row, so two sheets side by side with a gap between them yield one
+ * band rather than a mosaic of squares an operator has to interpret.
+ */
+export const gapCells = (extents: Extent[]): Extent[] => {
+  if (extents.length < 2) return []
+
+  const lats = [...new Set(extents.flatMap((e) => [e.northWest.latitude, e.southEast.latitude]))].sort((a, b) => b - a)
+  const lngs = [...new Set(extents.flatMap((e) => [e.northWest.longitude, e.southEast.longitude]))].sort((a, b) => a - b)
+
+  const gaps: Extent[] = []
+  for (let row = 0; row < lats.length - 1; row += 1) {
+    const north = lats[row]
+    const south = lats[row + 1]
+    // The cell's midpoint decides coverage. Sound because no rectangle edge falls strictly inside a
+    // cell — every edge became a grid line — so the midpoint's answer is the whole cell's answer.
+    const midLat = (north + south) / 2
+    let run: Extent | null = null
+
+    for (let col = 0; col < lngs.length - 1; col += 1) {
+      const west = lngs[col]
+      const east = lngs[col + 1]
+      const midLng = (west + east) / 2
+      const uncovered = !extents.some((extent) => covers(extent, midLat, midLng))
+
+      if (uncovered) {
+        if (run) run.southEast.longitude = east
+        else run = { northWest: { latitude: north, longitude: west }, southEast: { latitude: south, longitude: east } }
+      } else if (run) {
+        gaps.push(run)
+        run = null
+      }
+    }
+    if (run) gaps.push(run)
+  }
+  return gaps
+}
+
+/** Whether a set's sheets leave a seam between them. */
+export const hasSeam = (set: Kortsaet): boolean => gapCells(setExtents(set)).length > 0
+
 // --- the checkpoint picker's rules ---
 
 /** Minimal shape the picker needs of a checkgroup. */

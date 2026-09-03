@@ -83,6 +83,7 @@ watch(settingsOpen, (open) => {
   if (open) return
   selectedKortId.value = undefined
   extentsPreview.value = []
+  overlay.value = null
   pickingExtent.value = false
 })
 
@@ -126,6 +127,8 @@ watch([highlightedCheckpoints, selectedKortId], () => applyHighlight())
 
 /** Rectangles to draw — the dialog's draft, so an unsaved extent is visible immediately. */
 const extentsPreview = ref<Extent[]>([])
+/** A whole set's areas and the ground between them, for the seam check. */
+const overlay = ref<{ extents: Extent[]; gaps: Extent[] } | null>(null)
 /** True while the next two clicks are corners. */
 const pickingExtent = ref(false)
 /** The rectangle just drawn, handed to the dialog. `seq` so an identical redraw still registers. */
@@ -149,20 +152,32 @@ const drawExtents = () => {
   if (!map) return
   extentLayer?.remove()
   extentLayer = L.layerGroup().addTo(map)
-  extentsPreview.value.forEach((extent) => {
+
+  const rect = (extent: Extent, options: L.PolylineOptions) =>
     L.rectangle(
       [
         [extent.northWest.latitude, extent.northWest.longitude],
         [extent.southEast.latitude, extent.southEast.longitude]
       ],
-      // Translucent and thin: the rectangle describes the sheet, it is not the subject of the
-      // screen, and a solid fill would hide the checkpoints it is drawn around.
-      { color: '#2563eb', weight: 2, fillOpacity: 0.08, interactive: false }
+      { ...options, interactive: false }
     ).addTo(extentLayer!)
+
+  // The seam check first, so the selected sheet draws over it.
+  //
+  // The set's own areas are outlined without a fill: with a dozen translucent fills stacked, the
+  // overlaps read as darker patches and an operator starts seeing "coverage" where there is only
+  // paint. The gaps are the only thing filled, because the gaps are the answer.
+  overlay.value?.extents.forEach((extent) => rect(extent, { color: '#2563eb', weight: 1, fill: false, dashArray: '3 4' }))
+  overlay.value?.gaps.forEach((extent) => rect(extent, { color: '#dc2626', weight: 1, fillColor: '#dc2626', fillOpacity: 0.35 }))
+
+  extentsPreview.value.forEach((extent) => {
+    // Translucent and thin: the rectangle describes the sheet, it is not the subject of the
+    // screen, and a solid fill would hide the checkpoints it is drawn around.
+    rect(extent, { color: '#2563eb', weight: 2, fillOpacity: 0.08 })
   })
 }
 
-watch(extentsPreview, () => drawExtents(), { deep: true })
+watch([extentsPreview, overlay], () => drawExtents(), { deep: true })
 
 const clearRubberBand = () => {
   rubberBand?.remove()
@@ -900,6 +915,7 @@ onBeforeUnmount(() => {
       @update:dirty="settingsDirty = $event"
       @update:picking="pickingExtent = $event"
       @update:extentsPreview="extentsPreview = $event"
+      @update:overlay="overlay = $event"
     />
   </div>
 </template>

@@ -22,10 +22,12 @@ import { useDeferredApply } from '@/composables/useDeferredApply'
 import {
   checkpointsWithoutMap,
   formatOptions,
+  gapCells,
   groupSelectionState,
   isDegenerate,
   orderPicks,
   sameExtent,
+  setExtents,
   teamTypeLabel,
   teamTypeOptions,
   toggleGroupSelection,
@@ -81,6 +83,8 @@ const emit = defineEmits<{
   (e: 'update:picking', value: boolean): void
   /** The rectangles to draw right now — the draft, so an unsaved extent is still visible. */
   (e: 'update:extentsPreview', value: Extent[]): void
+  /** A whole set's extents and the gaps between them, for the seam check. */
+  (e: 'update:overlay', value: { extents: Extent[]; gaps: Extent[] } | null): void
 }>()
 
 const toast = useToast()
@@ -546,6 +550,33 @@ const extentLabel = (extent: Extent) =>
   `${extent.northWest.latitude.toFixed(4)}, ${extent.northWest.longitude.toFixed(4)} → ` +
   `${extent.southEast.latitude.toFixed(4)}, ${extent.southEast.longitude.toFixed(4)}`
 
+// --- the seam check (task 132) ---
+//
+// Shows a whole set's areas at once and shades the ground between them. This replaces the coverage
+// *percentage* an earlier draft called for: there is no denominator to compute one against, and it
+// would measure the wrong thing anyway — sheets overlap by design, so the failure that matters is a
+// seam between two of them, which barely moves a percentage while losing a patrol.
+
+/** Which set's coverage is being shown, if any. */
+const overlaySetId = ref<string | undefined>(undefined)
+
+const overlaySet = computed(() => sets.value.find((set) => set.id === overlaySetId.value))
+
+/** The seam summary for the set on show. */
+const overlayGaps = computed(() => (overlaySet.value ? gapCells(setExtents(overlaySet.value)) : []))
+
+const toggleOverlay = (set: Kortsaet) => {
+  overlaySetId.value = overlaySetId.value === set.id ? undefined : set.id
+}
+
+watch([overlaySet, overlayGaps], () => {
+  const set = overlaySet.value
+  emit('update:overlay', set ? { extents: setExtents(set), gaps: overlayGaps.value } : null)
+})
+
+/** How many sheets in the set have no area recorded — a skitse, or one nobody has drawn yet. */
+const overlayWithoutExtent = computed(() => overlaySet.value?.kort.filter((sheet) => sheet.extents.length === 0).length ?? 0)
+
 // --- unsaved state, all of it ---
 //
 // Declared here, after every source, because the emit below runs immediately: a computed that
@@ -690,8 +721,31 @@ const close = () => {
                 </div>
               </div>
               <div class="flex items-center">
+                <!-- The seam check: draws the whole set's areas and shades the ground between them.
+                     Visual rather than a percentage — see the note in the script. -->
+                <Button
+                  :icon="overlaySetId === set.id ? 'pi pi-eye-slash' : 'pi pi-eye'"
+                  :severity="overlaySetId === set.id ? 'warn' : 'secondary'"
+                  text
+                  size="small"
+                  @click="toggleOverlay(set)"
+                />
                 <Button icon="pi pi-pencil" text size="small" :disabled="saving || anyDirty" @click="editSet(set)" />
                 <Button icon="pi pi-plus" text size="small" :disabled="saving || anyDirty" @click="createSheet(set)" />
+              </div>
+            </div>
+
+            <!-- The seam summary for this set. -->
+            <div v-if="overlaySetId === set.id" class="rounded bg-gray-50 px-2 py-1 text-xs">
+              <div v-if="overlayGaps.length === 0" class="text-green-700">
+                <i class="pi pi-check" /> Ingen huller mellem kortene i sættet.
+              </div>
+              <div v-else class="text-red-700">
+                <i class="pi pi-exclamation-triangle" />
+                {{ overlayGaps.length }} område{{ overlayGaps.length === 1 ? '' : 'r' }} er ikke på noget kort — vist med rødt.
+              </div>
+              <div v-if="overlayWithoutExtent > 0" class="text-gray-500">
+                {{ overlayWithoutExtent }} kort uden område tæller ikke med (fx skitser).
               </div>
             </div>
 
