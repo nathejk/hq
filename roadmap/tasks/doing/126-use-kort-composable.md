@@ -1,10 +1,10 @@
 # 126 — `useKort` live resource composable
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (Zed)
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -38,3 +38,6 @@ nothing is cached and a revisited page must not flash.
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 010 §10.
+- 2026-09-03 — Picked up. Plan: `composables/kort.ts` in the shape of `composables/sos.ts` and
+  `dispatch.ts` — types, Danish labels, and one function that calls `useLiveResource` with the
+  canonical key and dependency list, so the view and the dialog cannot disagree about either.
