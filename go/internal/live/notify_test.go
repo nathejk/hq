@@ -212,8 +212,9 @@ func TestNotifyForwardsCaughtUp(t *testing.T) {
 	}
 }
 
-// The converse: a plain projection must not be advertised as a listener, or the
-// stream would track catch-up for consumers that do not care.
+// The converse: with a publisher that does not gate, a plain projection must not be
+// advertised as a listener, or the stream would track catch-up for consumers nobody
+// is waiting on.
 func TestNotifyDoesNotInventCaughtUp(t *testing.T) {
 	wrapped := Notify(&fakePublisher{}, &fakeConsumer{})
 
@@ -236,4 +237,86 @@ func TestNotifyAllForwardsCaughtUp(t *testing.T) {
 	if inner.caughtUp != 1 {
 		t.Errorf("inner CaughtUp called %d times, want 1", inner.caughtUp)
 	}
+}
+
+// --- releasing the publisher's catch-up gate ---
+
+// gatedPublisher is a Publisher that also gates on catch-up, as the Hub does.
+type gatedPublisher struct {
+	fakePublisher
+	caughtUp int
+}
+
+func (g *gatedPublisher) CaughtUp() { g.caughtUp++ }
+
+// The hub suppresses signals until the read model has replayed, and catch-up is
+// reported per consumer. So the gate may only open once *every* wrapped consumer
+// has reported — opening on the first would let the remaining projections' replay
+// through, which is the burst the gate exists to suppress.
+func TestNotifyAllOpensThePublisherGateOnlyWhenAllConsumersCaughtUp(t *testing.T) {
+	pub := &gatedPublisher{}
+	wrapped := NotifyAll(pub, &fakeConsumer{}, &fakeConsumer{}, &fakeConsumer{})
+
+	for i, w := range wrapped {
+		listener, ok := w.(interface{ CaughtUp() })
+		if !ok {
+			t.Fatalf("consumer %d does not advertise CaughtUp; the gate would never open", i)
+		}
+		if pub.caughtUp != 0 {
+			t.Fatalf("publisher gate opened after %d of %d consumers", i, len(wrapped))
+		}
+		listener.CaughtUp()
+	}
+
+	if pub.caughtUp != 1 {
+		t.Errorf("publisher CaughtUp called %d times, want exactly 1", pub.caughtUp)
+	}
+}
+
+// The stream reports per consumer and the report may be attempted more than once.
+// A repeated report must not count twice, or a consumer reporting twice would open
+// the gate while another was still replaying.
+func TestNotifyAllIgnoresRepeatedReportsFromOneConsumer(t *testing.T) {
+	pub := &gatedPublisher{}
+	wrapped := NotifyAll(pub, &fakeConsumer{}, &fakeConsumer{})
+
+	first := wrapped[0].(interface{ CaughtUp() })
+	first.CaughtUp()
+	first.CaughtUp()
+	first.CaughtUp()
+
+	if pub.caughtUp != 0 {
+		t.Fatalf("gate opened on one consumer reporting three times")
+	}
+
+	wrapped[1].(interface{ CaughtUp() }).CaughtUp()
+	if pub.caughtUp != 1 {
+		t.Errorf("publisher CaughtUp called %d times, want 1", pub.caughtUp)
+	}
+}
+
+// A consumer that listens for catch-up itself must still get its own notice — the
+// gate is an addition to the forwarding, not a replacement for it.
+func TestNotifyAllForwardsToBothInnerConsumerAndGate(t *testing.T) {
+	pub := &gatedPublisher{}
+	inner := &catchupConsumer{}
+
+	wrapped := NotifyAll(pub, inner)
+	wrapped[0].(interface{ CaughtUp() }).CaughtUp()
+
+	if inner.caughtUp != 1 {
+		t.Errorf("inner CaughtUp called %d times, want 1", inner.caughtUp)
+	}
+	if pub.caughtUp != 1 {
+		t.Errorf("publisher CaughtUp called %d times, want 1", pub.caughtUp)
+	}
+}
+
+// The Hub is the production gated publisher; keep them structurally compatible, or
+// NotifyAll would silently wire no gate at all.
+func TestHubIsAGatedPublisher(t *testing.T) {
+	var _ interface {
+		Publisher
+		CaughtUp()
+	} = NewHub()
 }

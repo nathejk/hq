@@ -55,6 +55,12 @@ no separate authorisation model. One SSE endpoint (`GET /api/stream`) serves all
 This makes every entity live, present and future, with no per-entity code. See
 *Coding Conventions → Live updates* for what is required when adding a page or entity.
 
+The hub starts **gated**: the API serves HTTP while it is still replaying the event
+log, so signals are accumulated rather than broadcast until every projection reports
+it has drained its backlog. The gate then emits one collection-level signal per
+entity type — all lists revalidate once against the finished read model, instead of
+clients being flooded with one signal per historical event.
+
 ### Event Subjects
 Pattern: `NATHEJK.{year}.{entityType}.{entityId}.{event}`
 Examples: `NATHEJK.2025.klan.{teamId}.signedup`, `NATHEJK.2025.patrulje.{teamId}.started`

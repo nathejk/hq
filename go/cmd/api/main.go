@@ -258,6 +258,15 @@ func main() {
 	// precede the write it announces — and a projection that fails announces
 	// nothing. See internal/live/notify.go for what would change if a deadletter
 	// Writer were introduced.
+	//
+	// The hub starts *gated*: mux.Run below returns as soon as the subscriptions
+	// exist, so this process serves HTTP while it is still replaying the event log,
+	// and a client that connects meanwhile must not be handed one signal per
+	// historical event. Signals are accumulated instead, and when every projection
+	// in the slice below reports it has drained its backlog the hub emits one
+	// collection-level signal per entity type — so all lists revalidate exactly
+	// once against the finished read model. That reporting is why the whole slice
+	// goes through a single live.NotifyAll call.
 	livehub := live.NewHub()
 	defer livehub.Close()
 

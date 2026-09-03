@@ -1,6 +1,11 @@
 package live
 
-import "github.com/jrgensen/cqrs"
+import (
+	"sync"
+	"sync/atomic"
+
+	"github.com/jrgensen/cqrs"
+)
 
 // Publisher accepts signals for delivery. The Hub satisfies it.
 //
@@ -48,25 +53,7 @@ type Publisher interface {
 // so it would not be a reason to keep deadletter away from notified consumers. But
 // it should be a decision taken knowingly rather than discovered.
 func Notify(p Publisher, c cqrs.Consumer) cqrs.Consumer {
-	n := notifier{publisher: p, consumer: c}
-	// Preserve the optional catch-up interface. The jetstream Subscribe path
-	// discovers it by asserting on the handler it is given, and that handler is
-	// this decorator — so a consumer that behaves differently while replaying
-	// would silently never be told it had caught up, and would go on replaying
-	// forever. A decorator must be transparent about the interfaces it wraps.
-	//
-	// Nothing in hq implements it today: the order Pay saga, which does, is owned
-	// by tilmelding (see cmd/api/main.go). The forwarding is here because the
-	// failure is invisible — a dropped optional interface produces no error, just
-	// a consumer quietly stuck in its replay behaviour.
-	//
-	// Only when the inner consumer implements it: adding CaughtUp unconditionally
-	// would advertise every projection as a listener and make the stream track
-	// catch-up for consumers that do not care.
-	if l, ok := c.(catchupListener); ok {
-		return catchupNotifier{notifier: n, listener: l}
-	}
-	return n
+	return NotifyAll(p, c)[0]
 }
 
 // catchupListener mirrors stream.CatchupListener structurally, so this package
@@ -76,25 +63,108 @@ type catchupListener interface {
 	CaughtUp()
 }
 
-// catchupNotifier is Notify's return for an inner consumer that listens for
-// catch-up: a notifier that also forwards CaughtUp.
+// catchupNotifier is NotifyAll's return for a consumer where *something* listens
+// for catch-up: the inner consumer, the publisher, or both.
 type catchupNotifier struct {
 	notifier
+
+	// listener is the inner consumer when it listens for catch-up; nil otherwise.
+	// Nothing in hq implements it today except the patrulje number saga.
 	listener catchupListener
+
+	// report tells the publisher's gate that this one consumer has drained its
+	// backlog; nil when the publisher does not gate.
+	report func()
 }
 
-func (c catchupNotifier) CaughtUp() { c.listener.CaughtUp() }
+// CaughtUp forwards to whoever is waiting for it.
+//
+// The inner consumer first: its behaviour changes at this moment (the number saga
+// starts publishing), and the hub's gate opening is what makes that visible.
+func (c catchupNotifier) CaughtUp() {
+	if c.listener != nil {
+		c.listener.CaughtUp()
+	}
+	if c.report != nil {
+		c.report()
+	}
+}
 
 // NotifyAll wraps several consumers, for the wiring in cmd/api/main.go.
 //
 // Wrapping in bulk keeps that call site readable: nineteen Notify(hub, …) calls
 // would bury which consumers exist under how they are decorated.
+//
+// It is also what lets the hub know when the read model has finished replaying:
+// catch-up is reported per consumer by the stream, so "caught up" for the hub
+// means *every* consumer in one NotifyAll call has reported. That is why the set
+// is passed together rather than wrapped one at a time — a consumer wrapped
+// separately would open the gate on its own, while the others were still
+// replaying.
 func NotifyAll(p Publisher, consumers ...cqrs.Consumer) []cqrs.Consumer {
+	gate := newCatchupGate(p, len(consumers))
+
 	wrapped := make([]cqrs.Consumer, 0, len(consumers))
 	for _, c := range consumers {
-		wrapped = append(wrapped, Notify(p, c))
+		n := notifier{publisher: p, consumer: c}
+
+		// Preserve the inner consumer's optional catch-up interface. The
+		// jetstream Subscribe path discovers it by asserting on the handler it is
+		// given, and that handler is this decorator — so a consumer that behaves
+		// differently while replaying would silently never be told it had caught
+		// up, and would go on replaying forever. A decorator must be transparent
+		// about the interfaces it wraps.
+		listener, listens := c.(catchupListener)
+		if !listens {
+			listener = nil
+		}
+		report := gate.reporter()
+
+		// Only advertise CaughtUp when something actually wants it. Adding it
+		// unconditionally would ask the stream to track catch-up for consumers
+		// nobody is waiting on.
+		if listener == nil && report == nil {
+			wrapped = append(wrapped, n)
+			continue
+		}
+		wrapped = append(wrapped, catchupNotifier{notifier: n, listener: listener, report: report})
 	}
 	return wrapped
+}
+
+// catchupGate counts consumers down to the publisher's CaughtUp.
+//
+// Nil when the publisher does not gate, so callers need not branch: a nil gate
+// hands out nil reporters.
+type catchupGate struct {
+	publisher catchupListener
+	remaining int64
+}
+
+func newCatchupGate(p Publisher, consumers int) *catchupGate {
+	listener, ok := p.(catchupListener)
+	if !ok || consumers == 0 {
+		return nil
+	}
+	return &catchupGate{publisher: listener, remaining: int64(consumers)}
+}
+
+// reporter returns the report function for one consumer. Safe to call repeatedly
+// and from several goroutines; only the first call counts, matching the stream's
+// own guarantee loosely enough that a double report cannot open the gate early.
+func (g *catchupGate) reporter() func() {
+	if g == nil {
+		return nil
+	}
+	var once sync.Once
+	return func() { once.Do(g.done) }
+}
+
+func (g *catchupGate) done() {
+	if atomic.AddInt64(&g.remaining, -1) > 0 {
+		return
+	}
+	g.publisher.CaughtUp()
 }
 
 type notifier struct {

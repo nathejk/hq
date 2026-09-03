@@ -16,13 +16,28 @@ const (
 	// several identical signals. It also smooths mass operations such as
 	// collecting a whole patrol.
 	//
-	// Note replay is not a burst source: the boot gate means no client is
-	// connected while a build replays, so the whole history passes with nobody
-	// listening. This window is for live bursts only.
+	// Note replay is not a burst source: the catch-up gate below holds signals
+	// back until the read model has finished replaying. This window is for live
+	// bursts only.
 	DefaultCoalesceWindow = 75 * time.Millisecond
 
 	// Per-client queue depth before the backlog collapses into one resync.
 	DefaultBufferSize = 64
+
+	// How long the catch-up gate waits before opening itself regardless.
+	//
+	// The gate is released by the projections reporting that they have drained
+	// their backlog (see NotifyAll). If one of them never reports — a consumer
+	// wedged on a message, a subject nothing ever publishes to under an
+	// unexpected stream state — the gate would stay shut and the SPA would stop
+	// being live with no error anywhere, which is the failure mode this package
+	// works hardest to avoid. So the gate also opens on a timer: a late release
+	// still broadcasts the accumulated collection signals, so the worst case is
+	// that clients learn a little late rather than never.
+	//
+	// Generous on purpose: a cold start replays the whole event log, and opening
+	// early is exactly the burst the gate exists to suppress.
+	DefaultCatchupTimeout = 5 * time.Minute
 )
 
 // Filter narrows what a client receives.
@@ -68,11 +83,19 @@ type Hub struct {
 	coalesceWindow time.Duration
 	bufferSize     int
 
+	catchupTimeout time.Duration
+
 	mu      sync.Mutex
 	clients map[*client]struct{}
 	pending map[string]Signal
 	timer   *time.Timer
 	closed  bool
+
+	// catchingUp is true from construction until CaughtUp. While it holds,
+	// signals are folded into catchup instead of being broadcast.
+	catchingUp   bool
+	catchup      map[string]Signal
+	catchupTimer *time.Timer
 }
 
 // HubOption configures a Hub.
@@ -88,17 +111,81 @@ func WithBufferSize(n int) HubOption {
 	return func(h *Hub) { h.bufferSize = n }
 }
 
+// WithCatchupTimeout overrides how long the catch-up gate waits before opening
+// itself. See DefaultCatchupTimeout for why the fallback exists at all.
+func WithCatchupTimeout(d time.Duration) HubOption {
+	return func(h *Hub) { h.catchupTimeout = d }
+}
+
+// NewHub returns a hub that starts out *catching up*: it accumulates signals
+// without broadcasting until CaughtUp is called.
+//
+// Gated by default rather than on request, because a hub is built before the
+// stream is subscribed and every process therefore begins by replaying history.
+// A hub that broadcast during that replay would fan out one signal per historical
+// event — tens of thousands of them — to any client that connected while the
+// build was running, which is both pointless (the client has nothing cached that
+// predates its own connection) and actively harmful: each client's buffer
+// overflows, collapses into a resync, and the SPA refetches everything it holds,
+// repeatedly, for the duration of the replay.
 func NewHub(opts ...HubOption) *Hub {
 	h := &Hub{
 		coalesceWindow: DefaultCoalesceWindow,
 		bufferSize:     DefaultBufferSize,
+		catchupTimeout: DefaultCatchupTimeout,
 		clients:        make(map[*client]struct{}),
 		pending:        make(map[string]Signal),
+		catchingUp:     true,
+		catchup:        make(map[string]Signal),
 	}
 	for _, opt := range opts {
 		opt(h)
 	}
+	if h.catchupTimeout > 0 {
+		h.catchupTimer = time.AfterFunc(h.catchupTimeout, h.CaughtUp)
+	}
 	return h
+}
+
+// CaughtUp opens the catch-up gate: the read model has finished replaying, so
+// what happens from here on is news.
+//
+// Whatever accumulated during the replay is broadcast now, as one signal per
+// (entity type, year) with the instance id stripped — so every list, count and
+// other type-level dependency in the SPA revalidates exactly once, and a client
+// that connected mid-build ends up consistent with the finished read model.
+//
+// Ids are dropped rather than kept because a replay says nothing useful about
+// individual instances: it touches every row that ever existed, so keeping them
+// would reproduce the burst the gate suppressed. A detail view holding one
+// instance is covered by the resync it received on connect.
+//
+// Idempotent, and safe to call from several goroutines: it is reported by each
+// projection independently (see NotifyAll) and by the fallback timer.
+func (h *Hub) CaughtUp() {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	if h.closed || !h.catchingUp {
+		return
+	}
+	h.catchingUp = false
+	if h.catchupTimer != nil {
+		h.catchupTimer.Stop()
+		h.catchupTimer = nil
+	}
+
+	for key, s := range h.catchup {
+		delete(h.catchup, key)
+		h.broadcastLocked(s)
+	}
+}
+
+// CatchingUp reports whether the gate is still shut. For diagnostics and tests.
+func (h *Hub) CatchingUp() bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.catchingUp
 }
 
 // Subscribe registers a client and returns the channel its signals arrive on.
@@ -159,10 +246,23 @@ func (h *Hub) Publish(s Signal) {
 		return
 	}
 
-	// A resync bypasses coalescing: it is a control message, and delaying "you
-	// are out of date" by a window helps nobody.
+	// A resync bypasses both coalescing and the catch-up gate: it is a control
+	// message, and delaying "you are out of date" helps nobody.
 	if s.Type == SignalResync {
 		h.broadcastLocked(s)
+		return
+	}
+
+	// Still replaying: remember *that* this type changed, not which instance,
+	// and say nothing until the gate opens. Event is dropped with the id — a
+	// name picked arbitrarily from thousands of historical events would be
+	// misleading in a log, and Signal.Event is advisory anyway.
+	if h.catchingUp {
+		h.catchup[s.Entity+"@"+s.Year] = Signal{
+			Type:   s.Type,
+			Entity: s.Entity,
+			Year:   s.Year,
+		}
 		return
 	}
 
@@ -263,6 +363,10 @@ func (h *Hub) Close() {
 	if h.timer != nil {
 		h.timer.Stop()
 		h.timer = nil
+	}
+	if h.catchupTimer != nil {
+		h.catchupTimer.Stop()
+		h.catchupTimer = nil
 	}
 	for c := range h.clients {
 		delete(h.clients, c)
