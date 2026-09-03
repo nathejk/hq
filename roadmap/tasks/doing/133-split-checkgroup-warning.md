@@ -1,10 +1,10 @@
 # 133 — Warn when no single map covers a whole checkgroup
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (Zed)
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -39,3 +39,6 @@ refuses to complete during data entry is worse than a visible warning.
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 010 §10.
+- 2026-09-03 — Picked up. `someMapContainsAll` already exists and is tested from task 126, with the
+  existential semantics pinned. What remains is the presentation: which set, which checkgroup, which
+  sheets it is spread across.
