@@ -26,11 +26,12 @@ is task 153.
 
 ## Acceptance Criteria
 
-- [ ] A stream named `TELEMETRY` exists in dev, with subjects `TELEMETRY.>`
+- [x] A stream named `TELEMETRY` exists in dev, with subjects `TELEMETRY.>`
 - [ ] Same confirmed in stage
-- [ ] `hej-api` is observed publishing `TELEMETRY.{year}.track.{personId}.reported` into it
-- [ ] Confirmed that a hq api boot against the stream does not fatal
+- [x] `hej-api` is observed publishing `TELEMETRY.{year}.track.{personId}.reported` into it
+- [x] Confirmed that a hq api boot against the stream does not fatal (dev)
 
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 011 §10.
+- 2026-09-03 — **Dev half appears already satisfied**, found while verifying task 147. The api has been running the `table/track` consumer through hot-reload without fatalling, and `track_point` holds 1,202 real points for one person — so a stream named `TELEMETRY` exists in dev and `hej-api` is publishing into it. Left open because stage is unverified, and stage is where a missing or mis-cased stream stops the api from booting at all.

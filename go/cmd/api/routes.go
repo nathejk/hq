@@ -64,6 +64,7 @@ func (app *application) routes() http.Handler {
 	// serving the position glyph on every people list — which is why no other endpoint gained a
 	// field for it.
 	router.HandlerFunc(http.MethodGet, "/api/telemetry/presence", app.listTelemetryPresenceHandler)
+	router.HandlerFunc(http.MethodGet, "/api/telemetry/person/:personId/track", app.showPersonTrackHandler)
 
 	// Members in our care (PRD 006). Event-wide rather than per case: a member we
 	// are responsible for is our problem whether or not anybody opened a case.

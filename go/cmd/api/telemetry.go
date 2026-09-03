@@ -2,8 +2,10 @@ package main
 
 import (
 	"net/http"
+	"strconv"
 
 	jsonapi "nathejk.dk/cmd/api/app"
+	"nathejk.dk/nathejk/table/track"
 )
 
 // Telemetry: where people were (PRD 011).
@@ -81,6 +83,128 @@ func (app *application) listTelemetryPresenceHandler(w http.ResponseWriter, r *h
 	}
 
 	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"presence": presence}, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
+// trackResponse is one person's track, as both track endpoints report it.
+//
+// Shaped around segments rather than a flat point array, which is the load-bearing decision of PRD
+// 011: if the API returns segments, a client *cannot* draw a solid line across three hours of silence
+// and present it as a walked route. Making the misrendering structurally impossible is worth more
+// than documenting that it would be wrong.
+type trackResponse struct {
+	PersonID   string `json:"personId"`
+	PersonType string `json:"personType"`
+
+	// Name where one is known, for the patrol endpoint's legend. Empty for a person hq has no row
+	// for — which is normal rather than an error, and never a reason to withhold the track.
+	Name string `json:"name,omitempty"`
+
+	Coverage track.Coverage  `json:"coverage"`
+	Segments []track.Segment `json:"segments"`
+
+	// Reduced says whether points were dropped to fit the budget, so the UI can offer full fidelity
+	// for a narrower window instead of quietly implying this is everything.
+	Reduced   bool `json:"reduced"`
+	MaxPoints int  `json:"maxPoints"`
+}
+
+// buildTrack turns raw points into the response shape: segment, then reduce within segments, then
+// measure coverage.
+//
+// The order matters and is not interchangeable. Coverage is computed from the **unreduced** segments
+// because it describes how much was recorded, not how much survived the budget — measuring after
+// reduction would make a well-recorded track look thin the moment somebody zoomed out.
+func buildTrack(personID string, points []track.Point, w track.Window, maxPoints int) trackResponse {
+	segments := track.Segments(points)
+	coverage := track.CoverageOf(segments, w)
+	reduced, wasReduced := track.Reduce(segments, maxPoints)
+
+	return trackResponse{
+		PersonID:  personID,
+		Coverage:  coverage,
+		Segments:  reduced,
+		Reduced:   wasReduced,
+		MaxPoints: maxPoints,
+	}
+}
+
+// readTrackParams reads the time window and point budget from the query string.
+//
+// Bounds are epoch **milliseconds**, matching the stored `ts` exactly — no date parsing and no
+// timezone to misread, and the same integers the SPA already holds from the presence endpoint.
+//
+// Unparseable values are treated as absent rather than rejected with a 400. These are a view's
+// framing of a picture, not a command: a garbled `maxPoints` should show the operator a sensible
+// default track, not an error page in the middle of an incident.
+func (app *application) readTrackParams(r *http.Request) (track.Window, int) {
+	qs := r.URL.Query()
+
+	parse := func(key string) int64 {
+		v, err := strconv.ParseInt(app.ReadString(qs, key, ""), 10, 64)
+		if err != nil {
+			return 0
+		}
+		return v
+	}
+
+	window := track.Window{From: parse("from"), To: parse("to")}
+
+	maxPoints := int(parse("maxPoints"))
+	if maxPoints <= 0 {
+		maxPoints = track.DefaultMaxPoints
+	}
+	// An unbounded request must not be able to ask for the raw ceiling: a caller that names a
+	// ridiculous budget gets the default, not megabytes.
+	if maxPoints > track.DefaultMaxPoints {
+		maxPoints = track.DefaultMaxPoints
+	}
+
+	return window, maxPoints
+}
+
+// showPersonTrackHandler serves one person's track.
+//
+// @Summary     One person's track
+// @Description Where one person has been, as ordered segments rather than a flat list of points: a track is split wherever recording stopped for more than a few minutes, so a client cannot draw a line across a gap and imply a walk that never happened. Gaps of hours are normal — phones lock, apps are killed, batteries die — so the response also reports coverage, letting an operator tell a well-recorded track from a nearly empty one before reasoning from it. personId is either a memberID (spejder, senior) or a crewmemberID (crew, gøgler, friend, bandit); the two id spaces do not collide, so no type hint is needed. from/to are epoch milliseconds, matching the stored timestamps exactly. Points are simplified server-side to at most maxPoints, always within segments and never across them, and `reduced` says whether anything was dropped — ask for a narrower window to see more detail. A person who has never reported returns an empty track, not a 404.
+// @Tags        telemetry
+// @Produce     json
+// @Param       personId path string true "member id or crewmember id"
+// @Param       from query int false "window start, epoch milliseconds"
+// @Param       to query int false "window end, epoch milliseconds"
+// @Param       maxPoints query int false "point budget for the whole track"
+// @Success     200 {object} map[string]interface{} "envelope with a \"track\" object"
+// @Failure     500 {object} map[string]interface{}
+// @Router      /api/telemetry/person/{personId}/track [get]
+func (app *application) showPersonTrackHandler(w http.ResponseWriter, r *http.Request) {
+	personID := app.ReadNamedParam(r, "personId")
+	if personID == "" {
+		app.NotFoundResponse(w, r)
+		return
+	}
+
+	window, maxPoints := app.readTrackParams(r)
+
+	points, err := app.models.Track.Points(r.Context(), track.Filter{
+		PersonID: personID,
+		FromTs:   window.From,
+		ToTs:     window.To,
+	})
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+
+	// A person who has never reported gets an empty track rather than a 404. "We have no positions
+	// for this scout" is an answer, and the caller — a dialog opened from a name in a list — has
+	// already established that the person exists.
+	response := buildTrack(personID, points, window, maxPoints)
+	if latest, err := app.models.Track.LatestFor(r.Context(), personID); err == nil && latest != nil {
+		response.PersonType = latest.PersonType
+	}
+
+	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"track": response}, nil); err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}
 }
