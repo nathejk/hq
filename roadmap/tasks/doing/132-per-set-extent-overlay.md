@@ -1,10 +1,10 @@
 # 132 — Per-set extent overlay with the gaps shaded
 
-**Status:** open
+**Status:** doing
 **Priority:** low
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (Zed)
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -38,3 +38,7 @@ cost. Do not add a heavy dependency for the shading without saying so.
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 010 §10.
+- 2026-09-03 — Picked up. Before reaching for the outlines-only fallback: the rectangles are all
+  **axis-aligned**, which makes the complement exactly computable by grid decomposition — cut on
+  every distinct latitude and longitude, then keep the cells no rectangle covers. No clipping
+  library, and it is a pure function, so it can be tested rather than eyeballed.
