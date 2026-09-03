@@ -3,13 +3,22 @@ import {
   allMaps,
   checkpointsWithoutMap,
   formatLabel,
+  groupSelectionState,
+  orderPicks,
   someMapContainsAll,
   teamTypeLabel,
   teamTypeOptions,
+  toggleGroupSelection,
   KORT_DEPENDENCIES,
   type Kort,
   type Kortsaet,
 } from './kort'
+
+const group = (id: string, checkpointIds: string[]) => ({
+  id,
+  name: id,
+  checkpoints: checkpointIds.map((cp) => ({ id: cp })),
+})
 
 const sheet = (id: string, checkpointIds: string[] = []): Kort => ({
   id,
@@ -90,6 +99,73 @@ describe('allMaps', () => {
 
   it('survives an absent payload', () => {
     expect(allMaps(undefined)).toEqual([])
+  })
+})
+
+describe('groupSelectionState', () => {
+  it('reports all, some and none', () => {
+    const g = group('cg-1', ['cp-1', 'cp-2'])
+    expect(groupSelectionState(g, new Set(['cp-1', 'cp-2']))).toBe('all')
+    expect(groupSelectionState(g, new Set(['cp-1']))).toBe('some')
+    expect(groupSelectionState(g, new Set())).toBe('none')
+  })
+
+  // A half-ticked checkgroup is usually a mistake in the making, since a checkgroup is revealed as
+  // a whole — so the third state has to be visible rather than rounded to on or off.
+  it('does not round a partial selection to all', () => {
+    expect(groupSelectionState(group('cg-1', ['cp-1', 'cp-2', 'cp-3']), new Set(['cp-1', 'cp-2']))).toBe('some')
+  })
+
+  it('treats an empty checkgroup as none', () => {
+    expect(groupSelectionState(group('cg-1', []), new Set())).toBe('none')
+  })
+})
+
+describe('toggleGroupSelection', () => {
+  it('ticks the whole group when nothing is ticked', () => {
+    const next = toggleGroupSelection(group('cg-1', ['cp-1', 'cp-2']), new Set())
+    expect([...next]).toEqual(['cp-1', 'cp-2'])
+  })
+
+  // With three of four already on, reaching for the group header means "all of them", never "swap
+  // them". Inverting each would be the surprising reading.
+  it('completes a partial group rather than inverting it', () => {
+    const next = toggleGroupSelection(group('cg-1', ['cp-1', 'cp-2', 'cp-3']), new Set(['cp-1']))
+    expect([...next].sort()).toEqual(['cp-1', 'cp-2', 'cp-3'])
+  })
+
+  it('clears a fully ticked group', () => {
+    const next = toggleGroupSelection(group('cg-1', ['cp-1', 'cp-2']), new Set(['cp-1', 'cp-2']))
+    expect([...next]).toEqual([])
+  })
+
+  // Other sheets' picks are none of this group's business.
+  it('leaves checkpoints outside the group alone', () => {
+    const next = toggleGroupSelection(group('cg-1', ['cp-1']), new Set(['cp-9']))
+    expect(next.has('cp-9')).toBe(true)
+  })
+})
+
+describe('orderPicks', () => {
+  const groups = [group('cg-1', ['cp-1', 'cp-2']), group('cg-2', ['cp-3'])]
+
+  // The API compares the submitted list against the stored one to decide whether anything changed,
+  // so the order must depend on the checkgroups and not on the order the boxes were ticked — or
+  // every re-save would look like an edit and emit a live signal.
+  it('is stable regardless of tick order', () => {
+    expect(orderPicks(groups, new Set(['cp-3', 'cp-1']))).toEqual(['cp-1', 'cp-3'])
+    expect(orderPicks(groups, new Set(['cp-1', 'cp-3']))).toEqual(['cp-1', 'cp-3'])
+  })
+
+  // Can only happen if a checkpoint vanished from the payload mid-edit; dropping it would make the
+  // save do something the operator did not ask for.
+  it('keeps picked ids that are in no checkgroup', () => {
+    expect(orderPicks(groups, new Set(['cp-1', 'cp-gone']))).toEqual(['cp-1', 'cp-gone'])
+  })
+
+  it('never repeats an id', () => {
+    const duplicated = [group('cg-1', ['cp-1']), group('cg-2', ['cp-1'])]
+    expect(orderPicks(duplicated, new Set(['cp-1']))).toEqual(['cp-1'])
   })
 })
 

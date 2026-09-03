@@ -794,6 +794,7 @@ onBeforeUnmount(() => {
       v-model:visible="settingsOpen"
       v-model:selectedId="selectedKortId"
       :payload="kortSheets"
+      :checkgroups="checkgroups"
       @saved="refreshKort"
       @update:dirty="settingsDirty = $event"
     />

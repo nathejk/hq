@@ -227,3 +227,75 @@ export const someMapContainsAll = (set: Kortsaet, checkpointIds: string[]): bool
     return checkpointIds.every((id) => on.has(id))
   })
 }
+
+// --- the checkpoint picker's rules ---
+
+/** Minimal shape the picker needs of a checkgroup. */
+export interface CheckgroupLike {
+  id: string
+  name: string
+  checkpoints: { id: string }[]
+}
+
+/**
+ * Whether a checkgroup is fully, partly or not at all on the sheet.
+ *
+ * `some` exists to be visible: a half-ticked checkgroup is usually a mistake in the making, since a
+ * checkgroup is revealed as a whole, so the header shows a third state rather than rounding to on
+ * or off.
+ */
+export const groupSelectionState = (group: CheckgroupLike, picked: Set<string>): 'all' | 'some' | 'none' => {
+  if (group.checkpoints.length === 0) return 'none'
+  const on = group.checkpoints.filter((cp) => picked.has(cp.id)).length
+  if (on === 0) return 'none'
+  return on === group.checkpoints.length ? 'all' : 'some'
+}
+
+/**
+ * Apply the select-all for a checkgroup.
+ *
+ * Ticks all when any are missing rather than inverting each one: with three of four already on, an
+ * operator reaching for the group header means "all of them", never "swap them". Only a fully
+ * ticked group clears.
+ */
+export const toggleGroupSelection = (group: CheckgroupLike, picked: Set<string>): Set<string> => {
+  const next = new Set(picked)
+  if (groupSelectionState(group, picked) === 'all') {
+    group.checkpoints.forEach((cp) => next.delete(cp.id))
+  } else {
+    group.checkpoints.forEach((cp) => next.add(cp.id))
+  }
+  return next
+}
+
+/**
+ * The selection as a list, in checkgroup order.
+ *
+ * Order carries no meaning — a sheet's checkpoints are a set — but a *stable* order does: the API
+* compares the submitted list against the stored one to decide whether anything changed, so ticking
+ * A then B and ticking B then A must produce the same list, or every re-save would look like an
+ * edit and emit a live signal.
+ *
+ * Picked ids that are in no checkgroup are kept at the end rather than dropped. They can only come
+ * from a checkpoint that vanished from the payload mid-edit, and silently discarding them would
+ * make a save do something the operator did not ask for.
+ */
+export const orderPicks = (groups: CheckgroupLike[], picked: Set<string>): string[] => {
+  const ordered: string[] = []
+  const seen = new Set<string>()
+  for (const group of groups) {
+    for (const cp of group.checkpoints) {
+      if (picked.has(cp.id) && !seen.has(cp.id)) {
+        ordered.push(cp.id)
+        seen.add(cp.id)
+      }
+    }
+  }
+  picked.forEach((id) => {
+    if (!seen.has(id)) {
+      ordered.push(id)
+      seen.add(id)
+    }
+  })
+  return ordered
+}

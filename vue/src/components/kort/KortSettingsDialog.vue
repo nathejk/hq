@@ -18,11 +18,35 @@ import { computed, ref, watch } from 'vue'
 import { useToast } from 'primevue/usetoast'
 import draggable from 'vuedraggable'
 import { http } from '@/plugins/axios'
-import { formatOptions, teamTypeLabel, type Kort, type Kortsaet, type KortPayload } from '@/composables/kort'
+import {
+  checkpointsWithoutMap,
+  formatOptions,
+  groupSelectionState,
+  orderPicks,
+  teamTypeLabel,
+  toggleGroupSelection,
+  type Kort,
+  type Kortsaet,
+  type KortPayload,
+} from '@/composables/kort'
+
+/** A checkgroup with its checkpoints, as `/checkgroups` sends it. */
+export interface PickerCheckgroup {
+  id: string
+  name: string
+  checkpoints: { id: string; name: string; latitude: number | null; longitude: number | null }[]
+}
 
 const props = defineProps<{
   visible: boolean
   payload?: KortPayload
+  /**
+   * The year's checkgroups, for the picker.
+   *
+   * Passed in rather than fetched here: the view has them already, and a second fetch would be a
+   * second cache entry to keep in step with the same live tokens.
+   */
+  checkgroups?: PickerCheckgroup[]
   /** The sheet whose checkpoints are highlighted on the map. */
   selectedId?: string
 }>()
@@ -98,14 +122,9 @@ const dirty = computed(() => {
 
 // Reordering counts as dirty too: the list on screen is in an order the server does not have yet.
 const reordering = ref(false)
-watch(
-  [dirty, reordering],
-  ([isDirty, isReordering]) => emit('update:dirty', isDirty || isReordering),
-  { immediate: true },
-)
 
 const select = (sheet: Kort) => {
-  if (dirty.value) {
+  if (anyDirty.value) {
     // Refuse rather than discard: switching sheets with unsaved text would throw away work with
     // no warning, and this list is exactly where a mis-click is easy.
     toast.add({
@@ -219,8 +238,122 @@ const saveOrder = async (set: Kortsaet) => {
 
 const cancelEdit = () => loadDraft(selected.value)
 
+// --- the checkpoint picker (task 128) ---
+//
+// This is the half of the feature the hej-app actually needs: which checkpoints are drawn on which
+// sheet. Extents are cosmetic by comparison — a sheet with no rectangle still reveals the right
+// checkpoints, a sheet with no checkpoint list reveals nothing.
+
+/** The selected sheet's checkpoints, as a local set the tick-boxes drive. */
+const picked = ref<Set<string>>(new Set())
+
+watch(
+  selected,
+  (sheet) => {
+    picked.value = new Set(sheet?.checkpointIds ?? [])
+  },
+  { immediate: true },
+)
+
+/** Unsaved tick-box changes. Compared as sets, since order carries no meaning. */
+const picksDirty = computed(() => {
+  const sheet = selected.value
+  if (!sheet) return false
+  if (picked.value.size !== sheet.checkpointIds.length) return true
+  return sheet.checkpointIds.some((id) => !picked.value.has(id))
+})
+
+const togglePick = (checkpointId: string) => {
+  const next = new Set(picked.value)
+  if (next.has(checkpointId)) next.delete(checkpointId)
+  else next.add(checkpointId)
+  picked.value = next
+}
+
+const groupState = (group: PickerCheckgroup): 'all' | 'some' | 'none' => groupSelectionState(group, picked.value)
+
+/**
+ * Tick or untick a whole checkgroup.
+ *
+ * The thing that keeps data entry to minutes rather than an hour: a sheet almost always carries
+ * whole checkgroups, because a checkgroup is revealed as a whole and splitting one across two
+ * sheets is the mistake task 133 warns about. Partial selections stay possible — a skitse is
+ * exactly that — they are just not the common case.
+ */
+const toggleGroup = (group: PickerCheckgroup) => {
+  picked.value = toggleGroupSelection(group, picked.value)
+}
+
+const savePicks = async () => {
+  const sheet = selected.value
+  if (!sheet) return
+  saving.value = true
+  try {
+    await http.put(
+      `/kort/${sheet.id}/checkpoints`,
+      // Sent in checkgroup order rather than tick order, so the stored list is stable and
+      // re-saving an unchanged selection stays a no-op on the server.
+      { checkpointIds: orderedPicks.value },
+      { withCredentials: true },
+    )
+    emit('saved')
+  } catch (error) {
+    failed(error, 'Kunne ikke gemme posterne')
+  } finally {
+    saving.value = false
+  }
+}
+
+const orderedPicks = computed(() => orderPicks(props.checkgroups ?? [], picked.value))
+
+const cancelPicks = () => {
+  picked.value = new Set(selected.value?.checkpointIds ?? [])
+}
+
+/** Checkpoints with no position cannot be drawn, so they are flagged rather than blocked. */
+const hasPosition = (cp: PickerCheckgroup['checkpoints'][number]) => cp.latitude != null && cp.longitude != null
+
+// --- what is on no sheet at all ---
+
+const allCheckpointIds = computed(() => (props.checkgroups ?? []).flatMap((group) => group.checkpoints.map((cp) => cp.id)))
+
+const checkpointName = (id: string) => {
+  for (const group of props.checkgroups ?? []) {
+    const found = group.checkpoints.find((cp) => cp.id === id)
+    if (found) return found.name
+  }
+  return id
+}
+
+/**
+ * Per set, the checkpoints that appear on none of its sheets.
+ *
+ * Per set and not overall, because the two mistakes are different: a checkpoint missing from the
+ * crew maps is a driver with no way to find it, while one missing from the patrol maps is a patrol
+ * that will never be sent there. An overall list could not tell an operator which they are looking
+ * at.
+ */
+const unassignedBySet = computed(() =>
+  sets.value.map((set) => ({
+    set,
+    missing: checkpointsWithoutMap(set, allCheckpointIds.value),
+  })),
+)
+
+// --- unsaved state, all of it ---
+//
+// Declared here, after every source, because the emit below runs immediately: a computed that
+// referenced one of these before its `const` was initialised would throw during setup.
+
+/** Anything unsaved: a field, a tick-box, or a drag not yet persisted. */
+const anyDirty = computed(() => dirty.value || picksDirty.value || reordering.value)
+
+// The view pauses applying live payloads while this is true (task 131), and the guards above use it
+// to refuse switching sheets or closing rather than discarding work.
+watch(anyDirty, (value) => emit('update:dirty', value), { immediate: true })
+
 const close = () => {
-  if (dirty.value) {
+  if (anyDirty.value) {
     toast.add({
       severity: 'warn',
       summary: 'Ugemte ændringer',
@@ -256,7 +389,7 @@ const close = () => {
                  operator needs to see which set is "the spejder set" without opening it. -->
             <span v-if="set.teamType" class="ml-1 text-xs text-gray-500">({{ teamTypeLabel(set.teamType) }})</span>
           </div>
-          <Button icon="pi pi-plus" text size="small" :disabled="saving || dirty" @click="createSheet(set)" />
+          <Button icon="pi pi-plus" text size="small" :disabled="saving || anyDirty" @click="createSheet(set)" />
         </div>
 
         <draggable :list="set.kort" handle=".kort-handle" item-key="id" @start="reordering = true" @end="saveOrder(set)">
@@ -325,6 +458,64 @@ const close = () => {
           <div class="flex gap-2">
             <Button label="Annullér" severity="secondary" text size="small" :disabled="saving || !dirty" @click="cancelEdit" />
             <Button label="Gem" size="small" :loading="saving" :disabled="saving || !dirty" @click="saveSheet" />
+          </div>
+        </div>
+
+        <!-- The checkpoints drawn on this sheet. The part the hej-app reads: this list is what may
+             be revealed once the sheet is known to be in a team's hands. -->
+        <div class="space-y-1 border-t pt-3">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-medium">Poster på kortet</div>
+            <div class="flex items-center gap-2">
+              <span class="text-xs text-gray-500">{{ picked.size }} valgt</span>
+              <Button label="Annullér" severity="secondary" text size="small" :disabled="saving || !picksDirty" @click="cancelPicks" />
+              <Button label="Gem poster" size="small" :loading="saving" :disabled="saving || !picksDirty" @click="savePicks" />
+            </div>
+          </div>
+
+          <div v-if="(checkgroups ?? []).length === 0" class="text-xs text-gray-400">Ingen poster fundet</div>
+
+          <div v-for="group in checkgroups ?? []" :key="group.id" class="space-y-0.5">
+            <!-- Select-all per checkgroup. A sheet almost always carries whole checkgroups, because
+                 a checkgroup is revealed as a whole — so this is the button that turns fifteen
+                 sheets from an hour's work into a few minutes. -->
+            <button class="flex w-full items-center gap-2 rounded px-1 py-0.5 text-left text-xs font-medium hover:bg-gray-50" @click="toggleGroup(group)">
+              <i
+                class="pi text-xs"
+                :class="{
+                  'pi-check-square text-blue-600': groupState(group) === 'all',
+                  'pi-minus-circle text-blue-400': groupState(group) === 'some',
+                  'pi-stop text-gray-300': groupState(group) === 'none'
+                }"
+              />
+              <span class="flex-1 truncate">{{ group.name }}</span>
+            </button>
+
+            <button
+              v-for="cp in group.checkpoints"
+              :key="cp.id"
+              class="flex w-full items-center gap-2 rounded py-0.5 pl-5 pr-1 text-left text-sm hover:bg-gray-50"
+              @click="togglePick(cp.id)"
+            >
+              <i class="pi text-xs" :class="picked.has(cp.id) ? 'pi-check-square text-blue-600' : 'pi-stop text-gray-300'" />
+              <span class="flex-1 truncate">{{ cp.name }}</span>
+              <!-- A checkpoint with no position can be assigned; it just cannot be drawn. Flagged
+                   rather than blocked, since the sheet may be drawn before the pin is placed. -->
+              <i v-if="!hasPosition(cp)" class="pi pi-exclamation-triangle text-xs text-amber-500" title="Ingen placering endnu" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Checkpoints on no sheet of a set. Per set, because a post missing from the crew maps is a
+           driver who cannot find it, while one missing from the patrol maps is a patrol that will
+           never be sent there. -->
+      <div v-if="unassignedBySet.some((entry) => entry.missing.length)" class="space-y-2 border-t pt-3">
+        <div class="text-sm font-medium">Ikke på noget kort</div>
+        <div v-for="entry in unassignedBySet" :key="entry.set.id">
+          <div v-if="entry.missing.length" class="text-xs">
+            <span class="font-medium">{{ entry.set.name }}:</span>
+            <span class="text-amber-700">{{ entry.missing.map(checkpointName).join(', ') }}</span>
           </div>
         </div>
       </div>
