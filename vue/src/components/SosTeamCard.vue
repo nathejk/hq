@@ -4,6 +4,7 @@ import { http } from '@/plugins/axios'
 import { useLiveResource } from '@/composables/useLiveResource'
 import { memberStatusBadge, memberStatusColour } from '@/composables/sos'
 import MemberDetailDialog from '@/components/MemberDetailDialog.vue'
+import PositionIndicator from '@/components/PositionIndicator.vue'
 
 // The patrols associated with a case, and their members.
 //
@@ -550,6 +551,8 @@ const withdrawTeam = computed<TeamRow | null>(() => {
         <i :class="[statusIcon(member.status), statusColour(member.status)]"
            class="text-base" :aria-label="statusLabel(member.status)" />
         <span class="font-medium" :class="nameClass(member)">{{ member.name || member.memberId }}</span>
+        <!-- Does this scout's phone report positions? The most useful thing to know on a SOS card. -->
+        <PositionIndicator :person-id="member.memberId" />
         <!--
           Marked rather than left to be worked out: a name that is not on this patrol's own
           roster is otherwise indistinguishable from one that is, and "who did we put here?"

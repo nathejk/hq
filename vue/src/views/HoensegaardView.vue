@@ -14,6 +14,7 @@ import { http } from '@/plugins/axios'
 import { useLiveResource } from '@/composables/useLiveResource'
 import { useConnectionState } from '@/composables/useConnectionState'
 import MemberDetailDialog from '@/components/MemberDetailDialog.vue'
+import PositionIndicator from '@/components/PositionIndicator.vue'
 import {
   useNow,
   formatTimestamp,
@@ -482,13 +483,16 @@ const reuniteTooltip = (member: ShelterMember) =>
               history and the note trail. A button rather than a row click, so sorting a column or
               editing a placering cannot open a dialog by accident.
             -->
-            <Button
-              :label="member.name"
-              link
-              class="!p-0 !font-medium"
-              v-tooltip.top="'Vis oplysninger, historik og noter'"
-              @click="showMember(member)"
-            />
+            <span class="inline-flex items-center gap-1">
+              <Button
+                :label="member.name"
+                link
+                class="!p-0 !font-medium"
+                v-tooltip.top="'Vis oplysninger, historik og noter'"
+                @click="showMember(member)"
+              />
+              <PositionIndicator :person-id="member.memberId" />
+            </span>
           </template>
         </Column>
 

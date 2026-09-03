@@ -25,6 +25,7 @@ import { useLiveResource } from '@/composables/useLiveResource'
 import { parseApiDate } from '@/composables/datefilters'
 import { memberEventPhrase, formatDateTime, memberStatusBadge, memberStatusColour } from '@/composables/sos'
 import MemberNotes from '@/components/MemberNotes.vue'
+import PositionIndicator from '@/components/PositionIndicator.vue'
 
 const props = defineProps<{
   memberId: string
@@ -161,6 +162,13 @@ watch(error, (err) => {
       <div class="inline-flex items-center gap-2 text-2xl">
         <i class="fas fa-fw fa-user"></i>
         <h1 class="font-nathejk">{{ detail?.member.name || name || 'Deltager' }}</h1>
+        <!--
+          `show-text` here, unlike in the lists: there is room, and a timestamp reachable only by
+          hovering is unreachable by touch and awkward by keyboard. This is also the one place an
+          operator comes to ask "when did we last hear from this phone?" deliberately rather than
+          in passing.
+        -->
+        <PositionIndicator :person-id="memberId" show-text class="text-base" />
         <Tag
           v-if="status"
           :icon="statusIcon(status)"

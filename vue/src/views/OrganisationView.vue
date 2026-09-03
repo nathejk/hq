@@ -4,6 +4,7 @@ import { useToast } from 'primevue/usetoast'
 import { http } from '@/plugins/axios'
 import { useLiveResource } from '@/composables/useLiveResource'
 import { useDeferredApply } from '@/composables/useDeferredApply'
+import PositionIndicator from '@/components/PositionIndicator.vue'
 
 // ----- Types -----------------------------------------------------------------
 
@@ -1228,6 +1229,7 @@ function quickAssignVehicleFromDropdown(vehicleId: string, slug: string) {
           <li v-for="m in unassignedCrew" :key="m.userId" :draggable="true" class="p-2 bg-white border rounded flex items-center gap-2 cursor-move" @dragstart="onDragStartCrew($event, m.userId)" @dragend="onRowDragEnd">
             <i class="pi pi-user text-gray-500" />
             <span class="flex-1 truncate cursor-pointer" @click="openEditCrew(m.userId)">{{ m.name || m.email || m.userId }}</span>
+            <PositionIndicator :person-id="m.userId" />
             <Select :modelValue="''" :options="sectionOptions.filter((o) => o.value !== '')" optionLabel="label" optionValue="value" placeholder="Tildel…" size="small" class="w-32" @update:modelValue="(v: string) => v && quickAssignFromDropdown(m.userId, v)" />
           </li>
           <li v-for="v in unassignedVehicles" :key="v.vehicleId" :draggable="true" class="p-2 bg-white border rounded flex items-center gap-2 cursor-move" @dragstart="onDragStartVehicle($event, v.vehicleId)" @dragend="onRowDragEnd">

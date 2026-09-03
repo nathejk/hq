@@ -3,6 +3,7 @@ import { ref, computed, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import { http } from '@/plugins/axios';
 import { useLiveResource } from '@/composables/useLiveResource';
+import PositionIndicator from '@/components/PositionIndicator.vue';
 
 const toast = useToast();
 
@@ -67,7 +68,19 @@ const getSeverity = (status) => {
             v-model:expandedRows="expandedRows" dataKey="id" @rowExpand="onRowExpand" @rowCollapse="onRowCollapse"
         >
             <Column expander />
-            <Column field="name" header="Navn"></Column>
+            <!--
+              The glyph rides in the name cell rather than a column of its own: a column would be
+              mostly empty, and the fact belongs to the person rather than being a field of theirs.
+              `data.id` is the userId, which is the same id space telemetry reports under.
+            -->
+            <Column field="name" header="Navn">
+                <template #body="{data}">
+                    <span class="inline-flex items-center gap-1">
+                        {{ data.name }}
+                        <PositionIndicator :person-id="data.id" />
+                    </span>
+                </template>
+            </Column>
             <Column field="group" header="Gruppe / Division"></Column>
             <Column field="korps" header="Korps"></Column>
             <Column field="status" header="Status">

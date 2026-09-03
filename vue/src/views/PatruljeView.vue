@@ -6,6 +6,7 @@ import { http } from '@/plugins/axios';
 import { useLiveResource } from '@/composables/useLiveResource';
 import { daymonthhhmm } from '@/composables/datefilters';
 import { memberStatusBadge } from '@/composables/sos';
+import PositionIndicator from '@/components/PositionIndicator.vue';
 
 const props = defineProps({
     teamId: {type: String, required: false},
@@ -178,6 +179,7 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
             <Column field="name" header="Navn" sortable>
                 <template #body="{data}">
                     <span :class="memberNameClass(data)">{{ data.name }}</span>
+                    <PositionIndicator :person-id="data.memberId" class="ml-1" />
                     <!--
                       Made visible in the collapsed row, not only in the expanded one: a
                       member moved to another patrol is still listed here and still racing,

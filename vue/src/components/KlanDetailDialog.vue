@@ -21,6 +21,7 @@ import { useToast } from 'primevue/usetoast'
 import { http } from '@/plugins/axios'
 import { useLiveResource } from '@/composables/useLiveResource'
 import { parseApiDate } from '@/composables/datefilters'
+import PositionIndicator from '@/components/PositionIndicator.vue'
 
 const props = defineProps<{
   teamId: string
@@ -328,7 +329,14 @@ async function remove() {
 
       <Fieldset :legend="`Seniorer (${members.length})`" class="mb-4">
         <DataTable :value="members" size="small" class="text-sm">
-          <Column field="name" header="Navn" />
+          <Column field="name" header="Navn">
+            <template #body="{ data: m }">
+              <span class="inline-flex items-center gap-1">
+                {{ m.name }}
+                <PositionIndicator :person-id="m.memberId" />
+              </span>
+            </template>
+          </Column>
           <Column header="Kontakt">
             <template #body="{ data: m }">
               <div class="flex flex-col">
