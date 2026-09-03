@@ -1,10 +1,10 @@
 # 129 — Map set management UI
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (Zed)
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -35,3 +35,6 @@ readable message rather than a generic error.
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 010 §10.
+- 2026-09-03 — Picked up. Plan: inline set editing in the dialog's existing list rather than a second
+  nested dialog — a set has two fields, and a modal over a modal over the map would bury the map
+  the whole screen is about. This is also what makes the feature usable without curl.
