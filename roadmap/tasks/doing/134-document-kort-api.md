@@ -1,10 +1,10 @@
 # 134 — Document `GET /api/kort` for the hej-app team
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (Zed)
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -36,3 +36,5 @@ JSON and would otherwise get wrong:
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 010 §10.
+- 2026-09-03 — Picked up. Plan: a document in the repo, with a real captured payload rather than a
+  hand-written one — an invented example is where a contract first drifts from the code.
