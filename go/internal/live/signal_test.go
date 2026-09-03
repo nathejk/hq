@@ -75,6 +75,25 @@ func TestSignalFromSubject(t *testing.T) {
 			subject: "nathejk.2026.spejder.s-1.updated",
 			want:    Signal{Type: SignalEntityChanged, Entity: "spejder", ID: "s-1", Year: "2026", Event: "updated"},
 		},
+		{
+			name: "telemetry track reported",
+			// PRD 011: the second stream hq consumes. The entity token is "track"
+			// — not "position", not "telemetry" — and this is what every frontend
+			// dependsOn keys off, so it is pinned here rather than assumed.
+			subject: "TELEMETRY.2026.track.f30793d2-5393-4d90-bbfa-cf224bbc131b.reported",
+			want: Signal{
+				Type:   SignalEntityChanged,
+				Entity: "track",
+				ID:     "f30793d2-5393-4d90-bbfa-cf224bbc131b",
+				Year:   "2026",
+				Event:  "reported",
+			},
+		},
+		{
+			name:    "telemetry domain match is case insensitive too",
+			subject: "telemetry.2026.track.p-1.reported",
+			want:    Signal{Type: SignalEntityChanged, Entity: "track", ID: "p-1", Year: "2026", Event: "reported"},
+		},
 	}
 
 	for _, tc := range tests {
@@ -101,6 +120,17 @@ func TestSignalFromSubjectRejects(t *testing.T) {
 		"NATHEJK..patrulje.p-1.started",  // no year
 		"NATHEJK.2026..p-1.started",      // no entity
 		"NATHEJK.2026.patrulje..started", // no id where one is expected
+
+		// The three-part "year entity changed" form is a NATHEJK convention. A
+		// telemetry subject of that shape is not a statement about the year, and
+		// reporting it as one would invalidate every year-dependent page for an
+		// unrelated reason — so it is rejected rather than misread.
+		"TELEMETRY.2026.reported",
+
+		// Still a closed set: adding TELEMETRY must not turn the check into
+		// "anything with enough parts".
+		"TELEMETRYX.2026.track.p-1.reported",
+		"NATS.2026.track.p-1.reported",
 	} {
 		t.Run(subject, func(t *testing.T) {
 			_, err := SignalFromSubject(cqrs.SubjectFromStr(subject))

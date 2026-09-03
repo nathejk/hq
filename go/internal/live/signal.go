@@ -93,6 +93,38 @@ func Resync() Signal {
 // is invisible and load-bearing.
 const domain = "NATHEJK"
 
+// telemetryDomain is the second stream hq consumes (PRD 011).
+//
+//	TELEMETRY.{year}.track.{personId}.reported
+//
+// It is a separate JetStream stream rather than a subject under NATHEJK because the
+// library derives the stream name from the subject's domain, and because its
+// retention and erasure story differ: telemetry is kept indefinitely and purged
+// per person.
+//
+// Listing it here is what makes a telemetry projection live. Without it
+// SignalFromSubject returns ErrNotASignal for every telemetry event, NotifyAll
+// publishes nothing, and the SPA never learns a position arrived — a failure with no
+// error anywhere, which is why this const exists rather than a looser check.
+const telemetryDomain = "TELEMETRY"
+
+// knownDomains are the event domains that can be expressed as signals.
+//
+// A closed set rather than "anything with enough parts": an unrecognised domain is
+// far more likely to be a typo or a subject from a stream nobody wired than a new
+// integration, and inventing a signal for it would invalidate client caches under a
+// token no page depends on.
+var knownDomains = [...]string{domain, telemetryDomain}
+
+func knownDomain(s string) bool {
+	for _, d := range knownDomains {
+		if strings.EqualFold(s, d) {
+			return true
+		}
+	}
+	return false
+}
+
 // SignalFromSubject derives a signal from an event subject.
 //
 // The whole point of the live-update design rests here: because the subject
@@ -102,7 +134,7 @@ func SignalFromSubject(subj cqrs.Subject) (Signal, error) {
 	parts := strings.Split(subj.Subject(), ".")
 
 	// parts[0] is the domain; at minimum we need a year after it.
-	if len(parts) < 3 || !strings.EqualFold(parts[0], domain) {
+	if len(parts) < 3 || !knownDomain(parts[0]) {
 		return Signal{}, ErrNotASignal
 	}
 
@@ -116,6 +148,15 @@ func SignalFromSubject(subj cqrs.Subject) (Signal, error) {
 		// NATHEJK.{year}.{event} — the year entity itself changed. Report it as
 		// the "year" entity so a client can depend on it by name; the year value
 		// doubles as the id, since that is what identifies which year changed.
+		//
+		// This three-part form is a NATHEJK convention, so it is not extended to
+		// other domains: a hypothetical TELEMETRY.{year}.{event} is not a statement
+		// about the year entity, and reporting it as one would emit a signal that
+		// invalidates every year-dependent page for an unrelated reason. Per
+		// ErrNotASignal's contract, no signal beats a wrong one.
+		if !strings.EqualFold(parts[0], domain) {
+			return Signal{}, ErrNotASignal
+		}
 		return Signal{
 			Type:   SignalEntityChanged,
 			Entity: "year",
