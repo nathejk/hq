@@ -137,9 +137,12 @@ type Kortsaet struct {
 	// set rather than concluding a team type has no maps.
 	TeamType *types.TeamType `json:"teamType"`
 
-	// Maps is the set's sheets in handout order, filled in by the read path that nests them
-	// (task 125). Empty here is not "no sheets" unless the caller asked for them.
-	Maps []Kort `json:"kort,omitempty"`
+	// Maps is the set's sheets in handout order, filled in by Nest.
+	//
+	// No `omitempty`: a set with no sheets must serialize as `kort: []`, not vanish from the
+	// payload. A set an operator has just created is exactly that, and a key that comes and goes
+	// would make every client handle absence as well as emptiness.
+	Maps []Kort `json:"kort"`
 }
 
 // ForTeamType reports whether this set is specifically for the given team type.

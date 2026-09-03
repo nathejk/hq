@@ -120,6 +120,18 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPut, "/api/kortsaet", app.sortKortsaetHandler)
 	router.HandlerFunc(http.MethodPut, "/api/kortsaet/:id", app.updateKortsaetHandler)
 	router.HandlerFunc(http.MethodDelete, "/api/kortsaet/:id", app.deleteKortsaetHandler)
+	// Sheet order is handout order along the route, which is only meaningful within a set — so it
+	// lives under the set, which also keeps it clear of the `/api/kort/:id` wildcard.
+	router.HandlerFunc(http.MethodPut, "/api/kortsaet/:id/kort", app.sortKortHandler)
+
+	// The sheets themselves. `GET /api/kort` is the one read: the whole year is a handful of
+	// records, and both the settings modal and the hej-app work from that single response, so there
+	// is deliberately no per-sheet GET.
+	router.HandlerFunc(http.MethodGet, "/api/kort", app.showKortHandler)
+	router.HandlerFunc(http.MethodPost, "/api/kort", app.createKortHandler)
+	router.HandlerFunc(http.MethodPut, "/api/kort/:id", app.updateKortHandler)
+	router.HandlerFunc(http.MethodDelete, "/api/kort/:id", app.deleteKortHandler)
+	router.HandlerFunc(http.MethodPut, "/api/kort/:id/checkpoints", app.setKortCheckpointsHandler)
 
 	// Collecting a whole patrol is one action on the *case*, not four on members:
 	// three separate calls could half-succeed and split a team across two states.

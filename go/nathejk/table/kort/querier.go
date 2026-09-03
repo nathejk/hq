@@ -153,6 +153,44 @@ func (q *querier) GetByID(ctx context.Context, year types.YearSlug, id KortID) (
 	return k, err
 }
 
+// Nest groups sheets under their sets, and reports the ones whose set is unknown.
+//
+// The nesting is what makes `GET /api/kort` one round trip for a consumer that needs the sets'
+// `teamType` markings *and* the sheets — which is every consumer, since a sheet means nothing
+// without knowing who it is printed for.
+//
+// Orphans are returned rather than dropped. A sheet whose `kortsaetId` names no set is possible
+// during replay (events arrive in stream order, so a sheet may precede its set) and after a bad
+// edit, and silently omitting it would make a map invisible in the one screen that exists to find
+// such mistakes. Normally empty.
+func Nest(sets []Kortsaet, maps []Kort) (nested []Kortsaet, orphans []Kort) {
+	bySet := map[KortsaetID][]Kort{}
+	for _, m := range maps {
+		bySet[m.KortsaetID] = append(bySet[m.KortsaetID], m)
+	}
+
+	nested = make([]Kortsaet, 0, len(sets))
+	known := map[KortsaetID]bool{}
+	for _, s := range sets {
+		known[s.KortsaetID] = true
+		s.Maps = bySet[s.KortsaetID]
+		if s.Maps == nil {
+			// `[]` rather than null: a set with no sheets yet is the ordinary state of a set an
+			// operator has just created.
+			s.Maps = []Kort{}
+		}
+		nested = append(nested, s)
+	}
+
+	orphans = []Kort{}
+	for _, m := range maps {
+		if !known[m.KortsaetID] {
+			orphans = append(orphans, m)
+		}
+	}
+	return nested, orphans
+}
+
 type scanner interface {
 	Scan(dest ...any) error
 }

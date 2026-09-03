@@ -31,6 +31,13 @@ func kortRoutes(t *testing.T) *httprouter.Router {
 	router.HandlerFunc(http.MethodPut, "/api/kortsaet", h)
 	router.HandlerFunc(http.MethodPut, "/api/kortsaet/:id", h)
 	router.HandlerFunc(http.MethodDelete, "/api/kortsaet/:id", h)
+	router.HandlerFunc(http.MethodPut, "/api/kortsaet/:id/kort", h)
+
+	router.HandlerFunc(http.MethodGet, "/api/kort", h)
+	router.HandlerFunc(http.MethodPost, "/api/kort", h)
+	router.HandlerFunc(http.MethodPut, "/api/kort/:id", h)
+	router.HandlerFunc(http.MethodDelete, "/api/kort/:id", h)
+	router.HandlerFunc(http.MethodPut, "/api/kort/:id/checkpoints", h)
 
 	return router
 }
@@ -57,6 +64,12 @@ func TestKortsaetRoutesResolve(t *testing.T) {
 		{http.MethodPut, "/api/kortsaet", ""},
 		{http.MethodPut, "/api/kortsaet/kortsaet-1", "kortsaet-1"},
 		{http.MethodDelete, "/api/kortsaet/kortsaet-1", "kortsaet-1"},
+		{http.MethodPut, "/api/kortsaet/kortsaet-1/kort", "kortsaet-1"},
+		{http.MethodGet, "/api/kort", ""},
+		{http.MethodPost, "/api/kort", ""},
+		{http.MethodPut, "/api/kort/kort-1", "kort-1"},
+		{http.MethodDelete, "/api/kort/kort-1", "kort-1"},
+		{http.MethodPut, "/api/kort/kort-1/checkpoints", "kort-1"},
 	} {
 		handler, params, _ := router.Lookup(tc.method, tc.path)
 		if handler == nil {
@@ -66,6 +79,16 @@ func TestKortsaetRoutesResolve(t *testing.T) {
 		if got := params.ByName("id"); got != tc.wantParam {
 			t.Errorf("%s %s: id = %q, want %q", tc.method, tc.path, got, tc.wantParam)
 		}
+	}
+}
+
+// There is deliberately no per-sheet GET: the whole year is a handful of records, `GET /api/kort`
+// returns all of it, and both the modal and the hej-app work from that one cached response.
+func TestThereIsNoSingleMapRead(t *testing.T) {
+	router := kortRoutes(t)
+
+	if handler, _, _ := router.Lookup(http.MethodGet, "/api/kort/kort-1"); handler != nil {
+		t.Error("GET /api/kort/:id exists; it would be a second read path with no caller")
 	}
 }
 

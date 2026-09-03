@@ -324,6 +324,7 @@ func main() {
 	cmds.Note = spejdernotetable
 	cmds.Dispatch = dispatchtable
 	cmds.KortSet = korttable
+	cmds.Kort = korttable
 	// Both arguments are klantable: it is the read model the override dirty-checks
 	// against *and* the entity that owns what deleting a klan means.
 	cmds.Klan = commands.NewKlan(publisher, klantable, klantable)

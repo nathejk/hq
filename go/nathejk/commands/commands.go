@@ -50,6 +50,9 @@ type Commands struct {
 	// about the sheets — so the command belongs with the read model that can answer it.
 	KortSet kort.SetCommands
 
+	// Kort is the write side for the printed sheets themselves.
+	Kort kort.Commands
+
 	Team interface {
 		UpdatePatrulje(types.TeamID, Patrulje, Contact, []Spejder) error
 		StartPatrulje(types.TeamID, []StartPatruljeMember) error
