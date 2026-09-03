@@ -3,7 +3,7 @@
 **Status:** doing
 **Author:** agent session (with knj)
 **Created:** 2026-09-03
-**Last updated:** 2026-09-03 (all code tasks complete; 139/152/153 outstanding)
+**Last updated:** 2026-09-03 (all code tasks complete; 152/153 outstanding, neither blocking)
 **Approved:** 2026-09-03
 **Shipped:**
 **Target users:** organizer (HQ operators, løbsledelse, SOS/dispatch), and — indirectly — participants whose hej-app reports the positions
@@ -559,9 +559,11 @@ must carry OpenAPI annotations** in the same style as existing handlers:
 
 **Dependencies & risks.**
 
-- **Infra:** the `TELEMETRY` stream must exist, correctly cased, before deploy or
-  the API will not boot. This is the largest operational risk and the only
-  remaining prerequisite.
+- ~~**Infra:** the `TELEMETRY` stream must exist, correctly cased, before deploy or
+  the API will not boot.~~ **Resolved 2026-09-03:** the stream is created and
+  available across all environments (task 139). This was the only deployment gate,
+  so the implemented work can ship; a mis-cased or deleted stream would still be
+  fatal at boot, which is worth remembering the next time environments are rebuilt.
 - **Volume × indefinite retention is the real risk.** Unlike every other stream HQ
   consumes, this one grows with wall time × participants and is never trimmed —
   ~3.6 M points per event, accumulating yearly. Replaying all of it on every API
@@ -616,7 +618,7 @@ infrastructure question is answered first.
 
 Tasks created in `roadmap/tasks/open/` on approval:
 
-- [x] 139 — Provision the `TELEMETRY` stream in NATS (dev + stage) — **dev confirmed, stage outstanding**
+- [x] 139 — Provision the `TELEMETRY` stream in NATS — **created and available in all environments** (knj, 2026-09-03)
 - [x] 140 — Widen `live.SignalFromSubject` to accept `TELEMETRY` alongside `NATHEJK`
 - [x] 141 — Add `table/track` projection (`track_latest` + `track_point`), wired into the `projections` slice
 - [x] 142 — `GET /api/telemetry/presence`

@@ -1,11 +1,11 @@
 # 139 — provision the TELEMETRY stream in NATS
 
-**Status:** open
+**Status:** done
 **Priority:** high
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
-**Completed:**
+**Picked up by:** knj
+**Started:** 2026-09-03
+**Completed:** 2026-09-03
 
 ## Description
 
@@ -27,7 +27,7 @@ is task 153.
 ## Acceptance Criteria
 
 - [x] A stream named `TELEMETRY` exists in dev, with subjects `TELEMETRY.>`
-- [ ] Same confirmed in stage
+- [x] Same confirmed in stage
 - [x] `hej-api` is observed publishing `TELEMETRY.{year}.track.{personId}.reported` into it
 - [x] Confirmed that a hq api boot against the stream does not fatal (dev)
 
@@ -35,3 +35,5 @@ is task 153.
 
 - 2026-09-03 — Task created from PRD 011 §10.
 - 2026-09-03 — **Dev half appears already satisfied**, found while verifying task 147. The api has been running the `table/track` consumer through hot-reload without fatalling, and `track_point` holds 1,202 real points for one person — so a stream named `TELEMETRY` exists in dev and `hej-api` is publishing into it. Left open because stage is unverified, and stage is where a missing or mis-cased stream stops the api from booting at all.
+- 2026-09-03 — **knj: the stream is created and available across all environments.** That closes the last criterion and, with it, the deployment gate on task 141 — `table/track` was the first consumer in hq whose subject domain is not `NATHEJK`, so until now deploying it risked the api failing to boot rather than merely lacking telemetry.
+- 2026-09-03 — Completed. PRD 011's implemented work is now deployable; what remains (152, 153) does not block a release.
