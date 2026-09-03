@@ -26,6 +26,13 @@ import (
 // Scouts move between patrols mid-race (`spejder.*.team.moved`). Their positions before and after the
 // move belong to different patrols, and showing a member's whole track on both teams' maps would put
 // one patrol's movement on another's picture. An interval is what lets the caller clip.
+//
+// # Two sources, neither sufficient alone
+//
+// The log holds everyone who has *ever* been on the team, including scouts whose `spejder` row was
+// hard-deleted when they withdrew. The `spejder` table holds the current roster, and is the only
+// source that knows anything before the patrol starts — which is most of the season. See
+// rosterWithoutHistory.
 
 // logEntry is one row of a member's lifecycle log, reduced to what membership intervals need.
 type logEntry struct {
@@ -110,9 +117,9 @@ func (q *querier) TeamMemberships(ctx context.Context, year types.YearSlug, team
 	}
 
 	// A member whose patrol never started has no log rows at all, so the loop above never saw them.
-	// They still belong to the team, and a phone can have been reporting all along — a scout waiting
-	// at the start with the app open is the ordinary case.
-	signed, err := q.signedUpWithoutHistory(ctx, year, teamID, history)
+	// Before a race that is *every* member, which is the ordinary state for most of the season — and it
+	// is why the current roster is a source here alongside the history.
+	signed, err := q.rosterWithoutHistory(ctx, year, teamID, history)
 	if err != nil {
 		return nil, err
 	}
@@ -163,21 +170,47 @@ func intervalsFor(id types.MemberID, teamID types.TeamID, entries []logEntry) []
 	return out
 }
 
-// signedUpWithoutHistory finds members attached to the team who have no lifecycle events yet.
+// rosterWithoutHistory finds members attached to the team who have no lifecycle events yet.
 //
-// Their interval is open with a zero From: there is no event to date the start, and inventing one
-// from the signup time would be a guess presented as a fact. Zero means "do not clip", which is the
-// honest handling — every position we hold for them was recorded while they belonged to this team.
-func (q *querier) signedUpWithoutHistory(
+// # Why the current roster is a source, not just the log
+//
+// The log records what *happened* to a member, and before a patrol starts nothing has: no
+// `patrulje.started`, no move, no withdrawal. Such a member has no `spejderstatuslog` rows and often
+// no `spejderstatus` row either, so a query over history alone returns an empty patrol — which was a
+// real bug (task 154): a scout whose phone was already reporting had a position glyph and an empty map.
+//
+// So both are read, and unioned:
+//
+//   - `spejder` is the **current roster**. It is authoritative for who is on the team now, and it is
+//     the only source that knows anything at all before the race.
+//   - `spejderstatus` catches a member attached to the team by lifecycle rather than by signup — one
+//     moved in from elsewhere, whose `spejder` row may name a different team.
+//
+// `spejder` alone would still be wrong, which is what task 148 was right about:
+// `NATHEJK.*.spejder.*.deleted` hard-deletes the row, so a withdrawn scout exists only in the log.
+// Neither source is sufficient; the union is.
+//
+// Their interval is open with a zero From: there is no event to date the start, and inventing one from
+// the signup time would be a guess presented as a fact. Zero means "do not clip", which is the honest
+// handling — every position we hold for them was recorded while they belonged to this team.
+func (q *querier) rosterWithoutHistory(
 	ctx context.Context,
 	year types.YearSlug,
 	teamID types.TeamID,
 	seen map[types.MemberID][]logEntry,
 ) ([]Membership, error) {
+	// UNION rather than two round trips, and UNION rather than UNION ALL so a member present in both
+	// — the normal case once a patrol has started — is returned once.
 	const query = `SELECT id FROM spejderstatus
-		WHERE year = ? AND (initialTeamId = ? OR currentTeamId = ?)`
+			WHERE year = ? AND (initialTeamId = ? OR currentTeamId = ?)
+		UNION
+		SELECT memberId FROM spejder
+			WHERE year = ? AND teamId = ?`
 
-	rows, err := q.db.QueryContext(ctx, query, string(year), string(teamID), string(teamID))
+	rows, err := q.db.QueryContext(ctx, query,
+		string(year), string(teamID), string(teamID),
+		string(year), string(teamID),
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -189,6 +222,8 @@ func (q *querier) signedUpWithoutHistory(
 		if err := rows.Scan(&id); err != nil {
 			return nil, err
 		}
+		// Someone with history already has their intervals from the walk above; adding an open-ended
+		// one here would put a moved-away scout back on this patrol's map for the whole race.
 		if _, ok := seen[id]; ok {
 			continue
 		}

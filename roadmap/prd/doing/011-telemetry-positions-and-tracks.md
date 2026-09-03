@@ -301,8 +301,11 @@ member and whether they are still on the team.
       Scans are **never** reduced — they are few, exact, and the anchor points an
       operator reasons from.
 - [ ] Membership history is derived from `spejderstatus` /
-      `spejderstatuslog`, **not** from the `spejder` table, which does not retain
-      removed members.
+      `spejderstatuslog` **and** the current `spejder` roster — a **union**, because
+      neither source alone is sufficient: `spejder` hard-deletes withdrawn scouts,
+      and before a patrol starts nothing has happened to its members so the
+      lifecycle log is empty. Corrected under task 154 after shipping with
+      history-only, which made the map empty for any patrol that had not started.
 - [ ] `userType` is stored as received per message and never derived by lookup,
       so history keeps the role the person actually held at the time.
 - [ ] **Erasure propagates.** Purging a person's subject from the stream must be
@@ -644,9 +647,24 @@ and tracks on one time axis, where every marker landed in 1970 rather than merel
 unused field — a good example of a new consumer exposing an old defect. `/api/patrulje/:id/scans`
 now returns real timestamps, which is a visible behaviour change to an existing endpoint.
 
-**Membership is year-scoped, `scan.GetAll` is not.** Requesting a previous year's team
-under the current year slug returns its scans with zero members. Harmless today — the SPA
-only navigates to current-year teams — but it is a seam somebody will trip over.
+**Membership is year-scoped, `scan.GetAll` is not.** Requesting a previous year's team under
+the current year slug returns its scans with zero members. Harmless today — the SPA only
+navigates to current-year teams — but it is a seam somebody will trip over.
+
+**Membership needs two sources, not one (task 154).** The PRD originally said to derive
+membership from the lifecycle log rather than `spejder`, because `spejder` hard-deletes
+withdrawn scouts. That is true and insufficient: before a patrol starts nothing has
+happened to its members, so there are no log rows and often no status row either, and a
+history-only query returned an **empty patrol** — a scout with a position glyph and a blank
+map. Now a union of the current roster and the history. Two opposite mistakes at the same
+boundary, which is a sign the boundary was worth documenting in the code rather than only
+here.
+
+**A default anchored on "now" is wrong outside a race (task 154).** The track dialog first
+shipped defaulting to the last six hours, which is right during a race and guarantees an
+empty map at every other time — including any later reconstruction, one of the two reasons
+this feature exists. It now defaults to the whole track; reduction makes that cheap, so the
+presets narrow from everything rather than out from a slice.
 
 ## 11. Open Questions
 

@@ -27,15 +27,26 @@ const { target, open, close } = useTrackViewer()
  * The window doubles as the fidelity control: less time means the point budget buys more detail.
  */
 const windows = [
+  { label: 'Hele løbet', ms: 0 },
   { label: 'Seneste time', ms: 60 * 60 * 1000 },
   { label: 'Seneste 6 timer', ms: 6 * 60 * 60 * 1000 },
   { label: 'Seneste 12 timer', ms: 12 * 60 * 60 * 1000 },
-  { label: 'Hele løbet', ms: 0 },
 ]
 
-// Six hours rather than everything: it covers the stretch usually being asked about, and it keeps the
-// first render legible.
-const windowMs = ref(6 * 60 * 60 * 1000)
+/**
+ * The default window is the **whole** track, not a recent slice.
+ *
+ * It used to default to six hours, anchored on `Date.now()`, and that was wrong in principle rather
+ * than merely inconvenient (task 154): "recent" is the right frame *during* a race and guarantees an
+ * empty map at every other time — including any later review of what happened, which is one of the
+ * two reasons this feature exists. An operator who opens a map and sees nothing while a position glyph
+ * sits next to the name has been told something false.
+ *
+ * Asking for everything is cheap because the server reduces: a response is capped at 2,000 points
+ * whatever the span. So the presets narrow from here rather than out, and narrowing is what buys
+ * detail — fewer hours, same budget.
+ */
+const windowMs = ref(0)
 
 // A fresh panel per target and per window. The key also carries the moment the window was chosen, so
 // picking the same preset twice re-reads rather than showing the same cached slice — "seneste time"

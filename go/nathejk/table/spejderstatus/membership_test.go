@@ -129,4 +129,18 @@ func TestMembershipOpen(t *testing.T) {
 	}
 }
 
+// A member with no lifecycle events yields nothing from the interval walk — which is correct, and is
+// exactly why the roster query exists alongside it.
+//
+// This is the regression guard for task 154: a patrol that has not started has no `spejderstatuslog`
+// rows at all, so a membership query built on history alone returned an empty patrol and the track map
+// showed nothing while a position glyph sat next to the scout's name. The walk returning nothing here
+// is the *expected* half of that; `rosterWithoutHistory` supplies the member, and it reads `spejder`
+// (the current roster) as well as `spejderstatus`.
+func TestIntervalsForNoHistoryYieldsNothing(t *testing.T) {
+	if got := intervalsFor("m-1", "t-1", nil); len(got) != 0 {
+		t.Errorf("want no intervals from an empty log, got %+v", got)
+	}
+}
+
 func ptrTime(t time.Time) *time.Time { return &t }
