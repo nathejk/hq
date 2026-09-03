@@ -56,6 +56,7 @@ declare module 'vue' {
     Navigation: typeof import('./src/components/Navigation.vue')['default']
     NavUserMenu: typeof import('./src/components/NavUserMenu.vue')['default']
     Panel: typeof import('primevue/panel')['default']
+    PositionIndicator: typeof import('./src/components/PositionIndicator.vue')['default']
     ProgressSpinner: typeof import('primevue/progressspinner')['default']
     RadioButton: typeof import('primevue/radiobutton')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
