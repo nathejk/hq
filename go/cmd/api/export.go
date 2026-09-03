@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/nathejk/shared-go/types"
@@ -20,6 +21,7 @@ func (app *application) excelPatruljeHandler(w http.ResponseWriter, r *http.Requ
 	teams, err := app.models.Patrulje.GetAll(r.Context(), filter)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
+		return
 	}
 
 	xlsx := excelize.NewFile()
@@ -111,11 +113,7 @@ func (app *application) excelPatruljeHandler(w http.ResponseWriter, r *http.Requ
 	xlsx.SetSheetName("Sheet1", "Patruljer")
 	xlsx.SetSheetName("Sheet2", "Spejdere")
 
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", "attachment; filename="+"patruljer-"+time.Now().Format("20060102150405")+".xlsx")
-	w.Header().Set("Content-Transfer-Encoding", "binary")
-	w.Header().Set("Expires", "0")
-	xlsx.Write(w)
+	writeXlsx(app, w, r, xlsx, "patruljer")
 }
 
 func (app *application) excelKlanHandler(w http.ResponseWriter, r *http.Request) {
@@ -123,6 +121,7 @@ func (app *application) excelKlanHandler(w http.ResponseWriter, r *http.Request)
 	teams, err := app.models.Klan.GetAll(context.Background(), filter)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
+		return
 	}
 
 	xlsx := excelize.NewFile()
@@ -208,11 +207,7 @@ func (app *application) excelKlanHandler(w http.ResponseWriter, r *http.Request)
 	xlsx.SetSheetName("Sheet1", "Klaner")
 	xlsx.SetSheetName("Sheet2", "Banditter")
 
-	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", "attachment; filename="+"banditter-"+time.Now().Format("20060102150405")+".xlsx")
-	w.Header().Set("Content-Transfer-Encoding", "binary")
-	w.Header().Set("Expires", "0")
-	xlsx.Write(w)
+	writeXlsx(app, w, r, xlsx, "banditter")
 }
 
 func (app *application) excelPersonnelHandler(w http.ResponseWriter, r *http.Request) {
@@ -220,6 +215,7 @@ func (app *application) excelPersonnelHandler(w http.ResponseWriter, r *http.Req
 	personnel, err := app.models.Personnel.GetAll(r.Context(), filter)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
+		return
 	}
 
 	xlsx := excelize.NewFile()
@@ -290,9 +286,33 @@ func (app *application) excelPersonnelHandler(w http.ResponseWriter, r *http.Req
 	xlsx.SetSheetName("Sheet1", "Gøglere")
 	xlsx.SetSheetName("Sheet2", "Hjælpere")
 
+	writeXlsx(app, w, r, xlsx, "personnel")
+}
+
+// writeXlsx sends a finished workbook, or a JSON error — never a mixture of the two.
+//
+// The spreadsheet is rendered to memory before a single header is set, because the
+// response headers are the commitment: once `Content-Disposition: attachment` and a 200
+// are on the wire, anything that goes wrong afterwards arrives as a corrupt download
+// that the browser still saves under a plausible name. Rendering first means a failure
+// is still answerable with a 500 and an error body.
+//
+// It also stops ignoring the write error, which `xlsx.Write(w)` did.
+func writeXlsx(app *application, w http.ResponseWriter, r *http.Request, xlsx *excelize.File, name string) {
+	buf, err := xlsx.WriteToBuffer()
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/octet-stream")
-	w.Header().Set("Content-Disposition", "attachment; filename="+"personnel-"+time.Now().Format("20060102150405")+".xlsx")
+	w.Header().Set("Content-Disposition", "attachment; filename="+name+"-"+time.Now().Format("20060102150405")+".xlsx")
 	w.Header().Set("Content-Transfer-Encoding", "binary")
 	w.Header().Set("Expires", "0")
-	xlsx.Write(w)
+	w.Header().Set("Content-Length", strconv.Itoa(buf.Len()))
+	if _, err := w.Write(buf.Bytes()); err != nil {
+		// Too late for an error response — the operator's download is already broken — but
+		// it must not vanish silently either.
+		app.Logger.PrintError(err, map[string]string{"export": name})
+	}
 }

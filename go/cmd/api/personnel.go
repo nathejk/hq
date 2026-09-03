@@ -13,6 +13,7 @@ func (app *application) listPersonnelHandler(w http.ResponseWriter, r *http.Requ
 	list, err := app.models.Personnel.GetAll(context.Background(), filter)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
+		return
 	}
 
 	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"personnel": list}, nil)

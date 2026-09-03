@@ -13,6 +13,7 @@ func (app *application) showBadutListHandler(w http.ResponseWriter, r *http.Requ
 	teams, err := app.models.Personnel.GetAll(context.Background(), filter)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
+		return
 	}
 
 	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"personnel": teams}, nil)

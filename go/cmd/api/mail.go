@@ -20,6 +20,7 @@ func (app *application) mailRecipientsHandler(w http.ResponseWriter, r *http.Req
 	badutter, err := app.models.Personnel.GetAll(context.Background(), filter)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
+		return
 	}
 	badutRecipients := []mailRecipient{}
 	for _, badut := range badutter {
