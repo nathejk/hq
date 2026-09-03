@@ -4,7 +4,7 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { http } from '@/plugins/axios'
 import { useLiveResource } from '@/composables/useLiveResource'
-import { useKort } from '@/composables/kort'
+import { useKort, extentFromCorners, type Extent } from '@/composables/kort'
 import KortSettingsDialog from '@/components/kort/KortSettingsDialog.vue'
 
 // ---------------------------------------------------------------------------
@@ -75,6 +75,16 @@ const enterSettings = () => {
   settingsOpen.value = true
 }
 
+// Closing the dialog must take its map decorations with it: PrimeVue keeps the component mounted
+// when hidden, so nothing else would clear the rectangles, the fade or an armed picker — leaving the
+// map crosshaired and half-drawn with no visible reason why.
+watch(settingsOpen, (open) => {
+  if (open) return
+  selectedKortId.value = undefined
+  extentsPreview.value = []
+  pickingExtent.value = false
+})
+
 /** The checkpoints drawn on the selected sheet, or none when nothing is selected. */
 const highlightedCheckpoints = computed<Set<string>>(() => {
   const id = selectedKortId.value
@@ -105,6 +115,84 @@ const applyHighlight = () => {
 }
 
 watch([highlightedCheckpoints, selectedKortId], () => applyHighlight())
+
+// ---------------------------------------------------------------------------
+// Extents: drawing them, and picking their corners (PRD 010, task 130)
+// ---------------------------------------------------------------------------
+//
+// The dialog owns the values; this owns the map. So the dialog asks to be armed and this reports
+// back the rectangle the operator drew.
+
+/** Rectangles to draw — the dialog's draft, so an unsaved extent is visible immediately. */
+const extentsPreview = ref<Extent[]>([])
+/** True while the next two clicks are corners. */
+const pickingExtent = ref(false)
+/** The rectangle just drawn, handed to the dialog. `seq` so an identical redraw still registers. */
+const pick = ref<{ extent: Extent; seq: number } | null>(null)
+let pickSeq = 0
+let firstCorner: L.LatLng | null = null
+
+let extentLayer: L.LayerGroup | null = null
+let rubberBand: L.Rectangle | null = null
+
+/**
+ * Build a north-west/south-east pair from two arbitrary corners.
+ *
+ * In the composable, with tests: north-is-larger-latitude and west-is-smaller-longitude is trivial
+ * to write backwards, and a mirrored rectangle is not obviously wrong on screen — it is wrong on the
+ * printed sheet, months later.
+ */
+const toExtent = (a: L.LatLng, b: L.LatLng): Extent => extentFromCorners(a, b)
+
+const drawExtents = () => {
+  if (!map) return
+  extentLayer?.remove()
+  extentLayer = L.layerGroup().addTo(map)
+  extentsPreview.value.forEach((extent) => {
+    L.rectangle(
+      [
+        [extent.northWest.latitude, extent.northWest.longitude],
+        [extent.southEast.latitude, extent.southEast.longitude]
+      ],
+      // Translucent and thin: the rectangle describes the sheet, it is not the subject of the
+      // screen, and a solid fill would hide the checkpoints it is drawn around.
+      { color: '#2563eb', weight: 2, fillOpacity: 0.08, interactive: false }
+    ).addTo(extentLayer!)
+  })
+}
+
+watch(extentsPreview, () => drawExtents(), { deep: true })
+
+const clearRubberBand = () => {
+  rubberBand?.remove()
+  rubberBand = null
+  firstCorner = null
+}
+
+watch(pickingExtent, (armed) => {
+  if (!armed) clearRubberBand()
+  // The crosshair is the only signal that a click means something different now.
+  if (map) map.getContainer().style.cursor = armed ? 'crosshair' : ''
+})
+
+const onPickClick = (e: L.LeafletMouseEvent) => {
+  if (!pickingExtent.value) return
+  if (!firstCorner) {
+    firstCorner = e.latlng
+    return
+  }
+  pickSeq += 1
+  pick.value = { extent: toExtent(firstCorner, e.latlng), seq: pickSeq }
+  clearRubberBand()
+}
+
+/** A rubber band between the first corner and the pointer, so the shape is visible before the click. */
+const onPickMove = (e: L.LeafletMouseEvent) => {
+  if (!pickingExtent.value || !firstCorner || !map) return
+  const bounds = L.latLngBounds(firstCorner, e.latlng)
+  if (rubberBand) rubberBand.setBounds(bounds)
+  else rubberBand = L.rectangle(bounds, { color: '#f59e0b', weight: 2, dashArray: '4 4', fillOpacity: 0.05 }).addTo(map)
+}
 
 // Snapshot of original positions so we can revert on cancel
 let originalPositions = new Map<string, { latitude: number | null; longitude: number | null }>()
@@ -698,6 +786,8 @@ onMounted(async () => {
 
   map.on('contextmenu', onMapContextMenu)
   map.on('click', hideContextMenu)
+  map.on('click', onPickClick)
+  map.on('mousemove', onPickMove)
   map.on('movestart', hideContextMenu)
   document.addEventListener('click', onDocumentClick)
 
@@ -795,8 +885,11 @@ onBeforeUnmount(() => {
       v-model:selectedId="selectedKortId"
       :payload="kortSheets"
       :checkgroups="checkgroups"
+      :pick="pick"
       @saved="refreshKort"
       @update:dirty="settingsDirty = $event"
+      @update:picking="pickingExtent = $event"
+      @update:extentsPreview="extentsPreview = $event"
     />
   </div>
 </template>

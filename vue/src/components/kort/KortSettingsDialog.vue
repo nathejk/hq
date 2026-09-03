@@ -22,10 +22,13 @@ import {
   checkpointsWithoutMap,
   formatOptions,
   groupSelectionState,
+  isDegenerate,
   orderPicks,
+  sameExtent,
   teamTypeLabel,
   teamTypeOptions,
   toggleGroupSelection,
+  type Extent,
   type Kort,
   type Kortsaet,
   type KortPayload,
@@ -51,6 +54,14 @@ const props = defineProps<{
   checkgroups?: PickerCheckgroup[]
   /** The sheet whose checkpoints are highlighted on the map. */
   selectedId?: string
+  /**
+   * A rectangle the operator has just drawn on the map.
+   *
+   * The view owns the Leaflet map, so it does the picking and reports the result here. `seq`
+   * increments per pick so that drawing the same rectangle twice still registers — comparing the
+   * coordinates would swallow the second one.
+   */
+  pick?: { extent: Extent; seq: number } | null
 }>()
 
 const emit = defineEmits<{
@@ -65,6 +76,10 @@ const emit = defineEmits<{
    * inspected, because only this component knows what "half-edited" means.
    */
   (e: 'update:dirty', value: boolean): void
+  /** Ask the view to arm (or disarm) two-click corner picking. */
+  (e: 'update:picking', value: boolean): void
+  /** The rectangles to draw right now — the draft, so an unsaved extent is still visible. */
+  (e: 'update:extentsPreview', value: Extent[]): void
 }>()
 
 const toast = useToast()
@@ -441,13 +456,113 @@ const saveSetOrder = async () => {
   }
 }
 
+// --- extents (task 130) ---
+//
+// The ground a sheet shows: none for a skitse, one for a normal sheet, two for a double-sided one.
+// The two are simply two areas — nothing here records which is the front, and the checkpoints are
+// not split per side, because both sides are handed over at once.
+
+const MAX_EXTENTS = 2
+
+/** The extents being edited. A copy, like the fields: the cached value is drawn on the map. */
+const draftExtents = ref<Extent[]>([])
+/** Which slot the next drawn rectangle fills, or null when not picking. */
+const pickingIndex = ref<number | null>(null)
+
+watch(
+  selected,
+  (sheet) => {
+    draftExtents.value = (sheet?.extents ?? []).map((extent) => ({ ...extent }))
+    pickingIndex.value = null
+  },
+  { immediate: true },
+)
+
+const extentsDirty = computed(() => {
+  const sheet = selected.value
+  if (!sheet) return false
+  if (draftExtents.value.length !== sheet.extents.length) return true
+  return draftExtents.value.some((extent, i) => !sameExtent(extent, sheet.extents[i]))
+})
+
+// The view draws the *draft*, so an extent that has been drawn but not saved is still visible.
+// Anything else would make "Gem områder" feel like it was what drew the rectangle.
+watch(draftExtents, (extents) => emit('update:extentsPreview', extents), { deep: true, immediate: true })
+watch(pickingIndex, (index) => emit('update:picking', index !== null))
+
+/** Arm picking for a slot, adding one if this is a new area. */
+const pickExtent = (index: number) => {
+  pickingIndex.value = pickingIndex.value === index ? null : index
+}
+
+const addExtent = () => {
+  if (draftExtents.value.length >= MAX_EXTENTS) return
+  // Armed straight away for the slot that does not exist yet: "Tilføj område" means the operator is
+  // about to draw one, so making them press a second button first would be ceremony.
+  pickingIndex.value = draftExtents.value.length
+}
+
+const removeExtent = (index: number) => {
+  draftExtents.value = draftExtents.value.filter((_, i) => i !== index)
+  pickingIndex.value = null
+}
+
+// A rectangle arrived from the map.
+watch(
+  () => props.pick?.seq,
+  () => {
+    const pick = props.pick
+    if (!pick || pickingIndex.value === null) return
+    const next = [...draftExtents.value]
+    next[pickingIndex.value] = pick.extent
+    draftExtents.value = next
+    // One rectangle per arming: staying armed would turn the next map click, meant for something
+    // else, into a redrawn extent.
+    pickingIndex.value = null
+  },
+)
+
+const saveExtents = async () => {
+  const sheet = selected.value
+  if (!sheet) return
+  // Caught here rather than after a round trip: the API refuses it too, but telling the operator
+  // straight away means "vælg to forskellige hjørner" arrives while they still remember clicking.
+  const flat = draftExtents.value.findIndex(isDegenerate)
+  if (flat !== -1) {
+    fieldErrors.value = { extents: 'Området har ingen udstrækning — vælg to forskellige hjørner' }
+    return
+  }
+  saving.value = true
+  fieldErrors.value = {}
+  try {
+    await http.put(`/kort/${sheet.id}`, { extents: draftExtents.value }, { withCredentials: true })
+    emit('saved')
+  } catch (error) {
+    failed(error, 'Kunne ikke gemme områderne')
+  } finally {
+    saving.value = false
+  }
+}
+
+const cancelExtents = () => {
+  draftExtents.value = (selected.value?.extents ?? []).map((extent) => ({ ...extent }))
+  pickingIndex.value = null
+}
+
+/** A short, readable rendering of a rectangle's corners. */
+const extentLabel = (extent: Extent) =>
+  `${extent.northWest.latitude.toFixed(4)}, ${extent.northWest.longitude.toFixed(4)} → ` +
+  `${extent.southEast.latitude.toFixed(4)}, ${extent.southEast.longitude.toFixed(4)}`
+
 // --- unsaved state, all of it ---
 //
 // Declared here, after every source, because the emit below runs immediately: a computed that
 // referenced one of these before its `const` was initialised would throw during setup.
 
-/** Anything unsaved: a field, a tick-box, a set being edited, or a drag not yet persisted. */
-const anyDirty = computed(() => dirty.value || picksDirty.value || setDirty.value || reordering.value)
+/** Anything unsaved: a field, a tick-box, an extent, a set being edited, or a drag not yet saved. */
+const anyDirty = computed(
+  () => dirty.value || picksDirty.value || extentsDirty.value || setDirty.value || reordering.value,
+)
 
 // The view pauses applying live payloads while this is true (task 131), and the guards above use it
 // to refuse switching sheets or closing rather than discarding work.
@@ -629,6 +744,50 @@ const close = () => {
             <Button label="Annullér" severity="secondary" text size="small" :disabled="saving || !dirty" @click="cancelEdit" />
             <Button label="Gem" size="small" :loading="saving" :disabled="saving || !dirty" @click="saveSheet" />
           </div>
+        </div>
+
+        <!-- The ground this sheet shows. Zero areas is normal — a skitse has none worth recording;
+             two means a double-sided sheet, and they are simply two areas with no front or back. -->
+        <div class="space-y-1 border-t pt-3">
+          <div class="flex items-center justify-between">
+            <div class="text-sm font-medium">Områder på kortet</div>
+            <div class="flex items-center gap-2">
+              <Button label="Annullér" severity="secondary" text size="small" :disabled="saving || !extentsDirty" @click="cancelExtents" />
+              <Button label="Gem områder" size="small" :loading="saving" :disabled="saving || !extentsDirty" @click="saveExtents" />
+            </div>
+          </div>
+
+          <div v-if="draftExtents.length === 0 && pickingIndex === null" class="text-xs text-gray-400">
+            Ingen områder — fx en skitse.
+          </div>
+
+          <div v-for="(extent, index) in draftExtents" :key="index" class="flex items-center gap-2 text-xs">
+            <span class="flex-1 truncate text-gray-600">{{ extentLabel(extent) }}</span>
+            <Button
+              :label="pickingIndex === index ? 'Klik på kortet…' : 'Vælg på kort'"
+              :severity="pickingIndex === index ? 'warn' : 'secondary'"
+              text
+              size="small"
+              @click="pickExtent(index)"
+            />
+            <Button icon="pi pi-trash" severity="danger" text size="small" @click="removeExtent(index)" />
+          </div>
+
+          <div v-if="pickingIndex !== null && pickingIndex >= draftExtents.length" class="text-xs text-amber-700">
+            Klik to modsatte hjørner på kortet.
+          </div>
+
+          <small v-if="fieldErrors.extents" class="block text-red-600">{{ fieldErrors.extents }}</small>
+
+          <Button
+            v-if="draftExtents.length < 2"
+            label="Tilføj område"
+            icon="pi pi-plus"
+            text
+            size="small"
+            :disabled="saving"
+            @click="addExtent"
+          />
         </div>
 
         <!-- The checkpoints drawn on this sheet. The part the hej-app reads: this list is what may

@@ -2,14 +2,18 @@ import { describe, it, expect } from 'vitest'
 import {
   allMaps,
   checkpointsWithoutMap,
+  extentFromCorners,
   formatLabel,
   groupSelectionState,
+  isDegenerate,
   orderPicks,
+  sameExtent,
   someMapContainsAll,
   teamTypeLabel,
   teamTypeOptions,
   toggleGroupSelection,
   KORT_DEPENDENCIES,
+  type Extent,
   type Kort,
   type Kortsaet,
 } from './kort'
@@ -99,6 +103,62 @@ describe('allMaps', () => {
 
   it('survives an absent payload', () => {
     expect(allMaps(undefined)).toEqual([])
+  })
+})
+
+describe('extentFromCorners', () => {
+  // Denmark: latitude ~55-57, longitude ~8-13. North is the larger latitude, west the smaller
+  // longitude — trivial to write backwards, and a mirrored rectangle is not obviously wrong on
+  // screen. It is wrong on the printed sheet, months later.
+  it('puts the northern, western corner first whichever way the corners were clicked', () => {
+    const topLeftFirst = extentFromCorners({ lat: 56.1, lng: 9.1 }, { lat: 55.8, lng: 9.6 })
+    const bottomRightFirst = extentFromCorners({ lat: 55.8, lng: 9.6 }, { lat: 56.1, lng: 9.1 })
+
+    expect(topLeftFirst).toEqual({
+      northWest: { latitude: 56.1, longitude: 9.1 },
+      southEast: { latitude: 55.8, longitude: 9.6 },
+    })
+    // Drawing from the other corner must produce the identical rectangle, or re-drawing the same
+    // area would look like an edit and publish an event.
+    expect(bottomRightFirst).toEqual(topLeftFirst)
+  })
+
+  // The two diagonals nobody clicks first but everybody eventually does.
+  it('handles the other diagonal', () => {
+    expect(extentFromCorners({ lat: 55.8, lng: 9.1 }, { lat: 56.1, lng: 9.6 })).toEqual({
+      northWest: { latitude: 56.1, longitude: 9.1 },
+      southEast: { latitude: 55.8, longitude: 9.6 },
+    })
+  })
+})
+
+describe('sameExtent', () => {
+  const extent: Extent = {
+    northWest: { latitude: 56.1, longitude: 9.1 },
+    southEast: { latitude: 55.8, longitude: 9.6 },
+  }
+
+  it('compares corner for corner', () => {
+    expect(sameExtent(extent, { ...extent })).toBe(true)
+    expect(sameExtent(extent, { ...extent, southEast: { latitude: 55.9, longitude: 9.6 } })).toBe(false)
+  })
+})
+
+describe('isDegenerate', () => {
+  // Two clicks on the same spot draw nothing, and a saved invisible extent reads as a failed save.
+  it('spots a rectangle with no height or no width', () => {
+    expect(
+      isDegenerate({ northWest: { latitude: 56.1, longitude: 9.1 }, southEast: { latitude: 56.1, longitude: 9.6 } }),
+    ).toBe(true)
+    expect(
+      isDegenerate({ northWest: { latitude: 56.1, longitude: 9.1 }, southEast: { latitude: 55.8, longitude: 9.1 } }),
+    ).toBe(true)
+  })
+
+  it('accepts a real rectangle', () => {
+    expect(
+      isDegenerate({ northWest: { latitude: 56.1, longitude: 9.1 }, southEast: { latitude: 55.8, longitude: 9.6 } }),
+    ).toBe(false)
   })
 })
 

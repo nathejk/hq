@@ -228,6 +228,44 @@ export const someMapContainsAll = (set: Kortsaet, checkpointIds: string[]): bool
   })
 }
 
+// --- extents ---
+
+/**
+ * Build a north-west/south-east pair from two arbitrary corners.
+ *
+ * The API normalises on save as well, and this still does it: the *preview* has to be a well-formed
+ * rectangle before anything is saved, or Leaflet would happily draw an inverted one and the shape
+ * would change under the operator when they pressed Gem.
+ *
+ * North is the larger latitude and west the smaller longitude — true in Denmark and everywhere else
+ * east of Greenwich and north of the equator, which is the only place this event happens.
+ */
+export const extentFromCorners = (
+  a: { lat: number; lng: number },
+  b: { lat: number; lng: number },
+): Extent => ({
+  northWest: { latitude: Math.max(a.lat, b.lat), longitude: Math.min(a.lng, b.lng) },
+  southEast: { latitude: Math.min(a.lat, b.lat), longitude: Math.max(a.lng, b.lng) },
+})
+
+/** Whether two rectangles are the same, corner for corner. */
+export const sameExtent = (a: Extent, b: Extent): boolean =>
+  a.northWest.latitude === b.northWest.latitude &&
+  a.northWest.longitude === b.northWest.longitude &&
+  a.southEast.latitude === b.southEast.latitude &&
+  a.southEast.longitude === b.southEast.longitude
+
+/**
+ * Whether a rectangle has no area.
+ *
+ * Refused by the API, and worth knowing here so the operator is told before a round trip: two
+ * clicks on the same latitude or longitude draw nothing, and a saved invisible extent reads as a
+ * save that failed.
+ */
+export const isDegenerate = (extent: Extent): boolean =>
+  extent.northWest.latitude === extent.southEast.latitude ||
+  extent.northWest.longitude === extent.southEast.longitude
+
 // --- the checkpoint picker's rules ---
 
 /** Minimal shape the picker needs of a checkgroup. */
