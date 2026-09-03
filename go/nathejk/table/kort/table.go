@@ -62,7 +62,7 @@ func NewKortsaetID() KortsaetID {
 // Kort is one printed sheet.
 //
 // CheckpointIDs and Extents are always non-nil after a read, so every caller — and the JSON
-// encoder serving the hej-app — sees `[]` rather than `null` for an empty one.
+// encoder serving the SPA — sees `[]` rather than `null` for an empty one.
 type Kort struct {
 	KortID     KortID         `json:"id"`
 	KortsaetID KortsaetID     `json:"kortsaetId"`
@@ -74,8 +74,8 @@ type Kort struct {
 	Note      string `json:"note"`
 	SortOrder int    `json:"sortOrder"`
 
-	// CheckpointIDs is what the hej-app is really here for: the checkpoints drawn on this sheet,
-	// and therefore what may be revealed when the sheet is known to be in a team's hands.
+	// CheckpointIDs is what a consuming app is really here for: the checkpoints drawn on this
+	// sheet, and therefore what may be revealed when the sheet is known to be in a team's hands.
 	CheckpointIDs []types.CheckpointID `json:"checkpointIds"`
 
 	// Extents is the ground the sheet shows — zero rectangles for a skitse, one for a normal

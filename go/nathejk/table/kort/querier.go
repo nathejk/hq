@@ -40,9 +40,12 @@ const selectKort = `SELECT id, year, version, kortsaetId, name, format, note, so
 // Maps lists a year's sheets, grouped by set and in handout order within it.
 //
 // One query for the whole year with no pagination and no filter beyond the year, because there
-// are on the order of fifteen rows: `GET /api/kort` returns all of them, and both the settings
-// modal and the hej-app work from that single response (PRD 010 §8). A per-set query would be a
-// second code path serving no caller.
+// are on the order of fifteen rows: `GET /api/kort` returns all of them, and the map view and the
+// settings dialog share that single response (PRD 010 §8). A per-set query would be a second code
+// path serving no caller.
+//
+// This endpoint serves HQ's own SPA only. Other services read the kort events off the stream and
+// keep their own read model — see "How the maps leave HQ" in PRD 010.
 //
 // `id` is the tiebreak after sortOrder so that two sheets sharing a sort order — easy to produce
 // mid-reorder — come back in a stable order rather than whatever the storage engine feels like.
@@ -56,6 +59,10 @@ const selectKort = `SELECT id, year, version, kortsaetId, name, format, note, so
 // *checkgroup* is actually handled, because that event names only the group and its members cannot
 // be cascaded out of the JSON array safely (see consumer.pruneCheckpoint for the two ways that
 // fail, one of them a MariaDB bug).
+//
+// Note this fix does **not** travel over the stream: a consumer building its own projection from
+// the kort events has to resolve `checkpointIds` against its own checkpoint projection the same
+// way. Documented for them in roadmap/api/kort-events.md §4.
 //
 // Filtering on read rather than on write also self-heals every other cause of a stale id — a
 // checkpoint deleted while the API was down, a half-finished replay — and it does so without

@@ -22,8 +22,11 @@ import (
 // # There is no GET here
 //
 // Sets are read as part of `GET /api/kort` (task 125), which returns the year's sets with their
-// sheets nested. The whole year is a handful of records, so one response serves both the settings
-// modal and the hej-app, and a separate set listing would be a second code path with no caller.
+// sheets nested. The whole year is a handful of records, so one response serves the map view and
+// the settings dialog, and a separate set listing would be a second code path with no caller.
+//
+// These endpoints serve HQ's own SPA. Other services read the kort events off the stream and keep
+// their own read model — see "How the maps leave HQ" in PRD 010.
 
 // kortsaetRequest is the body for creating and updating a set.
 //
@@ -73,7 +76,7 @@ type kortSortRequest struct {
 // showKortHandler serves the year's sets with their sheets.
 //
 //	@Summary		The year's map sheets, grouped by set
-//	@Description	Every set defined for the year, in order, each with its sheets in handout order. This is the endpoint the hej-app reads. Three things about it are worth knowing before writing a client. (1) Find the patrol sheets via a set's `teamType`, never by its name — names are Danish free text an organizer may rename mid-season. (2) `teamType` is nullable and is *not* unique: it means "this set is specifically for this team type", so an unmarked set is the general crew set, which klaner also draw from. Filtering by `klan` will usually return nothing, and that is not an error — fall back to the unmarked set. (3) A sheet's `checkpointIds` are the checkpoints drawn on it, and are what may be revealed once the sheet is known to be in a team's hands; ids that no longer resolve are filtered out here, so the list is always live. `orphanKort` holds sheets whose set is unknown — normally empty, and present so a mis-assigned sheet cannot become invisible. Year comes from the X-YearSlug header, or the current year.
+//	@Description	Every set defined for the year, in order, each with its sheets in handout order. Serves HQ's own SPA — other services read the kort events off the stream rather than this endpoint. Three things are worth knowing before writing a client. (1) Find the patrol sheets via a set's `teamType`, never by its name — names are Danish free text an organizer may rename mid-season. (2) `teamType` is nullable and is *not* unique: it means "this set is specifically for this team type", so an unmarked set is the general crew set, which klaner also draw from. Filtering by `klan` will usually return nothing, and that is not an error — fall back to the unmarked set. (3) A sheet's `checkpointIds` are the checkpoints drawn on it, and are what may be revealed once the sheet is known to be in a team's hands; ids that no longer resolve are filtered out here, so the list is always live. `orphanKort` holds sheets whose set is unknown — normally empty, and present so a mis-assigned sheet cannot become invisible. Year comes from the X-YearSlug header, or the current year.
 //	@Tags			kort
 //	@Produce		json
 //	@Success		200	{object}	map[string]interface{}	"envelope with \"kortsaet\" and \"orphanKort\" arrays"
@@ -262,7 +265,7 @@ func (app *application) sortKortHandler(w http.ResponseWriter, r *http.Request) 
 // createKortsaetHandler adds a set of map sheets.
 //
 //	@Summary		Create a map set
-//	@Description	Creates a set of map sheets for the year — most years there are two, one for patruljer and one for everybody else, but a year may have three. Sets are named by the operator, never chosen from a fixed list. `teamType` optionally marks which team type the set is *specifically for*, and is what the hej-app matches on instead of the Danish name; leave it out for the general crew set, which klaner also draw from. Several sets may carry the same team type. Year comes from the X-YearSlug header, or the current year.
+//	@Description	Creates a set of map sheets for the year — most years there are two, one for patruljer and one for everybody else, but a year may have three. Sets are named by the operator, never chosen from a fixed list. `teamType` optionally marks which team type the set is *specifically for*, and is what a consuming service matches on instead of the Danish name; leave it out for the general crew set, which klaner also draw from. Several sets may carry the same team type. Year comes from the X-YearSlug header, or the current year.
 //	@Tags			kort
 //	@Accept			json
 //	@Produce		json

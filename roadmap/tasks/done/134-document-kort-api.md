@@ -60,3 +60,13 @@ JSON and would otherwise get wrong:
   and ten, matching method for method. Worth doing because the repo has **no OpenAPI tooling at all**
   (found and flagged back in task 003), so nothing else would ever catch a drifted annotation.
 - 2026-09-03 — Completed. The document needs a human to actually send it to the hej-app team.
+- 2026-09-03 — **Superseded, same day.** knj: the hej-app must not fetch from HQ over REST — all
+  cross-service communication goes over the stream. So this document was wrong in premise, not in
+  detail: `GET /api/kort` serves HQ's own SPA and is not an integration point. Replaced with
+  `roadmap/api/kort-events.md`, which documents the **event** contract for a consumer building its
+  own projection. The semantics carried over unchanged (two reveal units, the `teamType` filter and
+  its klan fallback, extents, per-year); what changed is the transport, plus two things that only
+  matter over the stream: `kort.updated` is a **patch** while `kortsaet.updated` is a **whole
+  record**, and a consumer must resolve `checkpointIds` against its own checkpoint projection
+  because HQ's read-time filtering does not travel. `roadmap/api/kort.md` is deleted; PRD 010
+  corrected in place; the shared-go lift is now blocking work as task 138.

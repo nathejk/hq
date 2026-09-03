@@ -14,6 +14,22 @@ Leave Approved blank until the PRD moves to doing/, and Shipped blank until it
 moves to done/. See roadmap/prd/README.md for the lifecycle.
 -->
 
+> **Correction, 2026-09-03 (after shipping).** This PRD assumed the hej-app would
+> read the maps over `GET /api/kort`. That is wrong and against the architecture:
+> **all cross-service communication goes over the stream.** HQ's REST endpoints
+> serve HQ's own SPA and nothing else.
+>
+> Nothing built here changes: the events, the projection and the endpoints are all
+> still right. What changes is the integration path, and two things follow from it
+> — lifting the kort message types to `nathejk/shared-go` moves from "eventually"
+> to **required**, since the hej-app cannot decode events it has no types for; and
+> the consuming app builds its **own** projection rather than polling ours.
+>
+> The sections below have been corrected in place. `roadmap/api/kort-events.md` is
+> the contract for the consuming side; the earlier `roadmap/api/kort.md`, which
+> documented the REST endpoint for the hej-app, was wrong in premise and is gone.
+> Follow-up work is task 138.
+
 ---
 
 ## 1. Summary
@@ -74,7 +90,8 @@ code at all. Every year the printed maps and the app's idea of them drift.
 - The set of checkpoints drawn on a given map is explicit, so a consumer can
   answer "what may this team see now?" without inference.
 - An organizer can see, before printing, whether the maps in a set leave a seam.
-- The data is available to the hej-app over a stable read endpoint.
+- The data reaches the hej-app **over the stream**, as domain events it can build
+  its own read model from — not over one of HQ's REST endpoints.
 
 ## 4. Non-Goals
 
@@ -82,8 +99,9 @@ code at all. Every year the printed maps and the app's idea of them drift.
   cartography tooling; this PRD describes maps, it does not produce PDFs.
 - **Uploading map artwork.** No file storage in this PRD. It may follow once the
   definitions exist.
-- **Changing the hej-app's reveal logic.** This PRD delivers the data and the
-  endpoint; consuming it is work in the app's own repo, tracked separately.
+- **Changing the hej-app's reveal logic.** This PRD delivers the events and the
+  read model behind them; consuming them is work in the app's own repo, tracked
+  separately.
 - **QR codes and printed copies.** Every printed map carries a unique QR code,
   and scanning an unknown one prompts for mapping it to a patrulje
   (`NATHEJK.*.qr.*.scanned`, `go/nathejk/table/scan/`). Recording *which map* a
@@ -207,7 +225,8 @@ normal and not flagged.
       sit in different areas (extents) of that map. It is about map membership,
       never geometry.
 - [ ] Deleting a set is refused while it still holds maps.
-- [ ] A read endpoint exposes maps with their checkpoint ids for the hej-app.
+- [ ] The kort events are published on the stream in a shape another service can
+      materialise, and a read endpoint serves **HQ's own SPA**.
 - [ ] Changes propagate live to other open HQ sessions (see Non-Functional).
 
 ### Non-Functional
@@ -222,8 +241,9 @@ normal and not flagged.
 - **Print deadline is the hard constraint.** The data must be enterable well
   before print.
 - **Danish UI text**, English code, per repo convention.
-- **Read path must be cheap.** The hej-app polls the read endpoint on a race day
-  for every team; the response is small and year-scoped.
+- **Read path must be cheap.** The settings dialog and the map view share one
+  cached response, so the endpoint returns the whole year at once. It serves the
+  SPA only; other services read the stream.
 
 ## 7. UX / UI Notes
 
@@ -278,9 +298,10 @@ the system. It is nullable, and stays nullable: the crew/gøgler/bandit set cove
 people who are not a team type at all, and forcing a value on it would invent a
 fictional one.
 
-The payoff is for the hej-app and for QR linking: the maps a patrol may be holding
-are those in the sets marked `patrulje`, found by team type and never by matching
-a Danish set name that an organizer is free to rename mid-season.
+The payoff is for the consuming app and for QR linking: the maps a patrol may be
+holding are those in the sets marked `patrulje`, found by team type and never by
+matching a Danish set name that an organizer is free to rename mid-season. It
+travels on the set's events, so a consumer's own projection has it too.
 
 **A map belongs to exactly one set** — a sheet is printed for one audience — so
 the reference is a single `kortsaetId`, not a list.
@@ -423,21 +444,24 @@ Leaflet with no geometry in Go and no endpoint.
   `NATHEJK.*.kortsaet.*.created|updated|deleted` and — to cascade —
   `NATHEJK.*.checkpoint.*.deleted` and `NATHEJK.*.checkgroup.*.deleted`.
 - **The projection and its event message types both start local to this repo, and
-  move to `nathejk/shared-go` independently.** The messages will very likely go
-  first — the hej-app needs to *read* kort events long before anything outside HQ
-  needs to materialise them — and the projection follows if and when a second
-  service wants the same read model. Neither move is a rewrite: the messages carry
-  no HQ-only types, and the consumer makes no HQ-only assumptions. Starting local
-  keeps both churning in one place and removes the dependency bump from the
-  critical path.
+  move to `nathejk/shared-go` independently.** The messages must go **first and
+  soon**: cross-service communication is over the stream, so the hej-app cannot
+  consume kort events at all until the types it decodes them with are shared. The
+  projection follows only if a second service wants the same read model — and it
+  may never. Neither move is a rewrite: the messages carry no HQ-only types, and
+  the consumer makes no HQ-only assumptions. Starting local kept both churning in
+  one place while the shape settled (task 138 lifts the messages).
 - Commands dirty-check against the read model before publishing, so a no-op save
   publishes nothing and emits no live signal.
 - Handlers in `cmd/api/`, registered in `routes.go`; the projection is added to
   the `projections` slice in `main.go`.
 
-### API endpoints
+### API endpoints — for HQ's own SPA
 
-All new endpoints require **OpenAPI annotations**, per repo convention.
+These serve the settings dialog. **No other service reads them**: cross-service
+communication goes over the stream (see "How the maps leave HQ" below).
+
+All endpoints require **OpenAPI annotations**, per repo convention.
 
 | Method | Path | Purpose |
 |--------|------|---------|
@@ -453,9 +477,9 @@ All new endpoints require **OpenAPI annotations**, per repo convention.
 | DELETE | `/api/kortsaet/:id` | Delete a set; refused while it holds maps |
 
 There is deliberately no `GET /api/kort/:id` and no `GET /api/kortsaet`: the whole
-year is a handful of records, `GET /api/kort` returns all of it, and the modal and
-the hej-app both work from that one cached response. A single-record read would be
-a second code path serving no caller.
+year is a handful of records, `GET /api/kort` returns all of it, and the map view
+and the settings dialog work from that one cached response. A single-record read
+would be a second code path serving no caller.
 
 **Reordering is `PUT` on a collection, not `…/sorted`.** An earlier draft specified
 `PUT /api/kort/sorted` and `PUT /api/kortsaet/sorted`, mirroring the existing
@@ -476,13 +500,40 @@ A reorder is one event for the whole collection, not N single-field updates — 
 operator gesture, and N events would let a replay observe orders that never
 existed on screen.
 
-`GET /api/kort` returns sets with their maps nested, so the hej-app gets the
-`teamType` marking and the maps in one round trip. It is year-scoped by the
-existing `X-YearSlug` header, like every other endpoint. There is no coverage
-endpoint — the seam check is client-side.
+`GET /api/kort` returns sets with their maps nested, so one response carries the
+`teamType` markings and the sheets together. It is year-scoped by the existing
+`X-YearSlug` header, like every other endpoint. There is no coverage endpoint — the
+seam check is client-side.
 
 Deleting a set that still holds maps is refused rather than cascading; losing a
 season's map definitions to a mis-click is not worth the convenience.
+
+### How the maps leave HQ
+
+Over the stream, as events — not over the endpoints above. That is the platform's
+rule for cross-service communication, and it is the right one here for a reason
+this feature makes concrete: the hej-app needs the maps **on a race night, on a
+phone, under load**, and a projection it owns keeps answering when HQ is
+restarting, redeploying or unreachable. Polling would make every reveal depend on
+HQ being up at that moment.
+
+So a consumer subscribes to `NATHEJK.*.kort.*` and `NATHEJK.*.kortsaet.*` and
+builds its own read model. Two consequences worth stating, because they are the
+price of this and are invisible from HQ:
+
+- **The message types must live in `nathejk/shared-go`.** They started local while
+  the shape settled, which was right, but a consumer cannot decode events it has
+  no types for — so this is now required work rather than tidying (task 138).
+- **Stale checkpoint ids become the consumer's problem too.** HQ filters ids that
+  no longer resolve when it *reads* (see above), and that fix does not travel over
+  the stream: a `kort` event carries the ids that were saved, and deleting a
+  checkgroup emits nothing per checkpoint. A consuming projection therefore has to
+  do what HQ's read path does — resolve `checkpointIds` against its own checkpoint
+  projection and ignore what is missing. It already consumes those events, so this
+  costs it nothing, but it will not happen by accident.
+
+The contract, with the subjects and payload shapes, is
+`roadmap/api/kort-events.md`.
 
 ### Data / storage
 
@@ -511,8 +562,9 @@ existing table, so a later column addition needs a dropped table in dev.
 ### Dependencies & risks
 
 - **The hej-app is a separate repo.** This PRD is only useful once the app
-  consumes it; the endpoint should ship early so app work can proceed in
-  parallel, and its shape should not change afterwards without warning.
+  consumes the kort events; the message types should be lifted to shared-go early
+  so that work can proceed in parallel, and the event shapes should not change
+  afterwards without warning.
 - **JSON cascade correctness.** Removing a deleted checkpoint's id from every
   map's array is the one piece of non-obvious SQL here and deserves a test — and
   it earned one: `JSON_SEARCH` must match whole values, or deleting `cp-1` also
@@ -542,20 +594,20 @@ existing table, so a later column addition needs a dropped table in dev.
   print deadline — measured directly by the unassigned list reaching zero.
 - No seam is visible in any set's overlay before printing.
 - No split-checkgroup warning is outstanding at the print deadline.
-- The hej-app derives its map-based reveal from `GET /api/kort` with no hardcoded
-  checkpoint list.
+- The hej-app derives its map-based reveal from the kort events it consumes, with
+  no hardcoded checkpoint list.
 - The hej-app and QR linking find the candidate patrol maps via the sets'
   `teamType`, not by name.
 - No map is reprinted during the event because a sheet was missing ground.
 
 ## 10. Rollout / Task Breakdown
 
-Sequenced so the read endpoint — the thing another repo waits on — lands early,
-and the seam overlay, the most speculative part, lands last and can be cut
-without losing the feature.
+Sequenced so the events — the thing another repo waits on — land early, and the
+seam overlay, the most speculative part, lands last and can be cut without losing
+the feature.
 
 1. Projection and local message types (backend foundation).
-2. CRUD endpoints and the read endpoint (unblocks the hej-app).
+2. CRUD endpoints and the read endpoint (unblocks HQ's own UI).
 3. The modal, without extents (checkpoint assignment is the valuable half).
 4. Extents and corner picking on the map.
 5. Per-set seam overlay.
@@ -578,7 +630,7 @@ Proposed tasks for `roadmap/tasks/open/`:
 - [ ] Task: Defer live payloads while the settings modal is dirty
 - [ ] Task: Per-set extent overlay with gaps shaded
 - [ ] Task: Warn when a checkgroup is not contained within a single map of a set
-- [ ] Task: Document `GET /api/kort` for the hej-app team
+- [ ] Task: Document the kort **events** for the hej-app team
 
 ## 11. Open Questions
 

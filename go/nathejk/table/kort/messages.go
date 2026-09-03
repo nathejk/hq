@@ -8,11 +8,13 @@ import (
 //
 // # Why these types live here and not in shared-go
 //
-// They start local and move to nathejk/shared-go once the shape has survived a season (PRD 010
-// §8). The messages will very likely go before the projection does — the hej-app needs to read
-// kort events long before a second service wants to materialise them — so the two moves are
-// independent, and nothing here may depend on anything HQ-only. Everything below is either a
-// local type or a shared-go type for exactly that reason.
+// They started local while the shape settled, and they are on their way to nathejk/shared-go — which
+// is **required**, not tidying: cross-service communication is over the stream, so another service
+// cannot consume kort events at all until it has the types to decode them (task 138). The projection
+// stays here until something outside HQ wants the same read model, so the two moves are independent.
+//
+// Nothing here may depend on anything HQ-only, and nothing does: every field is a local type or a
+// shared-go type, for exactly that reason.
 //
 // # Its own entity, so its own live token
 //
@@ -36,7 +38,7 @@ const (
 	//
 	// The awkward case, and the reason maps are modelled at all: a skitse has no QR code, so it
 	// is never scanned, and usually no extent worth recording. Its checkpoint list is its only
-	// trace in the system, and the hej-app reveals those checkpoints off the *previous*
+	// trace in the system, and a consuming app reveals those checkpoints off the *previous*
 	// checkpoint's scan instead (PRD 010 §8).
 	FormatSkitse Format = "skitse"
 

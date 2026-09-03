@@ -3,7 +3,7 @@
 -- A row is one *sheet* — one thing physically handed to a team, carrying one QR code, causing
 -- one reveal. That is why a double-sided A3 is a single row with two extents rather than two
 -- rows: splitting it to record its geometry would double-count the handover, which is the very
--- thing the hej-app reads this table to reason about.
+-- thing a consuming app reasons about when it decides what a patrol may see.
 --
 -- # checkpointIds is an array, on purpose
 --

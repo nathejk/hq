@@ -143,7 +143,7 @@ func TestCreateSetRefusesEmptyNameAndUnknownTeamType(t *testing.T) {
 	}
 	if _, err := c.CreateSet(context.Background(), Actor{}, "2026", "X", teamType("spejder")); !errors.Is(err, ErrInvalidTeamType) {
 		// "spejder" is the domain's word for a person, not a team type. Accepting it would
-		// produce a set that looks marked on screen and is invisible to the hej-app.
+		// produce a set that looks marked on screen and is invisible to every consumer.
 		t.Errorf("bogus team type: err = %v, want ErrInvalidTeamType", err)
 	}
 	if _, err := c.CreateSet(context.Background(), Actor{}, "2026", strings.Repeat("æ", MaxNameLength+1), nil); !errors.Is(err, ErrNameTooLong) {

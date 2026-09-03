@@ -31,8 +31,8 @@ var (
 	// ErrInvalidTeamType is returned for a team type outside shared-go's vocabulary.
 	//
 	// Checked rather than stored blindly, because the value's whole job is to be matched on by
-	// another service: a typo would produce a set that looks marked on screen and is invisible to
-	// the hej-app.
+	// another service reading the stream: a typo would produce a set that looks marked on screen and
+	// is invisible to every consumer.
 	ErrInvalidTeamType = errors.New("invalid team type")
 
 	// ErrInvalidFormat is returned for a format outside a4/a3/skitse/andet.

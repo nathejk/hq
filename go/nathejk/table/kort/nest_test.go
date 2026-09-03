@@ -63,7 +63,7 @@ func TestNestGivesEmptySetsAnEmptyArray(t *testing.T) {
 		t.Error("want an empty orphan slice, not nil")
 	}
 
-	// The JSON is the part that matters: the hej-app parses this, and a `kort` key that comes and
+	// The JSON is the part that matters: the SPA parses this, and a `kort` key that comes and
 	// goes would make every client handle absence as well as emptiness.
 	encoded, err := json.Marshal(nested[0])
 	if err != nil {
@@ -74,7 +74,7 @@ func TestNestGivesEmptySetsAnEmptyArray(t *testing.T) {
 	}
 }
 
-// teamType must survive nesting: it is how the hej-app finds the patrol sheets, and the whole
+// teamType must survive nesting: it is how a consumer finds the patrol sheets, and the whole
 // reason sets are an entity rather than a string on each sheet.
 func TestNestPreservesTheTeamTypeMarking(t *testing.T) {
 	sets := []Kortsaet{

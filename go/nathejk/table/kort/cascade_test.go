@@ -74,7 +74,7 @@ func TestFilterKnownDropsUnresolvableIds(t *testing.T) {
 	}
 }
 
-// `[]`, never `null`: the hej-app parses this, and a sheet whose whole checkgroup was deleted is
+// `[]`, never `null`: clients parse this, and a sheet whose whole checkgroup was deleted is
 // an ordinary sheet with nothing on it.
 func TestFilterKnownReturnsEmptyNotNil(t *testing.T) {
 	got := filterKnown([]types.CheckpointID{"cp-9"}, map[types.CheckpointID]bool{})

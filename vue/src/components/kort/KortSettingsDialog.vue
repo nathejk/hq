@@ -885,8 +885,8 @@ const close = () => {
           />
         </div>
 
-        <!-- The checkpoints drawn on this sheet. The part the hej-app reads: this list is what may
-             be revealed once the sheet is known to be in a team's hands. -->
+        <!-- The checkpoints drawn on this sheet. The part a consuming app cares about: this list
+             is what may be revealed once the sheet is known to be in a team's hands. -->
         <div class="space-y-1 border-t pt-3">
           <div class="flex items-center justify-between">
             <div class="text-sm font-medium">Poster på kortet</div>
