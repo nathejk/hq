@@ -1,10 +1,10 @@
 # 128 — Checkpoint assignment UI with per-checkgroup select-all
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (Zed)
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -38,3 +38,5 @@ drawn.
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 010 §10.
+- 2026-09-03 — Picked up. Plan: the picker needs the checkgroups, which `KortView` already has
+  loaded; passing them in as a prop keeps one fetch rather than giving the dialog its own.
