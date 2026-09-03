@@ -31,6 +31,9 @@ type Queries interface {
 	GetByTeam(context.Context, Filter) ([]SpejderStatus, error)
 	GetHistory(context.Context, types.YearSlug, types.MemberID) ([]StatusEvent, error)
 	InOurCare(context.Context, types.YearSlug) (*Care, error)
+	// TeamMemberships lists everyone who has ever been on a team, with the intervals they were —
+	// including members whose `spejder` row has since been deleted (PRD 011, membership.go).
+	TeamMemberships(context.Context, types.YearSlug, types.TeamID) ([]Membership, error)
 }
 
 // StatusEvent is one step in a member's lifecycle, as the member detail view shows it.

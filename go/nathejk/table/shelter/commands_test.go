@@ -100,6 +100,12 @@ func (s stubStatus) InOurCare(context.Context, types.YearSlug) (*spejderstatus.C
 	return &spejderstatus.Care{}, nil
 }
 
+// Unused by shelter, present because spejderstatus.Queries is one interface per table (PRD 011
+// added TeamMemberships for the patrol track map).
+func (s stubStatus) TeamMemberships(context.Context, types.YearSlug, types.TeamID) ([]spejderstatus.Membership, error) {
+	return nil, nil
+}
+
 func newCommander(status types.MemberStatus, held map[types.MemberID]Placement) (commander, *recordingPublisher) {
 	p := &recordingPublisher{}
 	return commander{

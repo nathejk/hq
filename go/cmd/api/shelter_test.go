@@ -51,6 +51,12 @@ func (f *fakeShelterStatus) InOurCare(context.Context, types.YearSlug) (*spejder
 	return f.care, nil
 }
 
+// Unused by the shelter handlers, present because spejderstatus.Queries is one interface per table
+// (PRD 011 added TeamMemberships for the patrol track map).
+func (f *fakeShelterStatus) TeamMemberships(context.Context, types.YearSlug, types.TeamID) ([]spejderstatus.Membership, error) {
+	return nil, nil
+}
+
 func (f *fakeShelterStatus) GetByMemberID(context.Context, types.YearSlug, types.MemberID) (*spejderstatus.SpejderStatus, error) {
 	return nil, spejderstatus.ErrRecordNotFound
 }

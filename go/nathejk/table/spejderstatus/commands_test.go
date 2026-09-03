@@ -110,6 +110,12 @@ func (q stubQueries) GetHistory(context.Context, types.YearSlug, types.MemberID)
 	return nil, nil
 }
 
+// Unused by the commands, present because Queries is one interface per table (PRD 011 added
+// TeamMemberships for the patrol track map).
+func (q stubQueries) TeamMemberships(context.Context, types.YearSlug, types.TeamID) ([]Membership, error) {
+	return nil, nil
+}
+
 func (q stubQueries) GetByMemberIDs(_ context.Context, _ types.YearSlug, ids []types.MemberID) (map[types.MemberID]SpejderStatus, error) {
 	out := map[types.MemberID]SpejderStatus{}
 	for _, id := range ids {
