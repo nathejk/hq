@@ -2,7 +2,9 @@ package main
 
 import (
 	"testing"
+	"time"
 
+	"nathejk.dk/nathejk/table/spejderstatus"
 	"nathejk.dk/nathejk/table/track"
 )
 
@@ -66,6 +68,82 @@ func TestBuildTrackEmpty(t *testing.T) {
 	// "nothing at all".
 	if got.Coverage.Window.From != 100 || got.Coverage.Window.To != 200 {
 		t.Errorf("want the requested window echoed, got %+v", got.Coverage.Window)
+	}
+}
+
+func ptrTime(t time.Time) *time.Time { return &t }
+
+// clipWindow is what stops one patrol's map showing another patrol's movement, so its edge cases are
+// worth pinning — particularly the ones where a bound is *unknown* rather than early.
+func TestClipWindow(t *testing.T) {
+	base := time.Date(2026, 9, 4, 12, 0, 0, 0, time.UTC)
+	ms := func(offsetMin int) int64 { return base.Add(time.Duration(offsetMin) * time.Minute).UnixMilli() }
+	at := func(offsetMin int) time.Time { return base.Add(time.Duration(offsetMin) * time.Minute) }
+
+	tests := []struct {
+		name      string
+		requested track.Window
+		member    spejderstatus.Membership
+		want      track.Window
+	}{
+		{
+			name:      "membership inside the requested window narrows both ends",
+			requested: track.Window{From: ms(0), To: ms(600)},
+			member:    spejderstatus.Membership{From: at(60), To: ptrTime(at(120))},
+			want:      track.Window{From: ms(60), To: ms(120)},
+		},
+		{
+			// The case the endpoint exists to get right: a scout who left at 11:00 must contribute
+			// nothing after 11:00, even though their phone kept reporting for another patrol.
+			name:      "a member who left clips the end",
+			requested: track.Window{},
+			member:    spejderstatus.Membership{From: at(60), To: ptrTime(at(120))},
+			want:      track.Window{From: ms(60), To: ms(120)},
+		},
+		{
+			name:      "a current member leaves the end open",
+			requested: track.Window{},
+			member:    spejderstatus.Membership{From: at(60)},
+			want:      track.Window{From: ms(60), To: 0},
+		},
+		{
+			// A member whose patrol never started has no event to date their start. Zero means
+			// "unknown", so it must not clip — and in particular must not be treated as epoch and
+			// widen a requested window.
+			name:      "an unknown membership start does not widen the request",
+			requested: track.Window{From: ms(0), To: ms(600)},
+			member:    spejderstatus.Membership{},
+			want:      track.Window{From: ms(0), To: ms(600)},
+		},
+		{
+			name:      "the later of the two starts wins",
+			requested: track.Window{From: ms(100), To: ms(600)},
+			member:    spejderstatus.Membership{From: at(60)},
+			want:      track.Window{From: ms(100), To: ms(600)},
+		},
+		{
+			name:      "the earlier of the two ends wins",
+			requested: track.Window{From: ms(0), To: ms(90)},
+			member:    spejderstatus.Membership{From: at(0), To: ptrTime(at(120))},
+			want:      track.Window{From: ms(0), To: ms(90)},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := clipWindow(tc.requested, tc.member)
+			if got != tc.want {
+				t.Errorf("clipWindow() = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// The zero time must map to 0, not to the year 1 in milliseconds — a large negative number, which as a
+// membership start would render as 1970 in the legend.
+func TestMsOfZeroTime(t *testing.T) {
+	if got := msOf(time.Time{}); got != 0 {
+		t.Errorf("msOf(zero) = %d, want 0", got)
 	}
 }
 

@@ -3,8 +3,12 @@ package main
 import (
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/nathejk/shared-go/types"
 	jsonapi "nathejk.dk/cmd/api/app"
+	"nathejk.dk/nathejk/table/scan"
+	"nathejk.dk/nathejk/table/spejderstatus"
 	"nathejk.dk/nathejk/table/track"
 )
 
@@ -207,4 +211,184 @@ func (app *application) showPersonTrackHandler(w http.ResponseWriter, r *http.Re
 	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"track": response}, nil); err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}
+}
+
+// patruljeTrackResponse is a patrol's whole movement.
+//
+// # Why the patrol, not the person
+//
+// For a spejder the unit that matters during a race is the patrol. Scouts move between patrols
+// mid-race, phones die and get shared, and one member's track answers almost nothing on its own —
+// "where has this patrol been?" is the question actually asked, and answering it means everyone who
+// has been on the team, current and former, plus the fixed points we know they touched.
+type patruljeTrackResponse struct {
+	TeamID types.TeamID `json:"teamId"`
+
+	// Members are the per-member tracks, each clipped to that member's membership interval.
+	Members []patruljeMemberTrack `json:"members"`
+
+	// Scans are the team's QR scans, exact and never reduced.
+	//
+	// They are the only *certain* positions on the map — a scan happened at a known post, at a known
+	// time, witnessed by a person — whereas a track point is a phone's best guess. They are also few.
+	// So they get their own list rather than being folded into the tracks, and nothing simplifies them.
+	Scans []patruljeScan `json:"scans"`
+}
+
+type patruljeMemberTrack struct {
+	trackResponse
+
+	// MembershipFrom/To bound the stretch this member belonged to the patrol, in epoch milliseconds.
+	// To is nil while they are still on the team. The legend shows this, so an operator can see that a
+	// line stops because a scout left rather than because their phone did.
+	MembershipFrom int64  `json:"membershipFrom,omitempty"`
+	MembershipTo   *int64 `json:"membershipTo"`
+}
+
+// patruljeScan is one QR scan, with its time expressed the same way as a track point.
+//
+// This type exists for one reason, and it is the trap in this endpoint: `scan.uts` is **seconds**
+// while `track_point.ts` is **milliseconds**. Handing both to a client in their native units would
+// put the scans 54 years before the tracks on a shared time axis, and it would look like a data
+// problem rather than a units problem. The conversion happens here, once, at the boundary that joins
+// them — not in the SPA, and not per caller.
+type patruljeScan struct {
+	QrID       types.QrID   `json:"qrId"`
+	TeamID     types.TeamID `json:"teamId"`
+	TeamNumber int          `json:"teamNumber"`
+	ScannerID  string       `json:"scannerId"`
+	Ts         int64        `json:"ts"`
+	Lat        string       `json:"lat"`
+	Lng        string       `json:"lng"`
+}
+
+// showPatruljeTrackHandler serves a patrol's whole movement.
+//
+// @Summary     A patrol's track: every member, current and former, plus its scans
+// @Description Where a patrol has been. Returns one track per person who has *ever* been on the team — including members who moved away and members whose spejder row was deleted when they withdrew, whom the client labels "tidligere medlem" — with each track clipped to the interval that member actually belonged to this patrol, so one patrol's map never shows another's movement. Tracks are split into segments wherever recording stopped for more than a few minutes, and simplified to at most maxPoints within segments, never across them; each carries coverage so an operator can tell a well-recorded track from a nearly empty one. The team's QR scans are returned separately and are never reduced: they are the only certain positions on the map, and their timestamps are converted from seconds to epoch milliseconds so tracks and scans share one time axis. A patrol with no telemetry still returns its scans.
+// @Tags        telemetry
+// @Produce     json
+// @Param       teamId path string true "patrulje team id"
+// @Param       from query int false "window start, epoch milliseconds"
+// @Param       to query int false "window end, epoch milliseconds"
+// @Param       maxPoints query int false "point budget per member track"
+// @Success     200 {object} map[string]interface{} "envelope with a \"patrulje\" object"
+// @Failure     404 {object} map[string]interface{}
+// @Failure     500 {object} map[string]interface{}
+// @Router      /api/telemetry/patrulje/{teamId}/track [get]
+func (app *application) showPatruljeTrackHandler(w http.ResponseWriter, r *http.Request) {
+	teamID := types.TeamID(app.ReadNamedParam(r, "teamId"))
+	if teamID == "" {
+		app.NotFoundResponse(w, r)
+		return
+	}
+
+	window, maxPoints := app.readTrackParams(r)
+	year := app.YearSlug(r)
+
+	// Membership first, because it decides which tracks to read at all — and it comes from the
+	// lifecycle log rather than the `spejder` table, which hard-deletes withdrawn scouts and would
+	// therefore omit exactly the people whose movement is being reconstructed.
+	memberships, err := app.models.SpejderStatus.TeamMemberships(r.Context(), year, teamID)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+
+	response := patruljeTrackResponse{
+		TeamID:  teamID,
+		Members: []patruljeMemberTrack{},
+		Scans:   []patruljeScan{},
+	}
+
+	for _, m := range memberships {
+		// The window actually queried is the requested window intersected with the membership, so a
+		// member who left at 11:00 contributes nothing after 11:00 even though their phone kept
+		// reporting for another patrol.
+		clipped := clipWindow(window, m)
+
+		points, err := app.models.Track.Points(r.Context(), track.Filter{
+			PersonID: string(m.MemberID),
+			FromTs:   clipped.From,
+			ToTs:     clipped.To,
+		})
+		if err != nil {
+			app.ServerErrorResponse(w, r, err)
+			return
+		}
+
+		// Members with no positions are included anyway. "This scout's phone reported nothing" is
+		// something the legend should say; dropping them would leave an operator unsure whether the
+		// member was absent from the patrol or merely from the data.
+		mt := patruljeMemberTrack{
+			trackResponse:  buildTrack(string(m.MemberID), points, clipped, maxPoints),
+			MembershipFrom: msOf(m.From),
+		}
+		mt.Name = m.Name
+		if m.To != nil {
+			to := msOf(*m.To)
+			mt.MembershipTo = &to
+		}
+		response.Members = append(response.Members, mt)
+	}
+
+	scans, _, err := app.models.Scan.GetAll(r.Context(), scan.Filter{TeamID: teamID})
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+	for _, s := range scans {
+		if s == nil {
+			continue
+		}
+		ts := int64(s.Uts) * 1000
+		if window.From > 0 && ts < window.From {
+			continue
+		}
+		if window.To > 0 && ts > window.To {
+			continue
+		}
+		response.Scans = append(response.Scans, patruljeScan{
+			QrID:       s.QrID,
+			TeamID:     s.TeamID,
+			TeamNumber: s.TeamNumber,
+			ScannerID:  s.ScannerID,
+			Ts:         ts,
+			Lat:        s.Latitude,
+			Lng:        s.Longitude,
+		})
+	}
+
+	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"patrulje": response}, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
+// clipWindow narrows a requested window to a membership interval.
+//
+// This is what stops one patrol's map showing another's movement. A zero membership bound means
+// "unknown", not "epoch" — a member whose patrol never started has no event to date their start — so
+// an unknown bound leaves the requested window's bound in place rather than clipping to 1970.
+func clipWindow(requested track.Window, m spejderstatus.Membership) track.Window {
+	out := requested
+
+	if from := msOf(m.From); from > out.From {
+		out.From = from
+	}
+	if m.To != nil {
+		if to := msOf(*m.To); out.To == 0 || to < out.To {
+			out.To = to
+		}
+	}
+	return out
+}
+
+// msOf converts a time to epoch milliseconds, mapping the zero time to 0 rather than to the year 1 in
+// milliseconds — a large negative number, which as a window bound would clip nothing and as a
+// membership start would look like 1970.
+func msOf(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.UnixMilli()
 }

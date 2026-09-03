@@ -65,6 +65,10 @@ func (app *application) routes() http.Handler {
 	// field for it.
 	router.HandlerFunc(http.MethodGet, "/api/telemetry/presence", app.listTelemetryPresenceHandler)
 	router.HandlerFunc(http.MethodGet, "/api/telemetry/person/:personId/track", app.showPersonTrackHandler)
+	// The patrol map: everyone who has ever been on the team, clipped to when they were, plus the
+	// team's scans. For a spejder this is what the position glyph opens — the patrol is the unit
+	// that matters, not the person.
+	router.HandlerFunc(http.MethodGet, "/api/telemetry/patrulje/:teamId/track", app.showPatruljeTrackHandler)
 
 	// Members in our care (PRD 006). Event-wide rather than per case: a member we
 	// are responsible for is our problem whether or not anybody opened a case.

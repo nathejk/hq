@@ -53,11 +53,17 @@ func (q *querier) GetAll(ctx context.Context, filter Filter) ([]*Scan, Metadata,
 	}
 	defer rows.Close()
 
-	var uts types.UnixtimeInteger
 	ss := []*Scan{}
 	for rows.Next() {
 		var r Scan
-		err := rows.Scan(&r.QrID, &r.TeamID, &r.TeamNumber, &r.ScannerID, &r.ScannerPhone, &uts, &r.Latitude, &r.Longitude)
+		// uts is scanned straight into the row.
+		//
+		// It used to be scanned into a `var uts types.UnixtimeInteger` declared outside this loop and
+		// then never assigned to `r`, so every scan this query returned carried uts=0 while the table
+		// held the real value. Found while building the patrol track map (PRD 011, task 149), where it
+		// mattered visibly: tracks and scans share one time axis there, so every scan marker landed in
+		// 1970. It had been silently wrong for `GET /api/patrulje/:id/scans` too.
+		err := rows.Scan(&r.QrID, &r.TeamID, &r.TeamNumber, &r.ScannerID, &r.ScannerPhone, &r.Uts, &r.Latitude, &r.Longitude)
 		if err != nil {
 			return nil, Metadata{}, err
 		}
