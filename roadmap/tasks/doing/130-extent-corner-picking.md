@@ -1,10 +1,10 @@
 # 130 — Extent corner picking and rectangle rendering
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-09-03
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session (Zed)
+**Started:** 2026-09-03
 **Completed:**
 
 ## Description
@@ -39,3 +39,6 @@ dragging (task 127).
 ## Progress Log
 
 - 2026-09-03 — Task created from PRD 010 §10.
+- 2026-09-03 — Picked up. Plan: the dialog asks the view to pick a corner pair (it owns the Leaflet
+  map); the view returns two clicks and the dialog saves. Picking has to claim map clicks, which the
+  context menu and marker dragging also use — so it goes through the same mutual exclusion.
