@@ -178,6 +178,7 @@ const openMove = async (member) => {
     candidates: [],
     lines: [],
     amount: 0,
+    pendingTransfer: false,
   };
   try {
     const response = await http.get(`/member/${member.memberId}/transfer-candidates`);
@@ -188,6 +189,7 @@ const openMove = async (member) => {
       candidates: response.data.candidates ?? [],
       lines: response.data.lines ?? [],
       amount: response.data.amount ?? 0,
+      pendingTransfer: response.data.pendingTransfer ?? false,
     };
   } catch {
     // surfaced by the axios plugin
@@ -426,7 +428,23 @@ const isTransfer = (order) => (order.lines ?? []).some((l) => (l.lineId ?? '').s
             <template v-else>
                 <!-- What moves, priced as it was actually paid for. -->
                 <div class="mb-3 rounded bg-gray-50 p-2 text-sm">
-                    <template v-if="moveDlg.lines.length">
+                    <!--
+                      A previous transfer that has not settled yet holds this member's seat,
+                      so the amounts below cannot be trusted and a move must wait. Said
+                      before them, because the important fact is that the money exists — the
+                      alternative wording ("der er ikke betalt") would be a lie (task 166).
+                    -->
+                    <template v-if="moveDlg.pendingTransfer">
+                        <span class="font-semibold text-orange-700">
+                            En tidligere flytning af {{ moveDlg.name }} er ikke afregnet endnu.
+                        </span>
+                        <div class="mt-1 text-gray-600">
+                            Den betalte plads er på vej over, men er ikke bogført færdig — prøv
+                            igen om et øjeblik. Flytter vi nu, bliver betalingen efterladt hos
+                            den forrige patrulje.
+                        </div>
+                    </template>
+                    <template v-else-if="moveDlg.lines.length">
                         <div v-for="l in moveDlg.lines" :key="l.productSku + (l.size || '')"
                              class="flex justify-between">
                             <span>
@@ -451,6 +469,7 @@ const isTransfer = (order) => (order.lines ?? []).some((l) => (l.lineId ?? '').s
                     </span>
                 </div>
 
+                <template v-if="!moveDlg.pendingTransfer">
                 <div v-if="moveDlg.target" class="mb-2 flex items-center gap-2">
                     <strong>
                         <span v-if="moveDlg.target.teamNumber">{{ moveDlg.target.teamNumber }} · </span>
@@ -476,12 +495,14 @@ const isTransfer = (order) => (order.lines ?? []).some((l) => (l.lineId ?? '').s
                     </div>
                     <small v-if="!moveTargets.length" class="text-gray-500">Ingen patruljer fundet</small>
                 </div>
+                </template>
             </template>
 
             <template #footer>
                 <div class="flex justify-end gap-2">
                     <Button label="Annuller" severity="secondary" text @click="moveDlg = null" />
-                    <Button label="Flyt" :disabled="!moveDlg.target" :loading="moveDlg.submitting"
+                    <Button label="Flyt" :disabled="!moveDlg.target || moveDlg.pendingTransfer"
+                            :loading="moveDlg.submitting"
                             @click="submitMove" />
                 </div>
             </template>

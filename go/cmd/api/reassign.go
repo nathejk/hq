@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/nathejk/shared-go/messages"
 	"github.com/nathejk/shared-go/tables"
@@ -50,6 +51,41 @@ import (
 // constant here because this is the first place it is *enforced* rather than displayed,
 // and a rule that only exists as a display value is a rule the server does not have.
 const maxPatruljeMemberCount = 7
+
+// transferLinePrefix is how the shared-go transfer command names every line it creates:
+// `transfer:{transferId}:{n}`. Deterministic, which is what lets a transfer be recognised
+// from its lines alone without storing anything extra.
+const transferLinePrefix = "transfer:"
+
+// pendingTransferOrder is the id of an unsettled transfer holding this member's seat, or "".
+//
+// # Why this has to be checked
+//
+// A transfer's charge order is closed by the payment saga, which runs in tilmelding — not
+// here. Until it closes, that order is `open`, and `PaidLinesByMember` only counts lines on
+// **paid** orders. So in that window the member's seat is invisible: moving them again would
+// transfer nothing, strand the money on the previous team, and — worst of all — report that
+// nobody had paid for them, which is false.
+//
+// Milliseconds when tilmelding is healthy. Unbounded when it is not, which is the normal
+// state of a dev machine, so this is not a theoretical race (task 166).
+//
+// Refusing is the honest answer rather than a limitation: the money exists and is in flight,
+// so "try again in a moment" is true, whereas letting the move through would quietly produce
+// a member on a team whose seat nobody paid for.
+func pendingTransferOrder(orders []order.Order, memberID types.MemberID) string {
+	for _, o := range orders {
+		if o.Status != order.StatusOpen {
+			continue
+		}
+		for _, l := range o.Lines {
+			if l.MemberID == string(memberID) && strings.HasPrefix(l.LineID, transferLinePrefix) {
+				return o.OrderID
+			}
+		}
+	}
+	return ""
+}
 
 type reassignRequest struct {
 	TeamID types.TeamID `json:"teamId"`
@@ -108,11 +144,11 @@ type reassignResult struct {
 // them?".
 //
 // @Summary     Destinations for a pre-race member transfer
-// @Description Every patrulje that has been accepted into the race (it has a team number), annotated with whether this member may be moved there and, if not, why — teams that have started or are already full are returned as ineligible rather than hidden, so an operator can see that the team they were looking for exists. Also returns the paid lines that would move with the member (the participation seat and any merchandise, at the price actually paid) and their total, so the dialog can state what the transfer will do before it is confirmed. An empty `lines` with `amount` 0 is an ordinary outcome: nobody has paid for this member yet, so there is nothing to move.
+// @Description Every patrulje that has been accepted into the race (it has a team number), annotated with whether this member may be moved there and, if not, why — teams that have started or are already full are returned as ineligible rather than hidden, so an operator can see that the team they were looking for exists. Also returns the paid lines that would move with the member (the participation seat and any merchandise, at the price actually paid) and their total, so the dialog can state what the transfer will do before it is confirmed. An empty `lines` with `amount` 0 is an ordinary outcome: nobody has paid for this member yet, so there is nothing to move — *unless* `pendingTransfer` is true, which means their seat is paid for but the transfer carrying it has not settled yet, and a move must wait rather than being reported as unpaid.
 // @Tags        member
 // @Produce     json
 // @Param       memberId path string true "Member id"
-// @Success     200 {object} map[string]interface{} "envelope with \"fromTeamId\", \"candidates\", \"lines\", \"amount\", \"maxMemberCount\""
+// @Success     200 {object} map[string]interface{} "envelope with \"fromTeamId\", \"candidates\", \"lines\", \"amount\", \"maxMemberCount\", \"pendingTransfer\""
 // @Failure     404 {object} map[string]interface{}
 // @Failure     422 {object} map[string]interface{}
 // @Failure     500 {object} map[string]interface{}
@@ -167,12 +203,21 @@ func (app *application) showTransferCandidatesHandler(w http.ResponseWriter, r *
 		return
 	}
 
+	// An unsettled transfer makes `amount` a lie rather than merely stale, so the dialog is
+	// told about it instead of being left to say "nobody paid for this member".
+	pending, err := app.pendingTransfer(r.Context(), year, fromTeamID, memberID)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+
 	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{
-		"fromTeamId":     fromTeamID,
-		"candidates":     candidates,
-		"lines":          lines,
-		"amount":         amount,
-		"maxMemberCount": maxPatruljeMemberCount,
+		"fromTeamId":      fromTeamID,
+		"candidates":      candidates,
+		"lines":           lines,
+		"amount":          amount,
+		"maxMemberCount":  maxPatruljeMemberCount,
+		"pendingTransfer": pending,
 	}, nil); err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}
@@ -181,7 +226,7 @@ func (app *application) showTransferCandidatesHandler(w http.ResponseWriter, r *
 // reassignMemberHandler moves a member to another patrulje, with their money.
 //
 // @Summary     Move a paid member to another patrulje before the race
-// @Description Reassigns the member to another patrulje and moves what was paid for them along with them: the participation seat and any merchandise are credited back to the origin and charged to the destination, covered by internal-transfer payments rather than a card payment, so no money enters or leaves the system and the pair nets to zero. Requires that neither team has started and that the destination has been accepted into the race and has room. Deliberately requires no `sosId` — an administrative reshuffle is not an incident. Deliberately does not enforce a minimum on the origin: emptying a team out one member at a time is how a team that may not start hands its members over. A member nobody has paid for is reassigned with no orders created, which the response reports as a zero `amount`.
+// @Description Reassigns the member to another patrulje and moves what was paid for them along with them: the participation seat and any merchandise are credited back to the origin and charged to the destination, covered by internal-transfer payments rather than a card payment, so no money enters or leaves the system and the pair nets to zero. Requires that neither team has started and that the destination has been accepted into the race and has room. Refused while a previous transfer of the same member is still unsettled — their seat is invisible until the payment saga closes that order, and moving them in that window would silently leave the money behind. Deliberately requires no `sosId` — an administrative reshuffle is not an incident. Deliberately does not enforce a minimum on the origin: emptying a team out one member at a time is how a team that may not start hands its members over. A member nobody has paid for is reassigned with no orders created, which the response reports as a zero `amount`.
 // @Tags        member
 // @Accept      json
 // @Produce     json
@@ -210,10 +255,27 @@ func (app *application) reassignMemberHandler(w http.ResponseWriter, r *http.Req
 	}
 	year := app.YearSlug(r)
 
-	if _, ok := app.reassignOrigin(w, r, year, memberID); !ok {
+	fromTeamID, ok := app.reassignOrigin(w, r, year, memberID)
+	if !ok {
 		return
 	}
 	if !app.reassignTarget(w, r, year, input.TeamID) {
+		return
+	}
+
+	// Refused rather than allowed-with-a-warning: the money is real and in flight, so the
+	// only outcome of proceeding is a member whose seat is paid for on a team they have just
+	// left. "Try again in a moment" is both true and cheap — the wait is seconds when the
+	// payment saga is running.
+	pending, err := app.pendingTransfer(r.Context(), year, fromTeamID, memberID)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+	if pending {
+		app.FailedValidationResponse(w, r, map[string]string{
+			"memberId": "en tidligere flytning er ikke afregnet endnu — pr\u00f8v igen om et \u00f8jeblik",
+		})
 		return
 	}
 
@@ -328,6 +390,18 @@ func (app *application) rosterCount(ctx context.Context, year types.YearSlug, te
 		}
 	}
 	return 0, nil
+}
+
+// pendingTransfer reports whether an unsettled transfer is holding this member's seat.
+//
+// Reads the current team's orders, which is where a charge order for this member sits.
+// `ListByOwner` hydrates lines, so no extra query is needed.
+func (app *application) pendingTransfer(ctx context.Context, year types.YearSlug, teamID types.TeamID, memberID types.MemberID) (bool, error) {
+	orders, err := app.models.Order.ListByOwner(ctx, year, types.TeamTypePatrulje, string(teamID))
+	if err != nil {
+		return false, err
+	}
+	return pendingTransferOrder(orders, memberID) != "", nil
 }
 
 // transferableLines is what would move with the member, and what it is worth.

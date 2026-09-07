@@ -10,9 +10,9 @@
 **Progress:** shared-go S1–S4 delivered (tasks 156–159) and consumed at `8b51980`; hq
 endpoints and SPA landed (tasks 160–162); **verified end to end against real dev data**
 (task 163 — netting, settlement of both negative-total credit orders, replay idempotency,
-roster move, t-shirt size, two-hop provenance). One open defect blocks shipping: **task
-166** — a second transfer inside the settlement window moves no money and tells the operator
-nobody paid. See §10.
+roster move, t-shirt size, two-hop provenance); the settlement-window defect found by that
+verification is fixed (task 166). **Feature complete.** Remaining before `done`: someone
+should watch it in a browser — see §10.
 
 <!--
 Status must match the folder this file is in: draft/, doing/ or done/.
@@ -657,8 +657,19 @@ S4 = **159** — all four **done**, implemented in shared-go and documented ther
 `docs/moving-a-paid-member.md`.
 
 **hq tasks:** **160** (bump, done), **161** (both endpoints, done), **162** (SPA, done),
-**163** (end-to-end verification, done), **166** (settlement-window defect, **open — blocks
-`done`**), **164** (start gate, open), **165** (øre/kroner, open).
+**163** (end-to-end verification, done), **166** (settlement-window defect, done),
+**164** (start gate, open), **165** (øre/kroner, open). 164 and 165 are adjacent work this
+PRD deliberately scoped out; neither blocks it.
+
+**Not yet done:** nobody has driven a browser. The signal path is verified server-side and
+the live transport has its own suite, but the actual experience — a row leaving the table
+without a reload — has not been watched. That is what stands between this and `done`.
+
+**A rule this PRD added to the product.** §6 said the 7-member cap was enforced "server-side
+— and reflected in the UI". It is now genuinely enforced for the first time: it used to exist
+only as a `TeamConfig` value served to the SPA. The count comes from the recomputed roster,
+because `patrulje.memberCount` is frozen at who started and is 0 before that — useless for
+precisely the teams this feature deals with.
 
 **What verification changed.** Two things only a real run could show, both now recorded
 against §8:
@@ -667,10 +678,16 @@ against §8:
   order projection, so a replay-time race can leave a transfer order `open` past the retry
   budget — it logs `will settle on a later replay` and does, on the next boot. Self-healing,
   but it means "both orders terminal" is eventually-true, not immediately-true.
-- **That window has a user-visible consequence** (task 166): while a charge order is
-  unsettled the member's seat is invisible to `PaidLinesByMember`, so a second move transfers
-  nothing and the dialog claims nobody paid for them. Milliseconds when tilmelding is
-  healthy; unbounded when it is not — which is a dev machine's normal state.
+- **That window has a user-visible consequence** (task 166, now fixed): while a charge order
+  is unsettled the member's seat is invisible to `PaidLinesByMember`, so a second move would
+  transfer nothing and the dialog would claim nobody paid for them. Milliseconds when
+  tilmelding is healthy; unbounded when it is not — which is a dev machine's normal state.
+  **Resolved by refusing** rather than by widening what "paid" means: an unsettled transfer
+  holding the member's seat is detected from its deterministic `transfer:` line ids, and the
+  move is refused with *"prøv igen om et øjeblik"* — measured at 12–15 seconds. Widening
+  `PaidLinesByMember` to include covered-but-unsettled orders was the alternative and was
+  rejected: it would trade a visible, self-clearing refusal for a permanent, invisible change
+  to the "paid means paid" contract that `patruljenumber`'s acceptance rule also depends on.
 
 **H3 turned out to be empty**, and that is worth recording rather than quietly dropping:
 the transfer command only *publishes*, and `ordertable`, `paymenttable` and `spejdertable`
