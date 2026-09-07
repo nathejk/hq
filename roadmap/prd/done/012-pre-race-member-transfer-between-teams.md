@@ -1,18 +1,18 @@
 # PRD 012 — Pre-race member transfer between patruljer (seat & merchandise follow the member)
 
-**Status:** doing
+**Status:** done
 **Author:** agent session
 **Created:** 2026-09-07
 **Last updated:** 2026-09-07
 **Approved:** 2026-09-07
-**Shipped:**
+**Shipped:** 2026-09-07
 **Target users:** organizer (HQ admin, acting on a contact person's request)
-**Progress:** shared-go S1–S4 delivered (tasks 156–159); hq endpoints and SPA landed (tasks
-160–162); **verified end to end against real dev data** (task 163); the settlement-window
-defect is fixed (166) and so is the credit-order race (168, fixed in shared-go and consumed at
-`4445c95` — a transfer now closes its own two orders and no longer depends on the payment saga
-at all). **Feature complete.** The one thing left before `done`: nobody has watched it in a
-browser. See §10.
+**Delivered:** shared-go S1–S4 (tasks 156–159) plus the two defects found in use (166, 168),
+consumed at `4445c95`; hq endpoints and SPA (tasks 160–162); verified end to end against real
+dev data (163) and confirmed working in the browser by the product owner. Task **167** (wait
+for the database at boot) came out of debugging this feature's stack. Left open deliberately:
+**164** (enforce the 3-member minimum at the start gate) and **165** (the øre/kroner comparison)
+— adjacent work this PRD scoped out.
 
 <!--
 Status must match the folder this file is in: draft/, doing/ or done/.
@@ -678,15 +678,31 @@ settle in ~2 seconds. So the eventual-consistency caveat above no longer applies
 — only to ordinary provider payments, which is where the saga still belongs. It also reduced
 task 166's window to something that essentially never occurs, though the check stays.
 
-**Not yet done:** nobody has driven a browser. The signal path is verified server-side and
-the live transport has its own suite, but the actual experience — a row leaving the table
-without a reload — has not been watched. That is what stands between this and `done`.
+**Confirmed in the browser** by the product owner on 2026-09-07, which is what closed this
+PRD. Everything else had been verified server-side, but the experience the feature exists for
+— expanding a member, picking a destination, and watching the row leave the table without a
+reload — is not something a test suite can sign off.
 
 **A rule this PRD added to the product.** §6 said the 7-member cap was enforced "server-side
 — and reflected in the UI". It is now genuinely enforced for the first time: it used to exist
 only as a `TeamConfig` value served to the SPA. The count comes from the recomputed roster,
 because `patrulje.memberCount` is frozen at who started and is 0 before that — useless for
 precisely the teams this feature deals with.
+
+**What building this taught us**, worth carrying into the next PRD:
+
+- **The two defects that mattered were both invisible to tests and only appeared in use.** The
+  settlement window (166) needed two transfers in quick succession; the credit-order race (168)
+  needed somebody to look at a payment list and notice *Åben* beside *Mangler 0,00 kr.* Both
+  were found by running the thing, not by building it — which is the argument for task 163
+  existing at all.
+- **"Eventually consistent" deserves more suspicion than it usually gets.** §8 was written
+  assuming a saga in another service would close these orders, and treated lateness as the only
+  risk. The real behaviour was *never*, silently, for the half that structurally lost a race.
+  The fix was to move the decision to where the knowledge already was.
+- **Cross-repo work went well because the task specs were self-contained.** Four tasks lifted
+  into shared-go and came back needing **no hq code change** either time — the seam held
+  because the specs pinned it (subjects, JSON names, signatures) rather than describing intent.
 
 **What verification changed.** Two things only a real run could show, both now recorded
 against §8:
