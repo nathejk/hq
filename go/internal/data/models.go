@@ -50,7 +50,6 @@ type PersonnelInterface interface {
 type ScanInterface interface {
 	GetAll(context.Context, scan.Filter) ([]*scan.Scan, scan.Metadata, error)
 	GetCheckgroupsScans(ctx context.Context, filters scan.Filter) ([]*scan.CheckgroupScan, scan.Metadata, error)
-	TeamPositions(context.Context, string) ([]scan.TeamPosition, error)
 }
 type LokInterface interface {
 	GetAll(context.Context, lok.Filter) ([]*lok.Lok, lok.Metadata, error)

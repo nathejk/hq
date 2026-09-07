@@ -69,11 +69,6 @@ func (app *application) routes() http.Handler {
 	// team's scans. For a spejder this is what the position glyph opens — the patrol is the unit
 	// that matters, not the person.
 	router.HandlerFunc(http.MethodGet, "/api/telemetry/patrulje/:teamId/track", app.showPatruljeTrackHandler)
-	// The patrol position layer: one marker per patrulje, from telemetry or from its last scan,
-	// whichever is newer. Safe beside the routes above because its siblings at this depth
-	// (`presence`, `person`, `patrulje`) are all static — see telemetry_positions_test.go, which
-	// asserts that rather than trusting it.
-	router.HandlerFunc(http.MethodGet, "/api/telemetry/positions", app.listPatruljePositionsHandler)
 
 	// Members in our care (PRD 006). Event-wide rather than per case: a member we
 	// are responsible for is our problem whether or not anybody opened a case.
