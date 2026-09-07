@@ -1,11 +1,11 @@
 # 159 — [shared-go] Seat transfer command + pre-race member reassignment
 
-**Status:** open
+**Status:** done
 **Priority:** high
 **Created:** 2026-09-07
-**Picked up by:**
-**Started:**
-**Completed:**
+**Picked up by:** agent session (shared-go repo)
+**Started:** 2026-09-07
+**Completed:** 2026-09-07
 
 > **This task is implemented in the `github.com/nathejk/shared-go` repo, not here.**
 > It is tracked on this board because hq's PRD 012 depends on it. Lift the whole file
@@ -218,3 +218,7 @@ working around it.
 - 2026-09-07 — Created from hq PRD 012 §6 and §8. Written to be lifted into shared-go.
   Depends on tasks 156, 157, 158. The largest of the four; the roster half and the money
   half are kept together because only a single owner can enforce the publish ordering.
+
+- 2026-09-07 — Lifted into the shared-go repo and implemented there; see its own board and
+  `docs/moving-a-paid-member.md`, which documents the delivered capability for callers.
+  Consumed by hq at shared-go `8b51980`.

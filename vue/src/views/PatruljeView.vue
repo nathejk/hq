@@ -151,6 +151,90 @@ const saveCorrection = async (member) => {
   }
 };
 
+// --- the pre-race reshuffle (PRD 012) ---
+//
+// A contact person who paid for two teams wants to move somebody between them. The
+// paid seat and any t-shirt move with the member, as an internal transfer between the
+// two teams' orders — no card is charged and nothing is refunded.
+//
+// Deliberately a different action from the nødtelefon's "Skift patrulje": that one is
+// for a member who *started* here and continues elsewhere, and it keeps them on this
+// roster. This one changes which team they belong to, so they leave this list entirely.
+// Hence it is only offered before the patrol has started.
+const canReassign = computed(() => patrulje.value.status !== 'STARTED');
+
+// The dialog's whole state in one ref, so closing it cannot leave a stale destination
+// or a spinner behind.
+const moveDlg = ref(null);
+
+const openMove = async (member) => {
+  moveDlg.value = {
+    memberId: member.memberId,
+    name: member.name,
+    query: '',
+    target: null,
+    loading: true,
+    submitting: false,
+    candidates: [],
+    lines: [],
+    amount: 0,
+  };
+  try {
+    const response = await http.get(`/member/${member.memberId}/transfer-candidates`);
+    if (!moveDlg.value || moveDlg.value.memberId !== member.memberId) return;
+    moveDlg.value = {
+      ...moveDlg.value,
+      loading: false,
+      candidates: response.data.candidates ?? [],
+      lines: response.data.lines ?? [],
+      amount: response.data.amount ?? 0,
+    };
+  } catch {
+    // surfaced by the axios plugin
+    moveDlg.value = null;
+  }
+};
+
+// Eligibility is the server's answer, not recomputed here: the same rule decides what
+// this list offers and what the move accepts, so the two cannot disagree about whether
+// a team is full.
+//
+// Ineligible teams are shown struck through rather than filtered out — an operator
+// looking for a specific patrol needs to see that it is full or has started, not to
+// wonder whether they misremembered the name.
+const moveTargets = computed(() => {
+  const d = moveDlg.value;
+  if (!d) return [];
+  const q = d.query.trim().toLowerCase();
+  const all = d.candidates;
+  if (q.length < 2) return all.slice(0, 10);
+  return all
+    .filter((c) => [c.teamNumber, c.name, c.group].some((f) => (f ?? '').toLowerCase().includes(q)))
+    .slice(0, 10);
+});
+
+const submitMove = async () => {
+  const d = moveDlg.value;
+  if (!d || !d.target) return;
+  moveDlg.value = { ...d, submitting: true };
+  try {
+    await http.put(`/member/${d.memberId}/reassign`, { teamId: d.target.teamId });
+    const moved = d.name;
+    const to = d.target;
+    moveDlg.value = null;
+    toast.add({
+      severity: 'success',
+      summary: `${moved} er flyttet`,
+      detail: to.teamNumber ? `til patrulje ${to.teamNumber}` : `til ${to.name}`,
+      life: 5000,
+    });
+    await refresh();
+  } catch {
+    // surfaced by the axios plugin; the dialog stays open with the chosen destination
+    moveDlg.value = moveDlg.value ? { ...moveDlg.value, submitting: false } : null;
+  }
+};
+
 const linkToSignUp = () => {
     window.open("http://tilmelding.nathejk.dk/patrulje/" + patrulje.value.id, '_blank')
 }
@@ -164,6 +248,15 @@ const formatAmount = (value, currency) => {
 const formatDateTime = (value) => daymonthhhmm(value)
 const statusLabel = (status) => (status === 'PAID' ? 'Betalt' : 'Åben')
 const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
+
+// A transfer's two orders are recognisable by their line ids (PRD 012): every line the
+// transfer creates is `transfer:{transferId}:{n}`. Labelling them matters because they
+// otherwise read as anonymous sales — and the credit side reads as a *negative* one,
+// which looks like a mistake rather than money moving to another team.
+//
+// Detected from the lines rather than from a column on the order: the ids are already
+// deterministic and carry the transfer, so nothing extra had to be stored for this.
+const isTransfer = (order) => (order.lines ?? []).some((l) => (l.lineId ?? '').startsWith('transfer:'))
 </script>
 
 <template>
@@ -231,9 +324,23 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
                         <Button label="Ret status manuelt" size="small" severity="secondary"
                                 outlined icon="pi pi-wrench"
                                 @click="startCorrection(data)" />
+                        <!--
+                          The pre-race reshuffle (PRD 012). Hidden rather than disabled once
+                          the patrol has started: at that point the action does not exist
+                          here at all, and the move belongs to the nødtelefon's case-based
+                          one, so a greyed-out button would only invite a wrong question.
+                        -->
+                        <Button v-if="canReassign" label="Flyt til anden patrulje" size="small"
+                                severity="secondary" outlined icon="pi pi-arrow-right-arrow-left"
+                                class="ml-2"
+                                @click="openMove(data)" />
                         <div class="mt-1 text-gray-500">
                             Brug kun når virkeligheden ikke passer med det registrerede —
                             rettelsen dokumenteres automatisk som en sag.
+                        </div>
+                        <div v-if="canReassign" class="text-gray-500">
+                            Ved flytning følger den betalte plads og eventuelt t-shirt med over
+                            i den nye patrulje.
                         </div>
                     </div>
 
@@ -282,7 +389,11 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
                 <template #body="{data}">{{ formatDateTime(data.createdAt) }}</template>
             </Column>
             <Column field="totalAmount" header="Beløb" sortable>
-                <template #body="{data}">{{ formatAmount(data.totalAmount, data.currency) }}</template>
+                <template #body="{data}">
+                    {{ formatAmount(data.totalAmount, data.currency) }}
+                    <Tag v-if="isTransfer(data)" class="ml-2" severity="info"
+                         value="Intern overførsel" />
+                </template>
             </Column>
             <Column field="paidAmount" header="Betalt">
                 <template #body="{data}">{{ formatAmount(data.paidAmount, data.currency) }}</template>
@@ -296,6 +407,85 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
                 </template>
             </Column>
         </DataTable>
+
+        <!--
+          Flyt til anden patrulje (PRD 012). The team picker follows the same idiom as the
+          nødtelefon's: a text filter over a short list with a "Vælg" button per row, not an
+          AutoComplete — an operator reads a number off a screen and needs to see the
+          candidates, including the ones they may not pick.
+        -->
+        <Dialog v-if="moveDlg" :visible="true" modal header="Flyt til anden patrulje"
+                :style="{ width: '32rem' }" @update:visible="moveDlg = null">
+            <p class="mb-3 text-sm">
+                <strong>{{ moveDlg.name }}</strong> flyttes til en anden patrulje og hører
+                derefter til den. Den betalte plads og eventuelle køb følger med.
+            </p>
+
+            <div v-if="moveDlg.loading" class="text-sm text-gray-500">Henter patruljer …</div>
+
+            <template v-else>
+                <!-- What moves, priced as it was actually paid for. -->
+                <div class="mb-3 rounded bg-gray-50 p-2 text-sm">
+                    <template v-if="moveDlg.lines.length">
+                        <div v-for="l in moveDlg.lines" :key="l.productSku + (l.size || '')"
+                             class="flex justify-between">
+                            <span>
+                                {{ l.productName }}
+                                <span v-if="l.size" class="text-gray-500">({{ l.size }})</span>
+                                <span v-if="l.quantity !== 1" class="text-gray-500">× {{ l.quantity }}</span>
+                            </span>
+                            <span>{{ formatAmount(l.lineTotal) }}</span>
+                        </div>
+                        <div class="mt-1 flex justify-between border-t border-gray-200 pt-1 font-semibold">
+                            <span>Overføres som intern overførsel</span>
+                            <span>{{ formatAmount(moveDlg.amount) }}</span>
+                        </div>
+                    </template>
+                    <!--
+                      Nothing to move is an ordinary outcome, not an error: the team has not
+                      paid for this member yet. Said out loud so the operator is not left
+                      wondering why no money moved.
+                    -->
+                    <span v-else class="text-gray-600">
+                        Der er ikke betalt for denne deltager, så der overføres ingen betaling.
+                    </span>
+                </div>
+
+                <div v-if="moveDlg.target" class="mb-2 flex items-center gap-2">
+                    <strong>
+                        <span v-if="moveDlg.target.teamNumber">{{ moveDlg.target.teamNumber }} · </span>
+                        {{ moveDlg.target.name }}
+                    </strong>
+                    <Button label="Skift" text size="small" @click="moveDlg = { ...moveDlg, target: null }" />
+                </div>
+                <div v-else>
+                    <InputText :model-value="moveDlg.query" class="w-full"
+                               placeholder="Søg patrulje (nummer, navn, gruppe)"
+                               @update:model-value="moveDlg = { ...moveDlg, query: $event ?? '' }" />
+                    <div v-for="c in moveTargets" :key="c.teamId"
+                         class="flex items-center justify-between gap-2 border-b border-gray-100 py-1 last:border-0">
+                        <span class="text-sm" :class="c.eligible ? '' : 'text-gray-400 line-through'">
+                            <span v-if="c.teamNumber">{{ c.teamNumber }} · </span>
+                            {{ c.name }}
+                            <span class="text-gray-500">{{ c.group }}</span>
+                            <span class="text-gray-500">{{ c.memberCount }}/7</span>
+                        </span>
+                        <Button v-if="c.eligible" label="Vælg" size="small"
+                                @click="moveDlg = { ...moveDlg, target: c }" />
+                        <span v-else class="text-xs italic text-gray-400">{{ c.reason }}</span>
+                    </div>
+                    <small v-if="!moveTargets.length" class="text-gray-500">Ingen patruljer fundet</small>
+                </div>
+            </template>
+
+            <template #footer>
+                <div class="flex justify-end gap-2">
+                    <Button label="Annuller" severity="secondary" text @click="moveDlg = null" />
+                    <Button label="Flyt" :disabled="!moveDlg.target" :loading="moveDlg.submitting"
+                            @click="submitMove" />
+                </div>
+            </template>
+        </Dialog>
     </div>
 </template>
 

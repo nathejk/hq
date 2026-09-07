@@ -58,8 +58,14 @@ func (f *fakeSignupQueries) TeamIDsByType(context.Context, types.YearSlug, types
 
 // fakeOrderQueries returns a nil slice from ListByOwner — precisely what the real
 // querier does for an owner with no orders, and the source of the crash.
+//
+// Embeds both halves of data.OrderInterface: the read API, and the per-member paid-line
+// read the seat transfer uses (PRD 012). Neither is called by these tests, so nil
+// interfaces are enough — a call would panic, which is the intended signal that a test
+// grew a dependency it should declare.
 type fakeOrderQueries struct {
 	order.Queries
+	order.MemberLineReader
 }
 
 func (f *fakeOrderQueries) ListByOwner(context.Context, types.YearSlug, types.TeamType, string) ([]order.Order, error) {

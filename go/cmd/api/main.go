@@ -32,6 +32,7 @@ import (
 	"github.com/nathejk/shared-go/tables/senior"
 	"github.com/nathejk/shared-go/tables/signup"
 	"github.com/nathejk/shared-go/tables/spejder"
+	"github.com/nathejk/shared-go/tables/transfer"
 	"github.com/nathejk/shared-go/tables/vehicle"
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/cmd/api/app"
@@ -332,7 +333,7 @@ func main() {
 		logger.PrintFatal(err, nil)
 	}
 
-	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, vehicletable, ordertable, sostable, spejderstatustable, sheltertable, spejdernotetable, dispatchtable, korttable, tracktable)
+	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, vehicletable, ordertable, sostable, spejderstatustable, sheltertable, spejdernotetable, dispatchtable, korttable, tracktable, spejdertable)
 	cmds := commands.New(publisher, models)
 	cmds.Year = year
 	cmds.Checkpoint = checkpoint
@@ -351,6 +352,13 @@ func main() {
 	// Both arguments are klantable: it is the read model the override dirty-checks
 	// against *and* the entity that owns what deleting a klan means.
 	cmds.Klan = commands.NewKlan(publisher, klantable, klantable)
+	// Moving a paid member between not-yet-started teams (PRD 012). Publishes only —
+	// nothing new on the mux; the order, payment and spejder projections already
+	// mounted are what consume it. Its three collaborators are narrow read
+	// interfaces satisfied by the entities themselves: the roster knows which team
+	// the member is on, the orders know what was paid for them, and the payments
+	// know where that money originally came from.
+	cmds.Transfer = transfer.New(publisher, spejdertable, ordertable, paymenttable, currentYear)
 
 	expvar.NewString("version").Set(version)
 	expvar.NewInt("timestamp").Set(time.Now().Unix())

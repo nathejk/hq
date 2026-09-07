@@ -86,7 +86,7 @@ func (app *application) settledPaymentsFor(ctx context.Context, year types.YearS
 			continue
 		}
 		ref := paymentRef{
-			Provider:  p.Method,
+			Provider:  string(p.Method),
 			Reference: p.Reference,
 			Amount:    p.Amount,
 			Status:    string(p.Status),

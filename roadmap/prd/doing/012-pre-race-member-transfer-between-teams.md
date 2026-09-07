@@ -7,6 +7,9 @@
 **Approved:** 2026-09-07
 **Shipped:**
 **Target users:** organizer (HQ admin, acting on a contact person's request)
+**Progress:** shared-go S1–S4 delivered (tasks 156–159) and consumed at `8b51980`; hq
+endpoints and SPA landed (tasks 160–162). Remaining: end-to-end verification against a
+real stream (task 163) — no transfer has yet been performed. See §10.
 
 <!--
 Status must match the folder this file is in: draft/, doing/ or done/.
@@ -647,7 +650,31 @@ Description and Acceptance Criteria are written for the other repo; it is tracke
 because this PRD depends on it, but it is not implemented in this working tree.
 
 **Created on approval (2026-09-07):** S1 = **156**, S2 = **157**, S3 = **158**,
-S4 = **159**. The H and X tasks are not yet created.
+S4 = **159** — all four **done**, implemented in shared-go and documented there in
+`docs/moving-a-paid-member.md`.
+
+**hq tasks:** **160** (bump, done), **161** (both endpoints, done), **162** (SPA, done),
+**163** (end-to-end verification, open), **164** (start gate, open), **165** (øre/kroner,
+open).
+
+**H3 turned out to be empty**, and that is worth recording rather than quietly dropping:
+the transfer command only *publishes*, and `ordertable`, `paymenttable` and `spejdertable`
+were already mounted and already inside the `projections` slice — so the live signals
+(`order`, `payment`, `spejder`) flow with no wiring at all, and the SPA needed no new
+`dependsOn` token. The entity-agnostic design in PRD 004 is what made a whole phase
+unnecessary.
+
+**Decisions taken during implementation, both by the shared-go side:**
+
+- §11 Q1 (how a credit order closes) — **the saga was taught negative totals**, so one
+  settlement path serves every order. A transfer whose lines are all zero-priced is the one
+  exception and gets `order.paid` published directly.
+- §11 Q2 (payment symmetry) — **symmetrical**: a negative payment covers the credit order,
+  so `paidAmount == totalAmount` on both halves and each is auditable the same way.
+- §11 Q3 (how a pair is identified) — **no new column**. Every id is a deterministic
+  function of `(year, memberId, fromTeamId, toTeamId)`, so line ids carry the transfer
+  (`transfer:{id}:{n}`), a repeat call is harmless, and a replay produces one transfer. The
+  trade-off recorded there: the ids identify *a move between two teams*, not *an occasion*.
 
 - [ ] **S1** `[shared-go]` Settle credit (negative-total) orders — the Pay saga bails on
       `TotalAmount <= 0` and `Settle` rejects a non-zero total, so such an order can never

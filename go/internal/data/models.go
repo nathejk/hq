@@ -11,6 +11,7 @@ import (
 	"github.com/nathejk/shared-go/tables/payment"
 	"github.com/nathejk/shared-go/tables/section"
 	"github.com/nathejk/shared-go/tables/senior"
+	"github.com/nathejk/shared-go/tables/spejder"
 	"github.com/nathejk/shared-go/tables/vehicle"
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/nathejk/table/checkgroup"
@@ -49,10 +50,24 @@ type PersonnelInterface interface {
 type ScanInterface interface {
 	GetAll(context.Context, scan.Filter) ([]*scan.Scan, scan.Metadata, error)
 	GetCheckgroupsScans(ctx context.Context, filters scan.Filter) ([]*scan.CheckgroupScan, scan.Metadata, error)
+	TeamPositions(context.Context, string) ([]scan.TeamPosition, error)
 }
 type LokInterface interface {
 	GetAll(context.Context, lok.Filter) ([]*lok.Lok, lok.Metadata, error)
 	GetByID(context.Context, types.LokID) (*lok.Lok, error)
+}
+
+// OrderInterface is what hq needs from the order entity: the read API, plus the
+// per-member paid-line read that the seat-transfer preview shares with the transfer
+// command itself (PRD 012).
+//
+// Composed here rather than widening order.Queries in shared-go, which is implemented
+// by fakes in other repos. Sharing the read is the point: the dialog that tells an
+// operator "seat 250 kr and t-shirt 175 kr will move" and the command that moves them
+// must not be able to disagree about which lines those are.
+type OrderInterface interface {
+	order.Queries
+	order.MemberLineReader
 }
 
 type Models struct {
@@ -84,7 +99,7 @@ type Models struct {
 	Section        section.Queries
 	CrewMember     crewmember.Queries
 	Vehicle        vehicle.Queries
-	Order          order.Queries
+	Order          OrderInterface
 	Sos            sos.Queries
 	Shelter        shelter.Queries
 	Note           spejdernote.Queries
@@ -94,9 +109,18 @@ type Models struct {
 	SpejderStatus spejderstatus.Queries
 	// Track is where people were: positions reported by the hej-app (PRD 011).
 	Track track.Queries
+
+	// Roster answers which team a member is currently on (PRD 012).
+	//
+	// A one-method read interface owned by the spejder entity rather than a method on
+	// Members: Members is this package's own hand-rolled SQL over the roster, and a
+	// second definition of "which team is this member on" is exactly the drift the
+	// transfer command avoids by reading the roster itself. Handler and command
+	// therefore agree by construction.
+	Roster spejder.RosterReader
 }
 
-func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface, sec section.Queries, crew crewmember.Queries, veh vehicle.Queries, ord order.Queries, sosq sos.Queries, memberq spejderstatus.Queries, shelterq shelter.Queries, noteq spejdernote.Queries, dispatchq dispatch.Queries, kortq kort.Queries, trackq track.Queries) Models {
+func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface, sec section.Queries, crew crewmember.Queries, veh vehicle.Queries, ord OrderInterface, sosq sos.Queries, memberq spejderstatus.Queries, shelterq shelter.Queries, noteq spejdernote.Queries, dispatchq dispatch.Queries, kortq kort.Queries, trackq track.Queries, roster spejder.RosterReader) Models {
 	return Models{
 		Year:           y,
 		Teams:          TeamModel{DB: db},
@@ -123,5 +147,6 @@ func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInte
 		Kort:           kortq,
 		SpejderStatus:  memberq,
 		Track:          trackq,
+		Roster:         roster,
 	}
 }

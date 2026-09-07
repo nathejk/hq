@@ -6,6 +6,7 @@ import (
 	"github.com/jrgensen/stream"
 	"github.com/nathejk/shared-go/tables/crewmember"
 	"github.com/nathejk/shared-go/tables/section"
+	"github.com/nathejk/shared-go/tables/transfer"
 	"github.com/nathejk/shared-go/tables/vehicle"
 	"github.com/nathejk/shared-go/types"
 	"nathejk.dk/internal/data"
@@ -52,6 +53,17 @@ type Commands struct {
 
 	// Kort is the write side for the printed sheets themselves.
 	Kort kort.Commands
+
+	// Transfer moves a paid member between not-yet-started teams, carrying their seat
+	// and merchandise with them (PRD 012). It lives in shared-go because the money it
+	// moves does: it publishes order and payment events, which hq owns here only
+	// insofar as it initiates them — the payment saga that closes the two orders stays
+	// mounted in tilmelding alone.
+	//
+	// It refuses only a missing member and a move to the team they are already on;
+	// every other precondition (destination accepted, not started, has room) is
+	// enforced by the handler, which owns the team read models and the Danish wording.
+	Transfer transfer.Commands
 
 	Team interface {
 		UpdatePatrulje(types.TeamID, Patrulje, Contact, []Spejder) error

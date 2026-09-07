@@ -1,11 +1,11 @@
 # 156 — [shared-go] Settle credit (negative-total) orders
 
-**Status:** open
+**Status:** done
 **Priority:** high
 **Created:** 2026-09-07
-**Picked up by:**
-**Started:**
-**Completed:**
+**Picked up by:** agent session (shared-go repo)
+**Started:** 2026-09-07
+**Completed:** 2026-09-07
 
 > **This task is implemented in the `github.com/nathejk/shared-go` repo, not here.**
 > It is tracked on this board because hq's PRD 012 depends on it. Lift the whole file
@@ -161,3 +161,7 @@ exists.
 
 - 2026-09-07 — Created from hq PRD 012 §8 obstacle 2 and §11 Q1/Q2. Written to be lifted
   into shared-go. Blocks task 159; task 157 and 158 are independent of it.
+
+- 2026-09-07 — Lifted into the shared-go repo and implemented there; see its own board and
+  `docs/moving-a-paid-member.md`, which documents the delivered capability for callers.
+  Consumed by hq at shared-go `8b51980`.

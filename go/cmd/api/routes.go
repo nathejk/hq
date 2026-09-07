@@ -69,6 +69,11 @@ func (app *application) routes() http.Handler {
 	// team's scans. For a spejder this is what the position glyph opens — the patrol is the unit
 	// that matters, not the person.
 	router.HandlerFunc(http.MethodGet, "/api/telemetry/patrulje/:teamId/track", app.showPatruljeTrackHandler)
+	// The patrol position layer: one marker per patrulje, from telemetry or from its last scan,
+	// whichever is newer. Safe beside the routes above because its siblings at this depth
+	// (`presence`, `person`, `patrulje`) are all static — see telemetry_positions_test.go, which
+	// asserts that rather than trusting it.
+	router.HandlerFunc(http.MethodGet, "/api/telemetry/positions", app.listPatruljePositionsHandler)
 
 	// Members in our care (PRD 006). Event-wide rather than per case: a member we
 	// are responsible for is our problem whether or not anybody opened a case.
@@ -103,6 +108,15 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/racing", app.resumeRacingHandler)
 	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/status", app.overrideMemberStatusHandler)
 	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/team", app.moveMemberTeamHandler)
+
+	// The pre-race reshuffle (PRD 012), deliberately **not** part of the group above:
+	// no sosId, because moving a member between two teams that have not started is an
+	// administrative act on a contact person's request, not an incident. Named
+	// `reassign` rather than sharing `/team` so the two moves cannot be confused — that
+	// one is the race-time move and keeps the member on their starting roster, this one
+	// changes which team they belong to and takes their paid seat with them.
+	router.HandlerFunc(http.MethodGet, "/api/member/:memberId/transfer-candidates", app.showTransferCandidatesHandler)
+	router.HandlerFunc(http.MethodPut, "/api/member/:memberId/reassign", app.reassignMemberHandler)
 
 	// The shelter's write surface (PRD 007). On the member, beside the nødtelefon's own
 	// transitions, because a member's status is a fact about the member — but deliberately

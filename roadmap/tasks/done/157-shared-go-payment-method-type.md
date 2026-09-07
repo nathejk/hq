@@ -1,11 +1,11 @@
 # 157 — [shared-go] Typed payment method with an internal-transfer value
 
-**Status:** open
+**Status:** done
 **Priority:** high
 **Created:** 2026-09-07
-**Picked up by:**
-**Started:**
-**Completed:**
+**Picked up by:** agent session (shared-go repo)
+**Started:** 2026-09-07
+**Completed:** 2026-09-07
 
 > **This task is implemented in the `github.com/nathejk/shared-go` repo, not here.**
 > It is tracked on this board because hq's PRD 012 depends on it. Lift the whole file
@@ -124,3 +124,7 @@ way to break tilmelding is to change the `mobilepay` wire value — don't.
 
 - 2026-09-07 — Created from hq PRD 012 §8 obstacle 3. Written to be lifted into shared-go.
   Independent of tasks 156 and 158; task 159 depends on this one.
+
+- 2026-09-07 — Lifted into the shared-go repo and implemented there; see its own board and
+  `docs/moving-a-paid-member.md`, which documents the delivered capability for callers.
+  Consumed by hq at shared-go `8b51980`.
