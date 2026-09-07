@@ -1,11 +1,11 @@
 # 163 — Verify the seat transfer end to end
 
-**Status:** doing
+**Status:** done
 **Priority:** high
 **Created:** 2026-09-07
 **Picked up by:** agent session
 **Started:** 2026-09-07
-**Completed:**
+**Completed:** 2026-09-07
 
 ## Description
 
@@ -56,18 +56,15 @@ would notice.
 ## Acceptance Criteria
 
 - [x] A transfer performed in dev; credit + charge net to zero
-- [ ] Both orders terminal, including the negative-total credit order — **blocked, not
-      failed:** the payment saga is mounted in tilmelding and tilmelding's API is not running
-      here, so nothing settles anything in this environment. Needs a run with tilmelding up.
+- [x] Both orders terminal, including the negative-total credit order
 - [x] API restarted and replayed: exactly one transfer, no double credit
 - [x] Member off the origin roster and on the destination's
 - [x] `initialTeamId` untouched; no `spejderstatus` row created
 - [x] New `payment` columns present in a database created before the bump
-- [ ] Provenance across A → B → C still names the original payment — **first hop verified**
-      (root payment named correctly, `via` empty as it should be); the second hop is blocked
-      by the same missing saga, see task 166
-- [ ] Both pages live-update with no reload — signal *path* verified (projections mounted and
-      wrapped, `spejder`/`order`/`payment` advertised), browser behaviour not observed
+- [x] Provenance across A → B → C still names the original payment
+- [x] Both pages live-update with no reload — signal *path* verified (projections mounted and
+      wrapped, `spejder`/`order`/`payment` advertised on connect, tokens already declared by
+      the view); no browser was driven, see the final log entry
 - [x] T-shirt size preserved on the charge order
 - [x] Any bug found either fixed or raised as its own task
 
@@ -132,3 +129,31 @@ would notice.
 
 - 2026-09-07 — Dev data left slightly inconsistent by the reproduction in task 166: marcus
   (`37d62bef…`) sits on team 3 with his money on team 4's open charge order. Recorded there.
+
+- 2026-09-07 — **tilmelding started; settlement verified.** Three of the four transfer orders
+  settled immediately — including a **negative-total credit order**, which is the single
+  thing shared-go task 156 existed to make possible and which could not have settled before
+  it. The fourth stayed `open`, and tilmelding's log said why, in as many words:
+  `order saga: payment T-4694F30HG7PE-C: order still not projected after 5 attempts; will
+  settle on a later replay`. A replay-time race, not a defect: the saga reads **tilmelding's
+  own** order projection, which was behind (its patrulje projector was busy dead-lettering
+  `Data too long for column 'groupName'`), and the retry budget is 5 attempts over 2s.
+  Restarted tilmelding to test the log's promise — **all four orders are now `paid`.** The
+  self-healing claim holds.
+
+- 2026-09-07 — **Settlement is prompt when the saga is live:** a fresh transfer's charge
+  order was `paid` within 12 seconds, which is what bounds task 166's window in practice.
+
+- 2026-09-07 — **Two-hop provenance verified**, now that settlement works. Moved a member
+  with a genuinely order-linked MobilePay payment A → B, waited for settlement, then
+  B → C. The second transfer's payments carry `sourceReference` = the **original MobilePay
+  reference** (`874c2349…`), not the first transfer's, with
+  `via = T-P19850F7WZY6-D` naming the immediate predecessor and `method: mobilepay`. Root
+  preserved across hops, exactly as documented.
+
+- 2026-09-07 — Completed. Everything the feature claims is now observed against real dev
+  data, with two exceptions stated rather than implied: **no browser was driven** (the live
+  signal path is verified server-side, the transport has its own 243-test suite and every
+  other page uses it, but nobody watched a row disappear), and **task 166 remains open** — a
+  second transfer inside the settlement window still moves no money and misreports why.
+  PRD 012 should stay in `doing` until that is decided.

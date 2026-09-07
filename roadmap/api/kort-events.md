@@ -72,7 +72,7 @@ its set, so tolerate an unknown `kortsaetId` rather than dropping the row.
 
 Every field is optional, and **an absent field means "unchanged"** — not "empty".
 Fields: `kortsaetId`, `name`, `format`, `note`, `sortOrder`, `checkpointIds`,
-`extents`.
+`extents`, `handoutCheckgroupId`.
 
 This is the thing most likely to be got wrong: treating the body as a full record
 will blank the fields it does not mention. The checkpoint picker and the sheet's
@@ -80,7 +80,8 @@ description are separate screens that save separately, so partial updates are th
 normal traffic, not an edge case.
 
 An explicitly empty array **is** a change: `"checkpointIds": []` clears the sheet,
-and `"extents": []` makes it a skitse.
+and `"extents": []` makes it a skitse. So is an explicitly empty **string** in
+`handoutCheckgroupId` — see §1.1.
 
 ### `kort.{id}.deleted`
 
@@ -157,6 +158,38 @@ checkpoint's scan. Its `checkpointIds` are the only trace of it in the system,
 which is why sheets with no area and no QR still matter. Its `format` is
 `"skitse"`.
 
+### 1.1 `handoutCheckgroupId` tells you *which* rule applies to a sheet
+
+Added after the two rules above were written, and it is what removes the guesswork:
+the organizer now records where each sheet is handed out, because they plan it.
+
+```json
+{ "kortId": "kort-…", "handoutCheckgroupId": "cg-…" }
+```
+
+- **A checkgroup id** → the sheet is handed out at that group's post, so its
+  `checkpointIds` become visible when that checkgroup is reached. This is how a
+  skitse works, and it is now stated rather than inferred from "the previous
+  checkpoint".
+- **`""` (empty string)** → the QR rule: the sheet's checkpoints become visible when
+  its own QR code is linked to or scanned by the team.
+
+Three things to get right:
+
+1. **Empty is a value, not a missing field.** It means the QR rule, which is also
+   the behaviour that existed before this field, so a sheet nobody has configured
+   behaves as it always did. Never render it as "unknown" and never fall back to
+   some other policy.
+2. **An explicit `""` in an `updated` event is an edit**, not an absence: it is how
+   an organizer switches a sheet back from a post to the QR rule. Absence of the
+   key still means "unchanged".
+3. **Resolve the id against your own checkgroup projection.** HQ does not validate
+   it on write, and nothing re-publishes the sheet if the checkgroup is later
+   deleted. Treat an id that does not resolve as `""` — the QR rule — because the
+   alternative is a reveal keyed to a post that will never be reached, and those
+   checkpoints would never appear at all. HQ's own read path does exactly this, and
+   like §4 the fix does not travel over the stream.
+
 ### 2. Find the patrol sheets by `teamType`, never by name
 
 Set names are Danish free text an organizer may rename mid-season — "Patruljer",
@@ -231,9 +264,9 @@ have no meaning this year. A new year starts empty.
   *sheet* is the natural next step and is not built. Until it is, these events give
   you the **candidate** sheets for a team type; matching a specific scan to a
   specific sheet has to come from elsewhere.
-- **Where a sheet is handed out.** Not recorded, and not planned: it varies, it is
-  not reliably known, and the sheet a team holds is established by the QR link
-  rather than by inferring it from where they had been.
+- **Where a sheet is handed out.** Now recorded as a *plan* — see `handoutCheckgroupId`
+  in §1.1. What actually happened is still not recorded, and is not planned: it
+  varies and is not reliably known.
 
 ## Questions
 

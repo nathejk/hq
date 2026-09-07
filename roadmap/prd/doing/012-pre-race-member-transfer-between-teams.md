@@ -8,8 +8,11 @@
 **Shipped:**
 **Target users:** organizer (HQ admin, acting on a contact person's request)
 **Progress:** shared-go S1–S4 delivered (tasks 156–159) and consumed at `8b51980`; hq
-endpoints and SPA landed (tasks 160–162). Remaining: end-to-end verification against a
-real stream (task 163) — no transfer has yet been performed. See §10.
+endpoints and SPA landed (tasks 160–162); **verified end to end against real dev data**
+(task 163 — netting, settlement of both negative-total credit orders, replay idempotency,
+roster move, t-shirt size, two-hop provenance). One open defect blocks shipping: **task
+166** — a second transfer inside the settlement window moves no money and tells the operator
+nobody paid. See §10.
 
 <!--
 Status must match the folder this file is in: draft/, doing/ or done/.
@@ -654,8 +657,20 @@ S4 = **159** — all four **done**, implemented in shared-go and documented ther
 `docs/moving-a-paid-member.md`.
 
 **hq tasks:** **160** (bump, done), **161** (both endpoints, done), **162** (SPA, done),
-**163** (end-to-end verification, open), **164** (start gate, open), **165** (øre/kroner,
-open).
+**163** (end-to-end verification, done), **166** (settlement-window defect, **open — blocks
+`done`**), **164** (start gate, open), **165** (øre/kroner, open).
+
+**What verification changed.** Two things only a real run could show, both now recorded
+against §8:
+
+- **Settlement is another service's job, and it can be late.** The saga reads *tilmelding's*
+  order projection, so a replay-time race can leave a transfer order `open` past the retry
+  budget — it logs `will settle on a later replay` and does, on the next boot. Self-healing,
+  but it means "both orders terminal" is eventually-true, not immediately-true.
+- **That window has a user-visible consequence** (task 166): while a charge order is
+  unsettled the member's seat is invisible to `PaidLinesByMember`, so a second move transfers
+  nothing and the dialog claims nobody paid for them. Milliseconds when tilmelding is
+  healthy; unbounded when it is not — which is a dev machine's normal state.
 
 **H3 turned out to be empty**, and that is worth recording rather than quietly dropping:
 the transfer command only *publishes*, and `ordertable`, `paymenttable` and `spejdertable`
