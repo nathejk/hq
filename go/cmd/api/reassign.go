@@ -85,6 +85,25 @@ type transferLine struct {
 	Size string `json:"size,omitempty"`
 }
 
+// reassignResult is what the API says a transfer did.
+//
+// A shape of hq's own rather than `transfer.Result` passed through: that struct carries no
+// JSON tags, so serialising it directly emits `TransferID` / `CreditOrderID` in the middle
+// of an API that is camelCase everywhere else. Mapping here also keeps the domain free to
+// add fields without them appearing on the wire unannounced.
+type reassignResult struct {
+	TransferID    string       `json:"transferId"`
+	FromTeamID    types.TeamID `json:"fromTeamId"`
+	ToTeamID      types.TeamID `json:"toTeamId"`
+	CreditOrderID string       `json:"creditOrderId"`
+	ChargeOrderID string       `json:"chargeOrderId"`
+
+	// Amount is what moved, in øre, always >= 0. Zero with LineCount 0 means nobody had
+	// paid for this member yet — an ordinary outcome the UI states rather than hides.
+	Amount    int `json:"amount"`
+	LineCount int `json:"lineCount"`
+}
+
 // showTransferCandidatesHandler answers "where may this member go, and what moves with
 // them?".
 //
@@ -168,7 +187,7 @@ func (app *application) showTransferCandidatesHandler(w http.ResponseWriter, r *
 // @Produce     json
 // @Param       memberId path string true "Member id"
 // @Param       body body reassignRequest true "Destination team"
-// @Success     200 {object} map[string]interface{} "envelope with \"transfer\""
+// @Success     200 {object} map[string]interface{} "envelope with \"transfer\" (see reassignResult)"
 // @Failure     400 {object} map[string]interface{}
 // @Failure     404 {object} map[string]interface{}
 // @Failure     422 {object} map[string]interface{}
@@ -209,7 +228,15 @@ func (app *application) reassignMemberHandler(w http.ResponseWriter, r *http.Req
 		return
 	}
 
-	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"transfer": res}, nil); err != nil {
+	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"transfer": reassignResult{
+		TransferID:    res.TransferID,
+		FromTeamID:    res.FromTeamID,
+		ToTeamID:      input.TeamID,
+		CreditOrderID: res.CreditOrderID,
+		ChargeOrderID: res.ChargeOrderID,
+		Amount:        res.Amount,
+		LineCount:     res.LineCount,
+	}}, nil); err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}
 }
