@@ -11,8 +11,11 @@
 endpoints and SPA landed (tasks 160–162); **verified end to end against real dev data**
 (task 163 — netting, settlement of both negative-total credit orders, replay idempotency,
 roster move, t-shirt size, two-hop provenance); the settlement-window defect found by that
-verification is fixed (task 166). **Feature complete.** Remaining before `done`: someone
-should watch it in a browser — see §10.
+verification is fixed (task 166). **One open defect blocks `done`: task 168** — a transfer's
+**credit** order frequently never settles, because closing it is left to the payment saga in
+another service and the credit side structurally loses a race against that service's own
+projections. The operator sees *Åben* next to *Mangler 0,00 kr.* Also outstanding: nobody has
+watched it in a browser. See §10.
 
 <!--
 Status must match the folder this file is in: draft/, doing/ or done/.
@@ -658,8 +661,20 @@ S4 = **159** — all four **done**, implemented in shared-go and documented ther
 
 **hq tasks:** **160** (bump, done), **161** (both endpoints, done), **162** (SPA, done),
 **163** (end-to-end verification, done), **166** (settlement-window defect, done),
+**167** (wait for the database at boot, done — found while debugging this feature's stack),
+**168** (**open, blocks `done`** — `[shared-go]` credit orders race the payment saga),
 **164** (start gate, open), **165** (øre/kroner, open). 164 and 165 are adjacent work this
 PRD deliberately scoped out; neither blocks it.
+
+**The settlement assumption in §8 was too optimistic.** It says the charge side "needs no
+change — tilmelding's existing saga will close it", and treats late settlement as merely
+*eventually*-true. In practice the **credit** order often never settles at all: the saga
+evaluates once on `payment.received`, reads its own projections, and gives up permanently and
+silently when they are behind — which the credit side, published first, loses most often. Two
+of three transfers in dev left the credit order `open` until the service was restarted. The
+fix belongs where the knowledge is: the transfer command created both orders and both
+payments, so it should publish `order.paid` itself, exactly as it already does for zero-priced
+transfers. Task **168**. That would also collapse task 166's window to nothing.
 
 **Not yet done:** nobody has driven a browser. The signal path is verified server-side and
 the live transport has its own suite, but the actual experience — a row leaving the table
