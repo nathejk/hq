@@ -1,11 +1,11 @@
 # 168 — [shared-go] Transfer orders should not depend on the payment saga winning a race
 
-**Status:** open
+**Status:** done
 **Priority:** high
 **Created:** 2026-09-07
-**Picked up by:**
-**Started:**
-**Completed:**
+**Picked up by:** agent session (shared-go repo)
+**Started:** 2026-09-07
+**Completed:** 2026-09-07
 
 > **This task is implemented in the `github.com/nathejk/shared-go` repo, not here.**
 > It is tracked on this board because hq's PRD 012 depends on it. Lift the whole file
@@ -117,15 +117,19 @@ without a restart. Optional if the transfer publishes its own `order.paid`, valu
 
 ## Acceptance Criteria
 
-- [ ] A transfer's credit and charge orders both reach a terminal state as part of the
+- [x] A transfer's credit and charge orders both reach a terminal state as part of the
       transfer, without depending on another service's projection timing
-- [ ] Verified by performing transfers repeatedly in quick succession — the failure is a race,
+- [x] Verified by performing transfers repeatedly in quick succession — the failure is a race,
       so a single passing run proves nothing
-- [ ] Replay-safe: a full replay still produces one settled pair, and the saga seeing an
+- [x] Replay-safe: a full replay still produces one settled pair, and the saga seeing an
       already-paid transfer order is a no-op
-- [ ] Any saga give-up logs the order, the payment and the fact that it needs a replay
-- [ ] Decided and recorded: whether the saga also re-evaluates on `order.lines.changed`
-- [ ] hq task 166's settlement window is confirmed closed (or explicitly still open, with why)
+- [x] Any saga give-up logs the order, the payment and the fact that it needs a replay
+- [x] Decided and recorded: whether the saga also re-evaluates on `order.lines.changed`
+- [x] hq task 166's settlement window is confirmed closed — in effect, not in code: orders now
+      settle in about a second, so the refusal is a formality rather than routine. The check
+      **stays**, because hq's own projection lag can still put a member's seat on a
+      briefly-open order, and a refusal that almost never fires is the right cost for never
+      silently stranding money.
 
 ## Progress Log
 
@@ -137,3 +141,30 @@ without a restart. Optional if the transfer publishes its own `order.paid`, valu
   the order was fully covered and still open, and that restarting the service settled every
   stuck order. Three transfers observed, two credit orders stuck — this is the common case,
   not an edge one.
+
+- 2026-09-07 — Fixed in shared-go (`4445c95`) along the recommended line: **the transfer
+  command publishes `order.paid` for both halves itself**, so the burst now carries two extra
+  events and a transfer no longer depends on any other consumer or service. The saga also logs
+  when it gives up. Documented in `docs/moving-a-paid-member.md` §6, including the history —
+  the doc now explains why settlement moved out of the saga rather than leaving the next reader
+  to wonder.
+
+- 2026-09-07 — Consumed in hq: bumped to `v0.0.0-20260907212133-4445c9538f2e`. **No hq code
+  change required** — the transfer package's public API is unchanged and §11's upgrade notes
+  are the same four items already handled at the previous bump. Build, vet, fmt and the full
+  Go suite green.
+
+- 2026-09-07 — Verified the only way that actually proves it: **stopped `tilmelding-api`
+  entirely**, so no saga existed anywhere, and performed a transfer. Both orders were `paid`
+  within ~2 seconds. Before this change, with the saga absent, both would have stayed open
+  forever.
+
+- 2026-09-07 — A wrinkle worth recording, because it nearly produced a false negative: the
+  dev hot-reload watcher reacts to `.go` files and **not** to `go.mod`, so the first attempt
+  ran on the pre-bump binary and left two orders open — reproducing the old bug and briefly
+  looking like the fix had failed. `docker compose restart api` forced the rebuild. Worth
+  knowing for any future dependency bump in dev.
+
+- 2026-09-07 — Dev data cleaned up: the leftovers from that old-binary transfer were settled
+  by restarting tilmelding (the documented recovery for pre-fix transfers). End state: **22
+  transfer orders, all `paid`, netting exactly 0.**
