@@ -230,9 +230,17 @@ func main() {
 	// patrulje-number assignment in PRD 003 being the next one — for no benefit
 	// beyond redundancy nobody asked for.
 	//
-	// tilmelding owns it because it owns the payment lifecycle: it creates the
-	// payments and takes the provider callback. hq wires no payment provider and
-	// only reads orders and payments, so it has no business transitioning them.
+	// tilmelding owns it because it owns the payments the saga reacts to: a service
+	// owns the payments it initiates, and tilmelding is what asks the provider for
+	// money and takes the callback that says it arrived. The Pay saga is the tail of
+	// that lifecycle, so it belongs next to its head.
+	//
+	// That is narrower than "hq must not touch money". hq is free to create a
+	// payment it initiates itself — a manual registration, or an internal transfer
+	// moving already-received money between orders (PRD 012) — and owns those in
+	// exactly the same sense. What it must not do is run a second copy of the saga
+	// that closes orders, whoever paid them: settlement follows the money, not the
+	// initiator, so tilmelding's single mount closes hq-initiated payments too.
 
 	// The patrulje number saga is the mirror image: hq *is* its sole owner (PRD
 	// 003). Numbering is an organizer concern, and hq holds the patrulje read
