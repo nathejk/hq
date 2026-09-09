@@ -34,6 +34,7 @@ import (
 	"github.com/doug-martin/goqu/v9"
 	_ "github.com/doug-martin/goqu/v9/dialect/mysql"
 	"github.com/jrgensen/cqrs"
+	"github.com/nathejk/shared-go/types"
 
 	_ "embed"
 )
@@ -70,9 +71,15 @@ type table struct {
 	querier
 }
 
-func New(w cqrs.Writer, r *sql.DB) *table {
+// New builds the projection.
+//
+// The year bounds what is consumed, and therefore what is replayed at boot: this is the only stream
+// HQ consumes that grows without limit, so it is the only projection that is year-scoped. See
+// `subjectReported` for the trade that buys and what it costs. Pass "" to consume every year, which
+// is what the tests do.
+func New(w cqrs.Writer, r *sql.DB, year types.YearSlug) *table {
 	table := &table{
-		consumer: consumer{w: w},
+		consumer: consumer{w: w, year: year},
 		querier:  querier{db: r, r: goqu.New("mysql", r)},
 	}
 	if err := w.Consume(table.CreateTableSql()); err != nil {

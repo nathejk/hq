@@ -1,15 +1,17 @@
 package track
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/doug-martin/goqu/v9"
 	"github.com/jrgensen/cqrs"
 	"github.com/jrgensen/stream"
 	"github.com/jrgensen/stream/subject"
+	"github.com/nathejk/shared-go/types"
 )
 
-// The one subject this package consumes.
+// The one subject this package consumes, and the only one in HQ that is **year-scoped** (task 153).
 //
 // Note the domain: `TELEMETRY`, not `NATHEJK`. The stream library derives the JetStream *stream
 // name* from a subject's domain, so this string is also what makes HQ subscribe to a second stream
@@ -18,7 +20,34 @@ import (
 //
 // The entity token is `track`. Not `position`, not `telemetry`: this is what
 // `live.SignalFromSubject` derives, so it is also the token every frontend `dependsOn` must name.
-const subjectReported = "TELEMETRY.*.track.*.reported"
+//
+// # Why the year is pinned rather than wildcarded
+//
+// Every other projection in HQ subscribes across years, because those streams are bounded by the
+// number of teams and members. This one is not: it grows with wall time × participants and is
+// retained indefinitely, and HQ replays every projection from the start of the stream on **every api
+// restart** — so an unscoped subject makes boot time grow, for ever, with the number of races the
+// event has ever run (PRD 011 §8).
+//
+// Pinning the year bounds the replay to the current event, which is the only data a race-support tool
+// is asked about. Two consequences, both deliberate:
+//
+//   - Last year's tracks are not in HQ's read model. That is the trade this buys, and it is also a
+//     privacy improvement: position history is the most personal data HQ holds, and not carrying it
+//     forward year on year is a feature rather than a regret (see roadmap/api/telemetry-erasure.md).
+//   - The year is fixed for the lifetime of the process, because a consumer declares its subjects
+//     once at construction. A new year therefore needs a restart — which is free, happens on every
+//     deploy anyway, and cannot bite mid-race: the boundary is 1 January.
+//
+// An empty year falls back to the wildcard rather than subscribing to `TELEMETRY..track.*.reported`
+// and silently receiving nothing. Silently receiving nothing is the one failure mode this change
+// could introduce, and it would look exactly like "nobody has the app open".
+func subjectReported(year types.YearSlug) string {
+	if year == "" {
+		return "TELEMETRY.*.track.*.reported"
+	}
+	return fmt.Sprintf("TELEMETRY.%s.track.*.reported", year)
+}
 
 // insertChunk bounds one INSERT statement.
 //
@@ -28,18 +57,22 @@ const subjectReported = "TELEMETRY.*.track.*.reported"
 const insertChunk = 500
 
 type consumer struct {
-	w cqrs.Writer
+	w    cqrs.Writer
+	year types.YearSlug
 }
 
 func (c *consumer) Consumes() []stream.Subject {
+	// Logged because a year-scoped subscription that matches nothing is indistinguishable from an
+	// event where nobody has the app open, and this line is the only place the two can be told apart.
+	log.Printf("track: consuming %s", subjectReported(c.year))
 	return []stream.Subject{
-		subject.FromStr(subjectReported),
+		subject.FromStr(subjectReported(c.year)),
 	}
 }
 
 func (c *consumer) HandleMessage(msg stream.Message) error {
 	switch {
-	case msg.Subject().Match(subjectReported):
+	case msg.Subject().Match(subjectReported(c.year)):
 		var body Reported
 		if err := msg.Body(&body); err != nil {
 			return err

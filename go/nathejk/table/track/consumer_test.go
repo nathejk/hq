@@ -197,6 +197,8 @@ func TestLargeBatchIsChunked(t *testing.T) {
 
 // The subject is the whole reason this projection reads a second JetStream stream, so it is pinned
 // rather than assumed: the domain must be TELEMETRY and the entity token `track`.
+//
+// An empty year is the wildcard, which is also what every test in this file relies on.
 func TestConsumesTelemetryTrackSubject(t *testing.T) {
 	c := &consumer{}
 	subs := c.Consumes()
@@ -208,6 +210,38 @@ func TestConsumesTelemetryTrackSubject(t *testing.T) {
 	}
 	if got := subs[0].Domain(); got != "TELEMETRY" {
 		t.Errorf("domain = %q, want TELEMETRY — the stream name is derived from it", got)
+	}
+}
+
+// Year-scoping is what bounds the boot-time replay of the one stream in HQ that grows without limit
+// (task 153). It is pinned here because the cost of getting it wrong is invisible: a subject that
+// matches nothing looks exactly like an event where nobody has the app open.
+func TestConsumesIsYearScopedWhenAYearIsGiven(t *testing.T) {
+	c := &consumer{year: "2026"}
+	subs := c.Consumes()
+	if got := subs[0].Subject(); got != "TELEMETRY.2026.track.*.reported" {
+		t.Errorf("Consumes() = %q, want TELEMETRY.2026.track.*.reported", got)
+	}
+	if got := subs[0].Domain(); got != "TELEMETRY" {
+		t.Errorf("domain = %q, want TELEMETRY", got)
+	}
+}
+
+// The scoped subject has to match what the producer actually publishes, and the fixture at the top of
+// this file is a real subject captured from the hej-app. A test that only compared the pattern to
+// itself would pass while HQ received nothing.
+func TestYearScopedSubjectMatchesARealPublishedSubject(t *testing.T) {
+	c := &consumer{year: "2026"}
+	// `reported` carries the real subject captured from the hej-app.
+	if !reported(Reported{}).Subject().Match(subjectReported(c.year)) {
+		t.Fatalf("the real published subject does not match %q", subjectReported(c.year))
+	}
+	// And a different year's message does not: that is the whole point of scoping.
+	other := fakeMessage{
+		subject: subject.FromStr("TELEMETRY.2025.track.f30793d2-5393-4d90-bbfa-cf224bbc131b.reported"),
+	}
+	if other.Subject().Match(subjectReported(c.year)) {
+		t.Errorf("a 2025 subject must not match %q", subjectReported(c.year))
 	}
 }
 

@@ -3,7 +3,8 @@
 **Status:** doing
 **Author:** agent session (with knj)
 **Created:** 2026-09-03
-**Last updated:** 2026-09-03 (all code tasks complete; 152/153 outstanding, neither blocking)
+**Last updated:** 2026-09-09 (152 closed; 153's scope decision implemented, its
+measurements pending real traffic)
 **Approved:** 2026-09-03
 **Shipped:**
 **Target users:** organizer (HQ operators, løbsledelse, SOS/dispatch), and — indirectly — participants whose hej-app reports the positions
@@ -577,6 +578,31 @@ must carry OpenAPI annotations** in the same style as existing handlers:
   does not replay. **A year-scoped subject is the cheapest and should be the
   default** — the consumer already declares its subjects, so scoping is a
   one-line change rather than an architecture.
+
+  **Decided and implemented 2026-09-09 (task 153): year-scoped.** The consumer now
+  subscribes to `TELEMETRY.{currentYear}.track.*.reported`, so a boot replays the
+  current event rather than every event ever run. The cost is that previous years'
+  tracks are absent from HQ's read model, which is accepted: nothing in HQ asks
+  where a patrol walked in a past event, and not carrying position history forward
+  is consistent with the erasure obligation below rather than in tension with it.
+  An empty year falls back to the wildcard, because the failure this could
+  introduce — a subject matching nothing — looks exactly like an event where nobody
+  has the app open; `Consumes()` logs its subject for the same reason.
+
+  **Measured, dev, 2026-09-09.** A synthetic 30-hour unbroken recording (3,600
+  points, the ceiling sized against here) answers
+  `GET /api/telemetry/person/{id}/track` in **14–23 ms** (p95 ≈ 23 ms) with a
+  **223 KB** unreduced payload; `maxPoints=300` gives 34 KB in 17 ms. That is an
+  order of magnitude inside the §11 targets (p95 < 300 ms, reduced < ~500 KB) for
+  one member; a six-member patrol is ~90–140 ms and ~1.3 MB unreduced, so the
+  payload target needs a budget applied, which is what `maxPoints` is for.
+
+  **Still open, and blocked on the event rather than on work:** row count and growth
+  against real traffic, and boot time with versus without the telemetry projection.
+  Neither is measurable on a dev stream holding 1.2k test points. Note for whoever
+  takes them: the local JetStream has **no monitoring port enabled** and no `nats`
+  CLI, so stream size — the number this decision really turns on — cannot be read
+  in development at all. Enabling `-m 8222` before the event is worth the one line.
 - **Contract drift:** the subject and payload are pinned here (§4a and above) but
   live in another repo, and there is no API to ask. A silent shape change means a
   silently empty projection, so the consumer should log unhandled subjects the way
@@ -634,8 +660,9 @@ Tasks created in `roadmap/tasks/open/` on approval:
 - [x] 149 — `GET /api/telemetry/patrulje/:teamId/track` — member tracks + scans
 - [x] 150 — `TrackMapDialog.vue`
 - [x] 151 — Per-person telemetry erasure (compliance) — `roadmap/api/telemetry-erasure.md`
-- [ ] 152 — Raise the batch-cap sizing with hej-app
-- [ ] 153 — Decide hq's telemetry scope and measure replay cost
+- [x] 152 — Raise the batch-cap sizing with hej-app
+- [~] 153 — Decide hq's telemetry scope and measure replay cost — decision made and
+      implemented (year-scoped subject); two measurements still need real traffic
 
 ### Found along the way
 

@@ -199,7 +199,7 @@ func main() {
 	// Where people were: positions reported by the hej-app (PRD 011). The only consumer in this
 	// list that reads a *second* stream — its subject's domain is TELEMETRY, and the stream library
 	// derives the stream name from that, so the stream must exist or mux.Run fails below.
-	tracktable := track.New(writer, db.DB())
+	tracktable := track.New(writer, db.DB(), currentYear)
 	loktable := lok.New(writer, db.DB())
 	sectiontable := section.New(publisher, writer, db.DB())
 	crewmembertable := crewmember.New(publisher, writer, db.DB())
