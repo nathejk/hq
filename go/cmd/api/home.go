@@ -14,7 +14,7 @@ func (app *application) homeHandler(w http.ResponseWriter, r *http.Request) {
 	teamCount := 0
 	memberCount := 0
 	for _, t := range teams {
-		if t.PaidAmount == 0 {
+		if !isParticipating(t) {
 			continue
 		}
 		teamCount++

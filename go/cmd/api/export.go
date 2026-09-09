@@ -62,7 +62,7 @@ func (app *application) excelPatruljeHandler(w http.ResponseWriter, r *http.Requ
 
 	row1, row2 := 2, 2
 	for _, team := range teams {
-		if team.PaidAmount == 0 {
+		if !isParticipating(team) {
 			continue
 		}
 		signup, _ := app.models.Signup.GetByID(team.TeamID)

@@ -81,6 +81,33 @@ func TShirtSizes() []SlugLabel {
 	}
 }
 
+// isParticipating reports whether a patrol counts as a real participant: it has paid
+// something and it has been assigned a team number.
+//
+// A row in `patrulje` is created by the signup event, so an abandoned or half-finished
+// signup leaves a named team that never paid and never got a number. Those are noise on
+// the operator's list, in the export and in the dashboard count — and worse, the three
+// used to disagree about which teams existed (the list showed everything, the front page
+// required payment, the export required payment). One predicate so they cannot drift
+// apart again.
+//
+// Applied by the callers rather than inside patrulje.GetAll on purpose: the race-side
+// readers (started teams, transfer candidates, shelter) must keep seeing every row.
+func isParticipating(p patrulje.Patrulje) bool {
+	return p.PaidAmount > 0 && p.TeamNumber != ""
+}
+
+// participatingPatruljer filters a GetAll result down to the participants.
+func participatingPatruljer(teams []patrulje.Patrulje) []patrulje.Patrulje {
+	out := make([]patrulje.Patrulje, 0, len(teams))
+	for _, t := range teams {
+		if isParticipating(t) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 func (app *application) showPatruljeListHandler(w http.ResponseWriter, r *http.Request) {
 	filter := patrulje.Filter{YearSlug: app.YearSlug(r)}
 	teams, err := app.models.Patrulje.GetAll(r.Context(), filter)
@@ -92,7 +119,7 @@ func (app *application) showPatruljeListHandler(w http.ResponseWriter, r *http.R
 		return
 	}
 
-	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"teams": teams}, nil)
+	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"teams": participatingPatruljer(teams)}, nil)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}
