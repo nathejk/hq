@@ -53,6 +53,10 @@ type UpdateRequest struct {
 	Format     *Format
 	Note       *string
 	Extents    *[]Extent
+
+	// HandoutCheckgroupID is where the sheet is handed out: a checkgroup id, or the empty string
+	// for "at the scan of this sheet's QR code". A pointer, so "" is an edit and absence is not.
+	HandoutCheckgroupID *types.CheckgroupID
 }
 
 // Create adds a sheet to a set and returns its id.
@@ -132,6 +136,13 @@ func (c commander) Update(ctx context.Context, actor Actor, year types.YearSlug,
 	}
 	if req.Extents != nil && !sameExtents(*req.Extents, current.Extents) {
 		body.Extents = req.Extents
+		changed = true
+	}
+	// Not validated against the checkgroup table, following the checkpoint list: this package does
+	// not read the course's write side, and an id that no longer resolves is filtered to "" on read
+	// (querier.Maps), which is also what covers a checkgroup deleted long after the sheet was set up.
+	if req.HandoutCheckgroupID != nil && *req.HandoutCheckgroupID != current.HandoutCheckgroupID {
+		body.HandoutCheckgroupID = req.HandoutCheckgroupID
 		changed = true
 	}
 	if !changed {

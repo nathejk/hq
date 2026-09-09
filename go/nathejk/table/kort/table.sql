@@ -41,6 +41,22 @@ CREATE TABLE IF NOT EXISTS kort (
     -- Handout order along the route, within a set.
     sortOrder INT NOT NULL DEFAULT 0,
 
+    -- Where this sheet is handed out: the id of the checkgroup whose post gives it to the team,
+    -- or "" for "at the QR scan" (task 152).
+    --
+    -- This is the sheet's *reveal trigger*, which is why it is worth a column even though PRD 010
+    -- originally said handout location would not be recorded. Two things changed the answer: the
+    -- consuming app has to decide when a sheet's checkpoints become visible to the scout, and the
+    -- planner does know the answer in advance — a sheet is handed out at a specific post, by plan,
+    -- and the exceptions are handed over at the scan of the sheet's own QR.
+    --
+    -- "" is the default and means the QR rule, which is the behaviour that existed before this
+    -- column: an unconfigured sheet therefore keeps working exactly as it did.
+    --
+    -- Not a foreign key (no projection here declares one), and a checkgroup that has since been
+    -- deleted is treated as "" on read — see querier.Maps.
+    handoutCheckgroupId VARCHAR(99) NOT NULL DEFAULT "",
+
     -- JSON array of checkpoint ids drawn on this sheet. `[]` and not NULL when empty: a pure
     -- overview map for drivers legitimately has none, and every reader should decode an array
     -- rather than branch on NULL.

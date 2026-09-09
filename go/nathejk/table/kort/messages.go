@@ -8,13 +8,17 @@ import (
 //
 // # Why these types live here and not in shared-go
 //
-// They started local while the shape settled, and they are on their way to nathejk/shared-go — which
-// is **required**, not tidying: cross-service communication is over the stream, so another service
-// cannot consume kort events at all until it has the types to decode them (task 138). The projection
-// stays here until something outside HQ wants the same read model, so the two moves are independent.
+// A projection is lifted to nathejk/shared-go once it has **stabilised**, and part of stabilising is
+// having more than one service use it: a single consumer does not exercise all the variants, so shapes
+// lifted early get lifted wrong. This one has exactly one consumer (HQ), so it stays here for now.
+//
+// That does not block anybody. Another service can consume these events today by decoding the JSON
+// itself — the shapes are documented for exactly that purpose in roadmap/api/kort-events.md — and it is
+// a second consumer doing so that tells us which parts of the shape are real and which were guesses.
+// Task 138 tracks the move.
 //
 // Nothing here may depend on anything HQ-only, and nothing does: every field is a local type or a
-// shared-go type, for exactly that reason.
+// shared-go type, so the move stays a move rather than a rewrite.
 //
 // # Its own entity, so its own live token
 //
@@ -92,6 +96,15 @@ type Updated struct {
 	SortOrder     *int                  `json:"sortOrder,omitempty"`
 	CheckpointIDs *[]types.CheckpointID `json:"checkpointIds,omitempty"`
 	Extents       *[]Extent             `json:"extents,omitempty"`
+
+	// HandoutCheckgroupID changes where the sheet is handed out, and therefore when its
+	// checkpoints become visible to the scout (task 152).
+	//
+	// A pointer to a string type, and *without* omitempty on the inner value by construction: the
+	// empty string is a meaningful value here — "revealed at the scan of this sheet's QR code" — so
+	// switching a sheet back from a checkgroup to the QR rule must travel as `""` and not vanish
+	// from the event.
+	HandoutCheckgroupID *types.CheckgroupID `json:"handoutCheckgroupId,omitempty"`
 }
 
 // Deleted records that a sheet is no longer printed.

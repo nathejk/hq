@@ -34,7 +34,7 @@ type querier struct {
 }
 
 const selectKort = `SELECT id, year, version, kortsaetId, name, format, note, sortOrder,
-	checkpointIds, extents
+	checkpointIds, extents, handoutCheckgroupId
 	FROM kort`
 
 // Maps lists a year's sheets, grouped by set and in handout order within it.
@@ -68,11 +68,21 @@ const selectKort = `SELECT id, year, version, kortsaetId, name, format, note, so
 // checkpoint deleted while the API was down, a half-finished replay — and it does so without
 // depending on the order two independent projections happen to run in. The cost is one indexed
 // query over a table with tens of rows.
+//
+// # A deleted handout checkgroup is resolved the same way
+//
+// `handoutCheckgroupId` naming a checkgroup that no longer exists comes back as "", which means the
+// QR rule. That is the safe direction: the alternative is a sheet whose reveal is keyed to a post
+// that will never be reached, so its checkpoints would never appear at all.
 func (q *querier) Maps(ctx context.Context, year types.YearSlug) ([]Kort, error) {
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
 	known, err := q.knownCheckpointIDs(ctx, year)
+	if err != nil {
+		return nil, err
+	}
+	knownGroups, err := q.knownCheckgroupIDs(ctx, year)
 	if err != nil {
 		return nil, err
 	}
@@ -94,9 +104,34 @@ func (q *querier) Maps(ctx context.Context, year types.YearSlug) ([]Kort, error)
 			return nil, err
 		}
 		k.CheckpointIDs = filterKnown(k.CheckpointIDs, known)
+		if k.HandoutCheckgroupID != "" && !knownGroups[k.HandoutCheckgroupID] {
+			k.HandoutCheckgroupID = ""
+		}
 		maps = append(maps, *k)
 	}
 	return maps, rows.Err()
+}
+
+// knownCheckgroupIDs reads the year's checkgroup ids, for the same referential-integrity reason as
+// knownCheckpointIDs — and with the same justification for reading another projection's table.
+func (q *querier) knownCheckgroupIDs(ctx context.Context, year types.YearSlug) (map[types.CheckgroupID]bool, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT id FROM checkgroup WHERE (year = ? OR ? = '')`,
+		string(year), string(year))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	known := map[types.CheckgroupID]bool{}
+	for rows.Next() {
+		var id types.CheckgroupID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		known[id] = true
+	}
+	return known, rows.Err()
 }
 
 // knownCheckpointIDs reads the year's checkpoint ids.
@@ -307,6 +342,7 @@ func scanKort(row scanner) (*Kort, error) {
 		&k.SortOrder,
 		&checkpointIDs,
 		&extents,
+		&k.HandoutCheckgroupID,
 	)
 	if err != nil {
 		return nil, err

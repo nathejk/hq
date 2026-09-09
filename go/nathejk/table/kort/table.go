@@ -20,9 +20,9 @@
 // checkpoints are a JSON array on the row rather than a join table. That is a decision, not an
 // omission (see table.sql), and the one place it costs anything is the delete cascade.
 //
-// "Where was this sheet handed out?" Nothing records that, and nothing should: it varies, it is
-// not reliably known, and it is not needed — the sheet a team holds is established when its QR
-// code is linked to the team, not by inferring it from where they had been.
+// "Where was this sheet handed out?" Still nothing records that, and nothing should: what actually
+// happened varies and is not reliably known. HandoutCheckgroupID is the *plan*, not the record —
+// see its doc comment for why the distinction matters.
 package kort
 
 import (
@@ -73,6 +73,19 @@ type Kort struct {
 	Format    Format `json:"format"`
 	Note      string `json:"note"`
 	SortOrder int    `json:"sortOrder"`
+
+	// HandoutCheckgroupID is where the sheet is *planned* to be handed out: the checkgroup whose
+	// post gives it to the team, or empty for "at the scan of this sheet's QR code".
+	//
+	// It is the reveal trigger a consuming app needs (PRD 010 §8): the sheet's checkpoints become
+	// visible to the scout either when the group named here is reached, or when the QR is linked to
+	// the team. Empty is the default and the pre-existing rule, so a sheet nobody has configured
+	// behaves as it always did.
+	//
+	// Empty also means "no longer resolvable": a checkgroup deleted after a sheet pointed at it is
+	// filtered to "" on read, the same way unknown checkpoint ids are (querier.Maps). A reader must
+	// therefore treat empty as the QR rule, never as "unknown".
+	HandoutCheckgroupID types.CheckgroupID `json:"handoutCheckgroupId"`
 
 	// CheckpointIDs is what a consuming app is really here for: the checkpoints drawn on this
 	// sheet, and therefore what may be revealed when the sheet is known to be in a team's hands.
@@ -194,7 +207,12 @@ func New(p stream.Publisher, w cqrs.Writer, r *sql.DB) *table {
 // This package will need it sooner than most — the set table arrives in task 122 and the columns
 // it references are already declared here — so entries must be idempotent: they run on every
 // boot, against both the old shape and the new.
-var schemaMigrations = []string{}
+var schemaMigrations = []string{
+	// handoutCheckgroupId (task 152). `IF NOT EXISTS` is MariaDB's, and is what makes this safe to
+	// run on every boot; the default matches table.sql, so a pre-existing row means "revealed at
+	// the QR scan" — which is what it meant before the column existed.
+	`ALTER TABLE kort ADD COLUMN IF NOT EXISTS handoutCheckgroupId VARCHAR(99) NOT NULL DEFAULT ""`,
+}
 
 //go:embed table.sql
 var tableSchema string

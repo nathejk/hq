@@ -127,6 +127,52 @@ func TestUpdateRefusesUnknownFormat(t *testing.T) {
 	}
 }
 
+// --- handout (task 152) ---
+
+func TestUpdateSetsHandoutCheckgroup(t *testing.T) {
+	c, p := newMapCommander(&Kort{KortID: "kort-1", Name: "Kort 1"})
+
+	group := types.CheckgroupID("cg-3")
+	err := c.Update(context.Background(), Actor{}, "2026", "kort-1", UpdateRequest{HandoutCheckgroupID: &group})
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	body := p.bodies[0].(*Updated)
+	if body.HandoutCheckgroupID == nil || *body.HandoutCheckgroupID != "cg-3" {
+		t.Errorf("body = %+v, want the handout checkgroup carried", body)
+	}
+}
+
+// Empty means "at the scan of this sheet's QR code", which is a real choice an operator can make
+// after picking a checkgroup — so it must publish, not be treated as "no value given".
+func TestUpdateCanSwitchHandoutBackToQRScan(t *testing.T) {
+	c, p := newMapCommander(&Kort{KortID: "kort-1", HandoutCheckgroupID: "cg-3"})
+
+	qr := types.CheckgroupID("")
+	if err := c.Update(context.Background(), Actor{}, "2026", "kort-1", UpdateRequest{HandoutCheckgroupID: &qr}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if len(p.bodies) != 1 {
+		t.Fatalf("want the change published, got %v", p.subjects)
+	}
+	body := p.bodies[0].(*Updated)
+	if body.HandoutCheckgroupID == nil || *body.HandoutCheckgroupID != "" {
+		t.Errorf("body = %+v, want the handout cleared to the QR rule", body)
+	}
+}
+
+func TestUpdateWithUnchangedHandoutPublishesNothing(t *testing.T) {
+	c, p := newMapCommander(&Kort{KortID: "kort-1", HandoutCheckgroupID: "cg-3"})
+
+	same := types.CheckgroupID("cg-3")
+	if err := c.Update(context.Background(), Actor{}, "2026", "kort-1", UpdateRequest{HandoutCheckgroupID: &same}); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if len(p.subjects) != 0 {
+		t.Fatalf("an unchanged handout must publish nothing, got %v", p.subjects)
+	}
+}
+
 // --- extents ---
 
 // Whichever two corners were clicked, the stored pair is a true north-west/south-east one, so no

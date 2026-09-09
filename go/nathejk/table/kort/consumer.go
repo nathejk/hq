@@ -148,6 +148,11 @@ func (c *consumer) HandleMessage(msg stream.Message) error {
 		if body.SortOrder != nil {
 			record["sortOrder"] = *body.SortOrder
 		}
+		// The empty string is a value, not an absence: it is the QR rule. So this writes whatever
+		// the event carries, and only a nil pointer means "not part of this event".
+		if body.HandoutCheckgroupID != nil {
+			record["handoutCheckgroupId"] = string(*body.HandoutCheckgroupID)
+		}
 		// A pointer to a slice, so that a *present but empty* list is distinguishable from an
 		// absent one: clearing a sheet's checkpoints is a real edit, and with a plain nil slice
 		// it would be indistinguishable from "this event does not mention checkpoints" and

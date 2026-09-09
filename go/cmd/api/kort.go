@@ -61,6 +61,11 @@ type kortUpdateRequest struct {
 	Format     *kort.Format     `json:"format"`
 	Note       *string          `json:"note"`
 	Extents    *[]kort.Extent   `json:"extents"`
+
+	// HandoutCheckgroupID is where the sheet is handed out, and so when its checkpoints become
+	// visible to the scout: a checkgroup id, or `""` for "at the scan of this sheet's QR code".
+	// `""` is a value, not an absence — sending it switches a sheet back to the QR rule.
+	HandoutCheckgroupID *types.CheckgroupID `json:"handoutCheckgroupId"`
 }
 
 // kortCheckpointsRequest replaces the checkpoints drawn on a sheet.
@@ -76,7 +81,7 @@ type kortSortRequest struct {
 // showKortHandler serves the year's sets with their sheets.
 //
 //	@Summary		The year's map sheets, grouped by set
-//	@Description	Every set defined for the year, in order, each with its sheets in handout order. Serves HQ's own SPA — other services read the kort events off the stream rather than this endpoint. Three things are worth knowing before writing a client. (1) Find the patrol sheets via a set's `teamType`, never by its name — names are Danish free text an organizer may rename mid-season. (2) `teamType` is nullable and is *not* unique: it means "this set is specifically for this team type", so an unmarked set is the general crew set, which klaner also draw from. Filtering by `klan` will usually return nothing, and that is not an error — fall back to the unmarked set. (3) A sheet's `checkpointIds` are the checkpoints drawn on it, and are what may be revealed once the sheet is known to be in a team's hands; ids that no longer resolve are filtered out here, so the list is always live. `orphanKort` holds sheets whose set is unknown — normally empty, and present so a mis-assigned sheet cannot become invisible. Year comes from the X-YearSlug header, or the current year.
+//	@Description	Every set defined for the year, in order, each with its sheets in handout order. Serves HQ's own SPA — other services read the kort events off the stream rather than this endpoint. Three things are worth knowing before writing a client. (1) Find the patrol sheets via a set's `teamType`, never by its name — names are Danish free text an organizer may rename mid-season. (2) `teamType` is nullable and is *not* unique: it means "this set is specifically for this team type", so an unmarked set is the general crew set, which klaner also draw from. Filtering by `klan` will usually return nothing, and that is not an error — fall back to the unmarked set. (3) A sheet's `checkpointIds` are the checkpoints drawn on it, and are what may be revealed once the sheet is known to be in a team's hands; ids that no longer resolve are filtered out here, so the list is always live. (4) `handoutCheckgroupId` is *when* that reveal happens: the id of the checkgroup whose post hands the sheet out, or `""` meaning the reveal is triggered by scanning the sheet's own QR code. Empty is the default and also what an unresolvable id reads back as, so treat empty as the QR rule rather than as "unknown". `orphanKort` holds sheets whose set is unknown — normally empty, and present so a mis-assigned sheet cannot become invisible. Year comes from the X-YearSlug header, or the current year.
 //	@Tags			kort
 //	@Produce		json
 //	@Success		200	{object}	map[string]interface{}	"envelope with \"kortsaet\" and \"orphanKort\" arrays"
@@ -136,7 +141,7 @@ func (app *application) createKortHandler(w http.ResponseWriter, r *http.Request
 // updateKortHandler edits a sheet's description.
 //
 //	@Summary		Update a map sheet
-//	@Description	Edits any of name, set, format (a4/a3/skitse/andet), note and extents. Absent fields are left alone, so the checkpoint picker and this endpoint do not overwrite each other. Extents are the ground the sheet shows: none for a skitse, one for a normal sheet, two for a double-sided one — the two are simply two areas, with no front/back distinction and no per-side checkpoints, because both sides are handed over at once. Corners may be given either way round and are stored as a true north-west/south-east pair, so re-sending the same rectangle with its corners swapped is not an edit. A rectangle with no area is refused: it draws as nothing, which reads as a failed save. Changing `kortsaetId` moves the sheet to another set; ordering is separate. Nothing changed means no event and no live signal.
+//	@Description	Edits any of name, set, format (a4/a3/skitse/andet), note, extents and handout checkgroup. Absent fields are left alone, so the checkpoint picker and this endpoint do not overwrite each other. Extents are the ground the sheet shows: none for a skitse, one for a normal sheet, two for a double-sided one — the two are simply two areas, with no front/back distinction and no per-side checkpoints, because both sides are handed over at once. Corners may be given either way round and are stored as a true north-west/south-east pair, so re-sending the same rectangle with its corners swapped is not an edit. A rectangle with no area is refused: it draws as nothing, which reads as a failed save. `handoutCheckgroupId` is where the sheet is planned to be handed out, and therefore when its checkpoints become visible to the scout: the id of the checkgroup whose post gives it out, or `""` for "at the scan of this sheet's QR code", which is the default. The id is not validated here — one naming a checkgroup that has since been deleted reads back as `""`. Changing `kortsaetId` moves the sheet to another set; ordering is separate. Nothing changed means no event and no live signal.
 //	@Tags			kort
 //	@Accept			json
 //	@Produce		json
@@ -159,11 +164,12 @@ func (app *application) updateKortHandler(w http.ResponseWriter, r *http.Request
 		return
 	}
 	err := app.commands.Kort.Update(r.Context(), app.kortActor(r), app.YearSlug(r), id, kort.UpdateRequest{
-		KortsaetID: input.KortsaetID,
-		Name:       input.Name,
-		Format:     input.Format,
-		Note:       input.Note,
-		Extents:    input.Extents,
+		KortsaetID:          input.KortsaetID,
+		Name:                input.Name,
+		Format:              input.Format,
+		Note:                input.Note,
+		Extents:             input.Extents,
+		HandoutCheckgroupID: input.HandoutCheckgroupID,
 	})
 	if err != nil {
 		app.kortCommandError(w, r, err)

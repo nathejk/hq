@@ -146,6 +146,36 @@ func TestUpdatedCanClearCheckpoints(t *testing.T) {
 	}
 }
 
+func TestUpdatedWritesHandoutCheckgroup(t *testing.T) {
+	w := &recordingWriter{}
+	c := &consumer{w: w}
+
+	handle(t, c, msg("NATHEJK.2026.kort.kort-1.updated", 2,
+		Updated{KortID: "kort-1", HandoutCheckgroupID: ptr(types.CheckgroupID("cg-3"))}))
+
+	if stmt := w.stmts[0]; !strings.Contains(stmt, "handoutCheckgroupId") || !strings.Contains(stmt, "'cg-3'") {
+		t.Fatalf("want handoutCheckgroupId set to the group: %s", stmt)
+	}
+}
+
+// The empty string is a *value* here — "revealed at the scan of this sheet's QR code" — so switching
+// a sheet back from a checkgroup to the QR rule must produce a write, not be mistaken for an absent
+// field and silently dropped.
+func TestUpdatedCanClearHandoutCheckgroupBackToQR(t *testing.T) {
+	w := &recordingWriter{}
+	c := &consumer{w: w}
+
+	handle(t, c, msg("NATHEJK.2026.kort.kort-1.updated", 2,
+		Updated{KortID: "kort-1", HandoutCheckgroupID: ptr(types.CheckgroupID(""))}))
+
+	if len(w.stmts) != 1 {
+		t.Fatalf("want one statement, got %v", w.stmts)
+	}
+	if stmt := w.stmts[0]; !strings.Contains(stmt, "handoutCheckgroupId") || !strings.Contains(stmt, "''") {
+		t.Fatalf("want handoutCheckgroupId cleared: %s", stmt)
+	}
+}
+
 func TestUpdatedWithNothingSetWritesNothing(t *testing.T) {
 	w := &recordingWriter{}
 	c := &consumer{w: w}
