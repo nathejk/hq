@@ -18,6 +18,19 @@ type Queries interface {
 	GetStartedTeams(context.Context, Filter) ([]StartedTeam, error)
 	GetDiscontinuedTeamIDs(context.Context, Filter) ([]types.TeamID, error)
 	AssignedNumbers(context.Context, types.YearSlug) (map[types.TeamID]string, error)
+	Identities(context.Context, types.YearSlug) ([]Identity, error)
+}
+
+// Identity is the three fields needed to label a patrol on a map: who it is, not how it is doing.
+//
+// Its own type, and its own query, for the same reason StartedTeam has one. The position endpoint
+// is polled by a map layer while the race runs, and GetAll aggregates over spejder, orders and
+// payment to build the fat row — hundreds of milliseconds against a season's data. Reaching for
+// that row to read a name and a number is how a polled endpoint becomes the slowest thing in HQ.
+type Identity struct {
+	TeamID     types.TeamID
+	TeamNumber string
+	Name       string
 }
 
 // StartedTeam is a patrol on the route and its strength there.
@@ -110,6 +123,31 @@ func (q *querier) GetAll(ctx context.Context, filters Filter) ([]Patrulje, error
 	//metadata := calculateMetadata(filters.Year, totalRecords, filters.Page, filters.PageSize)
 
 	return patruljer, nil
+}
+
+// Identities lists a year's patruljer by id, number and name.
+//
+// Every patrol, not only the started ones: a position is evidence in its own right, and a team that
+// reported from the bus before anybody pressed start is exactly the team an operator is looking for.
+// Filtering to `started` here would hide it.
+func (q *querier) Identities(ctx context.Context, year types.YearSlug) ([]Identity, error) {
+	rows, err := q.db.QueryContext(ctx,
+		`SELECT teamId, teamNumber, name FROM patrulje WHERE LOWER(year) = LOWER(?)`,
+		string(year))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []Identity{}
+	for rows.Next() {
+		var i Identity
+		if err := rows.Scan(&i.TeamID, &i.TeamNumber, &i.Name); err != nil {
+			return nil, err
+		}
+		out = append(out, i)
+	}
+	return out, rows.Err()
 }
 
 func (q *querier) GetByID(ctx context.Context, teamID types.TeamID) (*Patrulje, error) {

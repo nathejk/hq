@@ -18,6 +18,22 @@ type Queries interface {
 
 	// LatestFor reads one person's last known position, or nil.
 	LatestFor(context.Context, string) (*Latest, error)
+
+	// PatruljeLatest reports the last known position of every *patrol member* in a year, tagged
+	// with the team they currently belong to. One row per reporting member, not per team — see the
+	// implementation for why the newest-per-team choice is not made in SQL.
+	PatruljeLatest(context.Context, string) ([]TeamPoint, error)
+}
+
+// TeamPoint is one member's last known position, attributed to their patrol.
+//
+// The member is deliberately not carried: the caller draws one marker per team, and a marker that
+// named the phone it came from would invite reading a patrol's position as a person's whereabouts.
+type TeamPoint struct {
+	TeamID string
+	Lat    float64
+	Lng    float64
+	Ts     int64
 }
 
 type querier struct {
@@ -103,6 +119,47 @@ func (q *querier) Points(ctx context.Context, f Filter) ([]Point, error) {
 	for rows.Next() {
 		var p Point
 		if err := rows.Scan(&p.Ts, &p.Lat, &p.Lng, &p.Accuracy); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// PatruljeLatest joins a year's last-known positions to the teams reporting them.
+//
+// # Why spejderstatus and not spejder
+//
+// Membership comes from the lifecycle projection, which keeps a row for a scout who withdrew;
+// `spejder` hard-deletes them. A phone that stopped reporting because its owner went home is still
+// the last thing known about where that patrol was, and reading the deleting table would drop
+// exactly those teams.
+//
+// # Why this returns members and not teams
+//
+// One row per reporting member (a few hundred), left for the caller to fold. Picking the newest per
+// team *in SQL* means the aggregate cannot also carry the coordinates of the winning row — MySQL's
+// bare-column GROUP BY would return an arbitrary member's latitude beside another's MAX(ts), which
+// is a marker placed somewhere nobody was. The honest SQL forms are a self-join or a window
+// function over the same few hundred rows; ordering and taking the last in Go costs one pass and
+// keeps the merge with scans (which has to happen in Go anyway) in one readable place.
+//
+// Ordered ascending so a fold that overwrites keeps the newest.
+func (q *querier) PatruljeLatest(ctx context.Context, year string) ([]TeamPoint, error) {
+	rows, err := q.db.QueryContext(ctx, `SELECT ss.currentTeamId, tl.latitude, tl.longitude, tl.ts
+		FROM spejderstatus ss
+		JOIN track_latest tl ON tl.personId = ss.id AND tl.year = ss.year
+		WHERE ss.year = ? AND ss.currentTeamId <> ''
+		ORDER BY tl.ts ASC`, year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []TeamPoint{}
+	for rows.Next() {
+		var p TeamPoint
+		if err := rows.Scan(&p.TeamID, &p.Lat, &p.Lng, &p.Ts); err != nil {
 			return nil, err
 		}
 		out = append(out, p)

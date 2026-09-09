@@ -126,6 +126,9 @@ func (f *fakeShelterPatruljer) GetDiscontinuedTeamIDs(context.Context, patrulje.
 func (f *fakeShelterPatruljer) AssignedNumbers(context.Context, types.YearSlug) (map[types.TeamID]string, error) {
 	return nil, nil
 }
+func (f *fakeShelterPatruljer) Identities(context.Context, types.YearSlug) ([]patrulje.Identity, error) {
+	return nil, nil
+}
 
 type fakeShelterSos struct {
 	byTeam map[types.TeamID][]*sos.Sos

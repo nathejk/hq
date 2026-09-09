@@ -22,6 +22,8 @@ import (
 	"nathejk.dk/nathejk/table/lok"
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/personnel"
+	"nathejk.dk/nathejk/table/photo"
+	"nathejk.dk/nathejk/table/photocover"
 	"nathejk.dk/nathejk/table/scan"
 	"nathejk.dk/nathejk/table/shelter"
 	"nathejk.dk/nathejk/table/sos"
@@ -50,6 +52,7 @@ type PersonnelInterface interface {
 type ScanInterface interface {
 	GetAll(context.Context, scan.Filter) ([]*scan.Scan, scan.Metadata, error)
 	GetCheckgroupsScans(ctx context.Context, filters scan.Filter) ([]*scan.CheckgroupScan, scan.Metadata, error)
+	TeamPositions(context.Context, string) ([]scan.TeamPosition, error)
 }
 type LokInterface interface {
 	GetAll(context.Context, lok.Filter) ([]*lok.Lok, lok.Metadata, error)
@@ -67,6 +70,13 @@ type LokInterface interface {
 type OrderInterface interface {
 	order.Queries
 	order.MemberLineReader
+}
+
+// PhotoInterface is what hq needs from the photograph read model: a team's
+// pictures. The photo entity is foto's package copied verbatim, so this narrow
+// interface is declared here rather than added there.
+type PhotoInterface interface {
+	ByTeam(ctx context.Context, year, teamID string) ([]photo.Photo, error)
 }
 
 type Models struct {
@@ -117,6 +127,15 @@ type Models struct {
 	// transfer command avoids by reading the roster itself. Handler and command
 	// therefore agree by construction.
 	Roster spejder.RosterReader
+
+	// The photograph read models. Assigned by the caller after NewModels rather than
+	// passed to it: that constructor is already twenty-odd positional arguments, and two
+	// more would make a mis-ordered call a runtime surprise rather than a compile error.
+	//
+	// Photo is a team's photographs, projected from foto's events; PhotoCover is which
+	// one an organizer picked to represent the team.
+	Photo      PhotoInterface
+	PhotoCover photocover.Queries
 }
 
 func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface, sec section.Queries, crew crewmember.Queries, veh vehicle.Queries, ord OrderInterface, sosq sos.Queries, memberq spejderstatus.Queries, shelterq shelter.Queries, noteq spejdernote.Queries, dispatchq dispatch.Queries, kortq kort.Queries, trackq track.Queries, roster spejder.RosterReader) Models {
