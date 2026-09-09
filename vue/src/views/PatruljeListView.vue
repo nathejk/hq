@@ -21,11 +21,16 @@ const toast = useToast();
 //    currently loaded. That is deliberate and it is what makes a newly signed-up
 //    patrol appear: a new row has an id this client has never seen, so an
 //    instance-keyed dependency could never catch it.
+//
+// Everything the endpoint returns is shown. This used to drop nameless rows, which
+// was a client-side guess at "not a real signup" — the server decides that now
+// (paid and numbered, the same set the front-page count and the Excel export use),
+// so filtering again here would only hide teams the rest of HQ counts.
 const { data, pending, error } = useLiveResource(
   'patrulje:list',
   async () => {
     const response = await http.get('/patrulje');
-    return response.data.teams.filter((p) => p.name != '');
+    return response.data.teams;
   },
   { dependsOn: ['patrulje'] },
 );
@@ -80,11 +85,9 @@ const getSeverity = (status) => {
     <div class="card" id="patruljer">
     <a href="/api/excel/patrulje">Eksport til Excel</a>
         <!-- Sorted by team number by default: it is the identifier organizers use
-             to talk about a patrulje, and it reflects acceptance order. Unnumbered
-             patruljer have teamNumber "", which PrimeVue sorts last in ascending
-             order, so accepted teams come first and the pending ones follow.
-             Numeric strings compare correctly — the comparator is an Intl.Collator
-             with numeric: true — so 9 precedes 10 rather than following it. -->
+             to talk about a patrulje, and it reflects acceptance order. Numeric
+             strings compare correctly — the comparator is an Intl.Collator with
+             numeric: true — so 9 precedes 10 rather than following it. -->
         <DataTable :value="patruljer" :loading="pending" sortMode="single" sortField="teamNumber" :sortOrder="1" :stripedRows="true" :filters="filters"
             v-model:expandedRows="expandedRows" dataKey="teamId" @rowExpand="onRowExpand" @rowCollapse="onRowCollapse"
         >
