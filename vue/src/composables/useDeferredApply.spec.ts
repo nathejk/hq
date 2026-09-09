@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest'
-import { nextTick, ref } from 'vue'
+import { nextTick, computed, ref } from 'vue'
 import { useDeferredApply } from './useDeferredApply'
 
 // The pattern this covers protects unsaved work from live updates, so the cases
@@ -147,5 +147,82 @@ describe('useDeferredApply', () => {
     paused.value = false
     await nextTick()
     expect(apply).toHaveBeenCalledWith('first')
+  })
+
+  // The trap that deadlocked KortSettingsDialog, kept here because it is a property of *composing*
+  // this helper rather than of the helper itself, and it is not visible from either side alone.
+  //
+  // The pause condition is usually "the buffers differ from the source" — a dirty check. Such a
+  // condition is **true by construction** the moment a *different* source value arrives, because the
+  // buffers still hold the old one. Pausing on it means the new value is never applied, which keeps
+  // the buffers unequal, which keeps the pause on: a deadlock with no unpausing event, presenting as
+  // an editor stuck showing the wrong record and refusing to move because of changes nobody made.
+  //
+  // So a dirty-derived pause must be scoped to the identity the buffers hold — defer a *refresh* of
+  // the loaded record, never the arrival of another one.
+  describe('when the pause is derived from the source (a dirty check)', () => {
+    interface Row {
+      id: string
+      name: string
+    }
+
+    /** Mimics the dialog: buffers, a dirty check against the source, and the identity guard. */
+    const harness = () => {
+      const source = ref<Row | undefined>(undefined)
+      const buffer = ref({ name: '' })
+      const loadedId = ref<string | undefined>(undefined)
+
+      const dirty = computed(() => !!source.value && buffer.value.name !== source.value.name)
+      const deferSameRow = computed(() => dirty.value && source.value?.id === loadedId.value)
+
+      const apply = vi.fn((row: Row) => {
+        buffer.value = { name: row.name }
+        loadedId.value = row.id
+      })
+
+      useDeferredApply(source, deferSameRow, apply)
+      return { source, buffer, dirty, apply }
+    }
+
+    it('applies a newly selected row even though the stale buffer makes it look dirty', async () => {
+      const { source, buffer, dirty, apply } = harness()
+
+      source.value = { id: 'a', name: 'Kort 1' }
+      await nextTick()
+
+      expect(apply).toHaveBeenCalledTimes(1)
+      expect(buffer.value.name).toBe('Kort 1')
+      // And nothing is reported unsaved, so a guard built on this cannot refuse the next click.
+      expect(dirty.value).toBe(false)
+    })
+
+    it('switches rows without demanding a save, when nothing was edited', async () => {
+      const { source, buffer, dirty, apply } = harness()
+
+      source.value = { id: 'a', name: 'Kort 1' }
+      await nextTick()
+      source.value = { id: 'b', name: 'Kort 2' }
+      await nextTick()
+
+      expect(apply).toHaveBeenCalledTimes(2)
+      expect(buffer.value.name).toBe('Kort 2')
+      expect(dirty.value).toBe(false)
+    })
+
+    // The protection the guard exists for must survive the fix: a refresh of the row being edited is
+    // still held back, so a live payload cannot overwrite the field under the cursor.
+    it('still defers a refresh of the row currently being edited', async () => {
+      const { source, buffer, apply } = harness()
+
+      source.value = { id: 'a', name: 'Kort 1' }
+      await nextTick()
+
+      buffer.value = { name: 'Kort 1 — mid-edit' }
+      source.value = { id: 'a', name: 'Renamed by somebody else' }
+      await nextTick()
+
+      expect(apply).toHaveBeenCalledTimes(1)
+      expect(buffer.value.name).toBe('Kort 1 — mid-edit')
+    })
   })
 })
