@@ -7,6 +7,7 @@ import { useLiveResource } from '@/composables/useLiveResource';
 import { daymonthhhmm } from '@/composables/datefilters';
 import { memberStatusBadge } from '@/composables/sos';
 import PositionIndicator from '@/components/PositionIndicator.vue';
+import PatruljePhoto from '@/components/PatruljePhoto.vue';
 
 const props = defineProps({
     teamId: {type: String, required: false},
@@ -263,9 +264,16 @@ const isTransfer = (order) => (order.lines ?? []).some((l) => (l.lineId ?? '').s
 
 <template>
     <div class="card" id="patruljer">
-        <h1 class="font-nathejk text-2xl">{{ patrulje.number || '×' }} - {{ patrulje.name }}</h1>
+        <div class="flex items-start gap-3">
+            <!-- The patrol's photograph, from the covers resource shared with the list.
+                 Clicking it opens every picture of this team, with the cover picker. -->
+            <PatruljePhoto :teamId="teamId" :teamName="patrulje.name" size="lg" />
+            <div>
+                <h1 class="font-nathejk text-2xl">{{ patrulje.number || '×' }} - {{ patrulje.name }}</h1>
 
-        <Button label="Tilmelding" icon="pi pi-external-link" iconPos="right" @click="linkToSignUp" />
+                <Button label="Tilmelding" icon="pi pi-external-link" iconPos="right" @click="linkToSignUp" />
+            </div>
+        </div>
 
         <DataTable :value="spejdere" :loading="pending" sortMode="single" sortField="lok" :sortOrder="1" :stripedRows="true" :filters="filters"
             v-model:expandedRows="expandedRows" dataKey="id" @rowExpand="onRowExpand" @rowCollapse="onRowCollapse"

@@ -208,7 +208,7 @@ func New(p stream.Publisher, w cqrs.Writer, r *sql.DB) *table {
 // it references are already declared here — so entries must be idempotent: they run on every
 // boot, against both the old shape and the new.
 var schemaMigrations = []string{
-	// handoutCheckgroupId (task 152). `IF NOT EXISTS` is MariaDB's, and is what makes this safe to
+	// handoutCheckgroupId. `IF NOT EXISTS` is MariaDB's, and is what makes this safe to
 	// run on every boot; the default matches table.sql, so a pre-existing row means "revealed at
 	// the QR scan" — which is what it meant before the column existed.
 	`ALTER TABLE kort ADD COLUMN IF NOT EXISTS handoutCheckgroupId VARCHAR(99) NOT NULL DEFAULT ""`,

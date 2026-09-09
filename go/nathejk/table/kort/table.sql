@@ -42,7 +42,7 @@ CREATE TABLE IF NOT EXISTS kort (
     sortOrder INT NOT NULL DEFAULT 0,
 
     -- Where this sheet is handed out: the id of the checkgroup whose post gives it to the team,
-    -- or "" for "at the QR scan" (task 152).
+    -- or "" for "at the QR scan".
     --
     -- This is the sheet's *reveal trigger*, which is why it is worth a column even though PRD 010
     -- originally said handout location would not be recorded. Two things changed the answer: the

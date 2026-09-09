@@ -187,7 +187,7 @@ export const HANDOUT_ON_QR_ID = ''
  * anything is selected with `isNotEmpty(modelValue)`, and `isEmpty('')` is **true**, so an option
  * whose value is `''` can never render as selected: the field keeps showing the placeholder, and
  * because the model still equals the stored value, the save button stays disabled. Choosing "Ved scan
- * af QR" therefore looked like it did nothing and could not be saved (task 156).
+ * af QR" therefore looked like it did nothing and could not be saved.
  *
  * So the translation is made explicit and given one home: `handoutToOption` on the way in,
  * `handoutToId` on the way out. Safe against collision because checkgroup ids are UUIDs.
@@ -238,7 +238,7 @@ export const teamTypeLabel = (teamType?: string | null) =>
  * The API's value is `null`, and PrimeVue's `Select` decides whether anything is selected with
  * `isNotEmpty(modelValue)`, for which `null` is empty. So an option valued `null` renders as the
  * placeholder no matter what is chosen: "Ingen bestemt holdtype" — the *commonest* answer, since the
- * crew set is unmarked — looked like an unfilled field. Same trap, same fix (task 163).
+ * crew set is unmarked — looked like an unfilled field. Same trap, same fix.
  *
  * Safe against collision because it is not one of shared-go's team types.
  */
@@ -349,7 +349,7 @@ export const isDegenerate = (extent: Extent): boolean =>
 /** Every extent of every sheet in a set. */
 export const setExtents = (set: Kortsaet): Extent[] => set.kort.flatMap((sheet) => sheet.extents)
 
-// The seam check that used to live here is gone (task 155), and the reasoning is worth keeping so it
+// The seam check that used to live here is gone, and the reasoning is worth keeping so it
 // is not rebuilt: it measured the ground inside the set's own bounding box that no sheet showed, and
 // called it a gap. But there is no requirement to cover that box. The sheets follow the route, the
 // route is not a rectangle, and the corners between its legs are ground nobody walks — so every
@@ -425,7 +425,7 @@ export interface CheckgroupLike {
  * Whether a checkgroup is fully, partly or not at all on the sheet.
  *
  * No longer drives the picker — `TreeSelect` in checkbox mode owns the tri-state and the select-all
- * propagation (task 153) — but kept because it is the one definition of "this checkgroup is split
+ * propagation — but kept because it is the one definition of "this checkgroup is split
  * across sheets" that reads as a rule rather than as UI plumbing, and `splitCheckgroups` warns about
  * exactly that.
  */
@@ -439,7 +439,7 @@ export const groupSelectionState = (group: CheckgroupLike, picked: Set<string>):
 /**
  * Apply the select-all for a checkgroup.
  *
- * Superseded by `TreeSelect`'s own checkbox propagation in the dialog (task 153), and kept for the
+ * Superseded by `TreeSelect`'s own checkbox propagation in the dialog, and kept for the
  * same reason as `groupSelectionState`: it states the intended semantics — a group header means "all
  * of them", never "swap them" — which is worth pinning in a test even while PrimeVue does the
  * ticking. Reach for it if a second surface ever needs a select-all outside a tree.

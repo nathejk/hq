@@ -127,7 +127,7 @@ func TestUpdateRefusesUnknownFormat(t *testing.T) {
 	}
 }
 
-// --- handout (task 152) ---
+// --- handout ---
 
 func TestUpdateSetsHandoutCheckgroup(t *testing.T) {
 	c, p := newMapCommander(&Kort{KortID: "kort-1", Name: "Kort 1"})

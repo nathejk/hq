@@ -17,7 +17,7 @@ import { fetchTileLayer, fetchTileLayerWms } from './fetchTileLayer'
 
 // # Tiles are fetched, not left to the browser's <img>
 //
-// Every layer here loads through `fetchTileLayer` (task 161), which retries a failed tile and imposes a
+// Every layer here loads through `fetchTileLayer`, which retries a failed tile and imposes a
 // timeout. That fixes the grey squares the Dataforsyningen WMS leaves behind under load.
 //
 // The first attempt at this was a `tileerror` handler that re-assigned `img.src`, and it turned an

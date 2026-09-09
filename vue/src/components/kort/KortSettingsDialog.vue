@@ -128,7 +128,7 @@ const selected = computed(() => {
 // letter by letter; and a live payload arriving mid-edit must not rewrite the field under the
 // cursor.
 
-// The edit buffer deliberately holds **no** `kortsaetId` (task 152). Moving a sheet between sets is
+// The edit buffer deliberately holds **no** `kortsaetId`. Moving a sheet between sets is
 // a drag, not a dropdown: the list on the left already shows the sets in order with their sheets, so
 // a select saying the same thing twice was both redundant and the easiest way to move a sheet by
 // accident. Until the drag exists, a sheet's set is fixed at creation.
@@ -359,7 +359,7 @@ const picksDirty = computed(() => {
   return sheet.checkpointIds.some((id) => !picked.value.has(id))
 })
 
-// --- the tree the picker renders (task 153) ---
+// --- the tree the picker renders ---
 //
 // One `TreeSelect` in checkbox mode instead of the flat list of every checkgroup and every
 // checkpoint that used to be inlined here. The list was ~60 rows for a normal year, which pushed the
@@ -642,7 +642,7 @@ watch(
   },
 )
 
-// An existing rectangle was dragged or resized on the map (task 159).
+// An existing rectangle was dragged or resized on the map.
 //
 // Lands in the same draft as everything else, so the areas are saved by "Gem kort" along with the
 // name and the checkpoints, and "Annullér" puts a mis-drag back. A drag is therefore also what pauses

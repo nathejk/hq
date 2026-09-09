@@ -1,4 +1,4 @@
-// Where every patrulje was last seen (PRD 011, task 160).
+// Where every patrulje was last seen (PRD 011).
 //
 // # What this is, and what it very much is not
 //

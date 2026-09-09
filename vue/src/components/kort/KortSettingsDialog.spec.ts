@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 //
-// Component tests for the map-sheet editor (task 162).
+// Component tests for the map-sheet editor.
 //
 // # Why this component and not the map
 //
@@ -192,7 +192,7 @@ describe('KortSettingsDialog', () => {
     expect(put).not.toHaveBeenCalled()
   })
 
-  // The contract with the map for drag-to-move and drag-to-resize (task 159). The map owns the gesture
+  // The contract with the map for drag-to-move and drag-to-resize. The map owns the gesture
   // and reports a finished rectangle by index; the dialog owns the draft. Testable without a map, which
   // is the point of the split — and otherwise this contract has no coverage at all.
   it('takes a dragged area from the map into the same unsaved draft', async () => {
@@ -236,7 +236,7 @@ describe('KortSettingsDialog', () => {
 
   // The same PrimeVue trap as the QR handout option, one field over: the API stores `null` for "no
   // particular team type", and `Select` renders a `null`-valued option as its placeholder — so the
-  // commonest answer looked like an unfilled field (task 163).
+  // commonest answer looked like an unfilled field.
   it('shows a set with no team type as a chosen value, and saves it back as null', async () => {
     const wrapper = await open([sheet()], undefined)
 

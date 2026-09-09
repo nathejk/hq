@@ -98,7 +98,7 @@ type Updated struct {
 	Extents       *[]Extent             `json:"extents,omitempty"`
 
 	// HandoutCheckgroupID changes where the sheet is handed out, and therefore when its
-	// checkpoints become visible to the scout (task 152).
+	// checkpoints become visible to the scout.
 	//
 	// A pointer to a string type, and *without* omitempty on the inner value by construction: the
 	// empty string is a meaningful value here — "revealed at the scan of this sheet's QR code" — so

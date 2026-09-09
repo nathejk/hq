@@ -1164,7 +1164,7 @@ const readZoom = () => {
 }
 
 // ---------------------------------------------------------------------------
-// Sidst kendte position — an overlay in the layers control (task 160)
+// Sidst kendte position — an overlay in the layers control
 // ---------------------------------------------------------------------------
 //
 // Every patrulje's last known position: the newer of a member's reported position and the team's last
@@ -1341,7 +1341,7 @@ onBeforeUnmount(() => {
        attribute, and Leaflet keeps its own state in classes on that container (`leaflet-container`,
        `leaflet-grab`, `leaflet-fade-anim`, `leaflet-zoom-anim` during an animation). Binding a class
        there wiped all of them the moment the zoom crossed the threshold, and the map lost the CSS
-       that positions and reveals its tiles: a blank map from zoom 12 up (task 158). -->
+       that positions and reveals its tiles: a blank map from zoom 12 up. -->
   <div class="kort-wrapper" :class="{ 'kort--far': farOut }">
     <div ref="mapContainer" class="kort-map" />
 

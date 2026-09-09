@@ -9,6 +9,7 @@ import PatruljeEmbeddedView, {
    rewardLevels,
 } from '@/views/PatruljeEmbeddedView.vue';
 import PatruljeActiveView from '@/views/PatruljeActiveView.vue';
+import PatruljePhoto from '@/components/PatruljePhoto.vue';
 
 const toast = useToast();
 
@@ -99,6 +100,14 @@ const getSeverity = (status) => {
         </div>
             </template>
             <Column expander />
+            <!-- The patrol's photograph. One year-wide request feeds every row (see
+                 usePatruljeCovers), and rows with no photograph render nothing rather
+                 than a placeholder. -->
+            <Column header="Foto" class="w-16">
+                <template #body="{data}">
+                    <PatruljePhoto :teamId="data.teamId" :teamName="data.name" size="sm" />
+                </template>
+            </Column>
             <Column field="teamNumber" header="#" sortable></Column>
             <Column field="name" header="Navn" sortable>
                 <template #body="{data}">

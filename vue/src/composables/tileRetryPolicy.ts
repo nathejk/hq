@@ -1,4 +1,4 @@
-// When to retry a map tile, and how long to wait (task 161).
+// When to retry a map tile, and how long to wait.
 //
 // Separate from `fetchTileLayer.ts`, which does the Leaflet part, for one reason: importing Leaflet
 // needs a `window`, and the unit tests run in a plain node environment on purpose (see

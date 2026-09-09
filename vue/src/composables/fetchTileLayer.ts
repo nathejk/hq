@@ -1,4 +1,4 @@
-// Tile loading that survives a flaky tile server (task 161).
+// Tile loading that survives a flaky tile server.
 //
 // # The problem
 //

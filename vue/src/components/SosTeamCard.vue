@@ -5,6 +5,7 @@ import { useLiveResource } from '@/composables/useLiveResource'
 import { memberStatusBadge, memberStatusColour } from '@/composables/sos'
 import MemberDetailDialog from '@/components/MemberDetailDialog.vue'
 import PositionIndicator from '@/components/PositionIndicator.vue'
+import PatruljePhoto from '@/components/PatruljePhoto.vue'
 
 // The patrols associated with a case, and their members.
 //
@@ -498,7 +499,10 @@ const withdrawTeam = computed<TeamRow | null>(() => {
 
     <div v-for="team in teams" :key="team.teamId" class="border-b border-gray-200 py-2 last:border-0">
       <div class="flex items-start justify-between gap-2">
-        <div>
+        <!-- The patrol's photograph, so an operator on the phone can see who they are
+             talking about. Renders nothing until the crew has photographed them. -->
+        <PatruljePhoto :teamId="team.teamId" :teamName="team.name" size="md" class="mt-1" />
+        <div class="grow">
           <router-link :to="{ name: 'patrulje', params: { teamId: team.teamId } }" class="font-semibold">
             <span v-if="team.teamNumber">{{ team.teamNumber }} — </span>{{ team.name || team.teamId }}
           </router-link>
