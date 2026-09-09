@@ -4,8 +4,12 @@ import {
   checkpointsWithoutMap,
   extentFromCorners,
   formatLabel,
-  gapCells,
   groupSelectionState,
+  handoutOptions,
+  handoutToId,
+  handoutToOption,
+  HANDOUT_ON_QR_OPTION,
+  HANDOUT_ON_QR_LABEL,
   isDegenerate,
   orderPicks,
   sameExtent,
@@ -13,8 +17,10 @@ import {
   splitCheckgroups,
   teamTypeLabel,
   teamTypeOptions,
+  teamTypeToOption,
+  teamTypeToValue,
+  TEAM_TYPE_NONE_OPTION,
   toggleGroupSelection,
-  unionBounds,
   KORT_DEPENDENCIES,
   type Extent,
   type Kort,
@@ -38,6 +44,7 @@ const sheet = (id: string, checkpointIds: string[] = []): Kort => ({
   sortOrder: 0,
   checkpointIds,
   extents: [],
+  handoutCheckgroupId: '',
 })
 
 const set = (kort: Kort[], teamType: Kortsaet['teamType'] = null): Kortsaet => ({
@@ -48,6 +55,60 @@ const set = (kort: Kort[], teamType: Kortsaet['teamType'] = null): Kortsaet => (
   sortOrder: 0,
   teamType,
   kort,
+})
+
+describe('handoutOptions', () => {
+  // The QR rule is the exception, so the checkgroups come first in course order and it comes last —
+  // an operator picking the ordinary answer should not have to read past it.
+  it('lists the checkgroups in order, with the QR rule last', () => {
+    const options = handoutOptions([
+      { id: 'cg-1', name: 'Post 1-3' },
+      { id: 'cg-2', name: 'Post 4-6' },
+    ])
+
+    expect(options).toEqual([
+      { value: 'cg-1', label: 'Post 1-3' },
+      { value: 'cg-2', label: 'Post 4-6' },
+      { value: HANDOUT_ON_QR_OPTION, label: HANDOUT_ON_QR_LABEL },
+    ])
+  })
+
+  it('offers the QR rule even with no checkgroups', () => {
+    expect(handoutOptions()).toEqual([{ value: HANDOUT_ON_QR_OPTION, label: HANDOUT_ON_QR_LABEL }])
+  })
+
+  // The one thing that must never regress: the dropdown's QR value cannot be the empty string.
+  // PrimeVue's Select decides "is anything selected?" with isNotEmpty(modelValue), and isEmpty('') is
+  // true — so an option valued '' renders as the placeholder for ever, and picking it changes
+  // nothing, which is how "Udleveret" became unsaveable.
+  it('does not use the empty string as a selectable value', () => {
+    expect(HANDOUT_ON_QR_OPTION).not.toBe('')
+    expect(handoutOptions().every((option) => option.value !== '')).toBe(true)
+  })
+})
+
+describe('handout value mapping', () => {
+  it('shows a stored checkgroup id as itself', () => {
+    expect(handoutToOption('cg-1')).toBe('cg-1')
+    expect(handoutToId('cg-1')).toBe('cg-1')
+  })
+
+  // The API's "" and the dropdown's sentinel are the same fact in two vocabularies, so the round trip
+  // has to be lossless in both directions or a save would move a sheet's reveal rule by accident.
+  it('round-trips the QR rule between the API and the dropdown', () => {
+    expect(handoutToOption('')).toBe(HANDOUT_ON_QR_OPTION)
+    expect(handoutToId(HANDOUT_ON_QR_OPTION)).toBe('')
+    expect(handoutToId(handoutToOption(''))).toBe('')
+    expect(handoutToOption(handoutToId(HANDOUT_ON_QR_OPTION))).toBe(HANDOUT_ON_QR_OPTION)
+  })
+
+  // A sheet from an API that predates the field, or a Select cleared to null, must land on the QR
+  // rule rather than on undefined — that is what the column's default means.
+  it('treats a missing value as the QR rule', () => {
+    expect(handoutToOption(undefined)).toBe(HANDOUT_ON_QR_OPTION)
+    expect(handoutToOption(null)).toBe(HANDOUT_ON_QR_OPTION)
+    expect(handoutToId(null)).toBe('')
+  })
 })
 
 describe('KORT_DEPENDENCIES', () => {
@@ -162,91 +223,6 @@ describe('isDegenerate', () => {
     expect(
       isDegenerate({ northWest: { latitude: 56.1, longitude: 9.1 }, southEast: { latitude: 55.8, longitude: 9.6 } }),
     ).toBe(false)
-  })
-})
-
-describe('gapCells', () => {
-  const rect = (north: number, west: number, south: number, east: number): Extent => ({
-    northWest: { latitude: north, longitude: west },
-    southEast: { latitude: south, longitude: east },
-  })
-
-  // The failure that matters: a strip of ground no sheet shows, between two sheets that each look
-  // fine on their own. A patrol walking into it has nothing in their hands.
-  it('finds a vertical seam between two side-by-side sheets', () => {
-    const gaps = gapCells([rect(56, 9.0, 55, 9.4), rect(56, 9.5, 55, 9.9)])
-
-    expect(gaps).toHaveLength(1)
-    expect(gaps[0]).toEqual(rect(56, 9.4, 55, 9.5))
-  })
-
-  // Overlap is designed in, so touching or overlapping sheets must be silent — a check that cried
-  // wolf on the normal case would be turned off within a day.
-  it('reports nothing for sheets that touch exactly', () => {
-    expect(gapCells([rect(56, 9.0, 55, 9.4), rect(56, 9.4, 55, 9.8)])).toEqual([])
-  })
-
-  it('reports nothing for overlapping sheets', () => {
-    expect(gapCells([rect(56, 9.0, 55, 9.5), rect(56, 9.4, 55, 9.9)])).toEqual([])
-  })
-
-  // A thin seam is the dangerous one, and exact decomposition catches it at any width — which
-  // sampling on a fixed grid would not.
-  it('catches a very thin seam', () => {
-    const gaps = gapCells([rect(56, 9.0, 55, 9.4), rect(56, 9.4001, 55, 9.8)])
-    expect(gaps).toHaveLength(1)
-  })
-
-  // Two sheets stacked with a horizontal band missing between them.
-  it('finds a horizontal seam', () => {
-    const gaps = gapCells([rect(56.0, 9.0, 55.6, 9.5), rect(55.5, 9.0, 55.0, 9.5)])
-
-    expect(gaps).toHaveLength(1)
-    expect(gaps[0]).toEqual(rect(55.6, 9.0, 55.5, 9.5))
-  })
-
-  // The L-shape: the bounding box has a corner no sheet covers. That corner is *not* a seam between
-  // sheets, but it is genuinely uncovered ground inside the area the set spans, and an operator
-  // should see it and decide. Reporting it is the honest answer; the alternative would be guessing
-  // which uncovered ground is intentional.
-  it('reports the uncovered corner of an L-shaped layout', () => {
-    const gaps = gapCells([rect(56, 9.0, 55.5, 9.4), rect(55.5, 9.0, 55.0, 9.4), rect(56, 9.4, 55.5, 9.8)])
-
-    expect(gaps).toHaveLength(1)
-    expect(gaps[0]).toEqual(rect(55.5, 9.4, 55.0, 9.8))
-  })
-
-  // Merged along the row, so a gap spanning several grid columns is one band rather than a mosaic
-  // of squares an operator has to interpret.
-  it('merges adjacent gap cells in a row', () => {
-    const gaps = gapCells([rect(56, 9.0, 55, 9.2), rect(56, 9.4, 55, 9.6), rect(56, 9.8, 55, 9.9)])
-
-    // Two gaps (9.2–9.4 and 9.6–9.8), not four cells.
-    expect(gaps).toHaveLength(2)
-  })
-
-  // One sheet cannot have a seam with itself, and no sheets is not a seam either — it is a set
-  // nobody has drawn yet.
-  it('reports nothing for fewer than two rectangles', () => {
-    expect(gapCells([])).toEqual([])
-    expect(gapCells([rect(56, 9.0, 55, 9.4)])).toEqual([])
-  })
-})
-
-describe('unionBounds', () => {
-  it('spans every rectangle', () => {
-    const bounds = unionBounds([
-      { northWest: { latitude: 56, longitude: 9.0 }, southEast: { latitude: 55.5, longitude: 9.4 } },
-      { northWest: { latitude: 55.8, longitude: 9.3 }, southEast: { latitude: 55.0, longitude: 9.9 } },
-    ])
-    expect(bounds).toEqual({
-      northWest: { latitude: 56, longitude: 9.0 },
-      southEast: { latitude: 55.0, longitude: 9.9 },
-    })
-  })
-
-  it('is undefined with nothing to bound', () => {
-    expect(unionBounds([])).toBeUndefined()
   })
 })
 
@@ -390,9 +366,22 @@ describe('labels', () => {
     expect(teamTypeLabel(null)).toBe('')
   })
 
-  // The empty option is the crew set — the commonest answer — so it leads and is labelled rather
-  // than left as a blank line an operator reads as "not filled in".
-  it('offers no-team-type first, with a label', () => {
-    expect(teamTypeOptions[0]).toEqual({ value: null, label: 'Ingen bestemt holdtype' })
+  // The "no team type" option is the crew set — the commonest answer — so it leads and is labelled
+  // rather than left as a blank line an operator reads as "not filled in".
+  //
+  // Its value is deliberately **not** `null`, which is what the API stores: PrimeVue's Select treats
+  // `null` as "nothing selected", so an option valued `null` renders as the placeholder however it is
+  // chosen. Pinned here because it looks like harmless indirection and is not.
+  it('offers no-team-type first, with a label and a selectable value', () => {
+    expect(teamTypeOptions[0]).toEqual({ value: TEAM_TYPE_NONE_OPTION, label: 'Ingen bestemt holdtype' })
+    expect(TEAM_TYPE_NONE_OPTION).not.toBeNull()
+    expect(teamTypeOptions.every((option) => option.value !== null && option.value !== '')).toBe(true)
+  })
+
+  it('round-trips the no-team-type choice between the API and the dropdown', () => {
+    expect(teamTypeToOption(null)).toBe(TEAM_TYPE_NONE_OPTION)
+    expect(teamTypeToValue(TEAM_TYPE_NONE_OPTION)).toBeNull()
+    expect(teamTypeToOption('patrulje')).toBe('patrulje')
+    expect(teamTypeToValue('patrulje')).toBe('patrulje')
   })
 })

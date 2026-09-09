@@ -73,6 +73,16 @@ export interface Kort {
 
   /** Zero rectangles for a skitse, one for a normal sheet, two for a double-sided one. */
   extents: Extent[]
+
+  /**
+   * Where the sheet is handed out — and therefore when its checkpoints become visible to the
+   * scout in the hej app.
+   *
+   * The id of the checkgroup whose post gives the sheet out, or `''` for "at the scan of this
+   * sheet's QR code". Empty is the default, and is also what the API returns for a checkgroup
+   * that has since been deleted, so read empty as the QR rule rather than as "not set".
+   */
+  handoutCheckgroupId: string
 }
 
 /**
@@ -164,6 +174,53 @@ export const formatOptions = (Object.keys(formatLabels) as Format[]).map((value)
   label: formatLabels[value],
 }))
 
+/**
+ * What the API stores for "revealed when this sheet's QR code is scanned": the empty string.
+ */
+export const HANDOUT_ON_QR_ID = ''
+
+/**
+ * What the *dropdown* uses for the same choice — and it cannot be the empty string.
+ *
+ * A sentinel of the UI's own invention is normally the wrong answer: it has to be translated at both
+ * edges, and one day it will not be. PrimeVue leaves no option here. `Select` decides whether
+ * anything is selected with `isNotEmpty(modelValue)`, and `isEmpty('')` is **true**, so an option
+ * whose value is `''` can never render as selected: the field keeps showing the placeholder, and
+ * because the model still equals the stored value, the save button stays disabled. Choosing "Ved scan
+ * af QR" therefore looked like it did nothing and could not be saved (task 156).
+ *
+ * So the translation is made explicit and given one home: `handoutToOption` on the way in,
+ * `handoutToId` on the way out. Safe against collision because checkgroup ids are UUIDs.
+ */
+export const HANDOUT_ON_QR_OPTION = 'qr'
+
+/** The label for the QR option, used in the dropdown and wherever a sheet's handout is shown. */
+export const HANDOUT_ON_QR_LABEL = 'Ved scan af QR'
+
+/** A stored `handoutCheckgroupId` as the dropdown's value. */
+export const handoutToOption = (id: string | null | undefined) =>
+  id ? id : HANDOUT_ON_QR_OPTION
+
+/** The dropdown's value as a `handoutCheckgroupId` for the API. */
+export const handoutToId = (option: string | null | undefined) =>
+  option === HANDOUT_ON_QR_OPTION || !option ? HANDOUT_ON_QR_ID : option
+
+/**
+ * The choices for "Udleveret": every checkgroup, plus the QR rule.
+ *
+ * The QR option comes **last** rather than first, unlike `teamTypeOptions`' empty entry: it is the
+ * exception — most sheets are handed over at a post — and putting the ordinary answers where the
+ * course order puts them is what lets an operator pick without reading. It is still labelled, not
+ * blank, because it is a real choice and an empty row reads as an unfilled field.
+ *
+ * Checkgroups are passed in rather than fetched: the picker already has them, and a second source
+ * would be a second thing to keep in step with the same live tokens.
+ */
+export const handoutOptions = (groups: { id: string; name: string }[] = []) => [
+  ...groups.map((group) => ({ value: group.id, label: group.name })),
+  { value: HANDOUT_ON_QR_OPTION, label: HANDOUT_ON_QR_LABEL },
+]
+
 const teamTypeLabels: Record<string, string> = {
   patrulje: 'Patruljer',
   klan: 'Klaner',
@@ -175,15 +232,36 @@ export const teamTypeLabel = (teamType?: string | null) =>
   teamType ? (teamTypeLabels[teamType] ?? teamType) : ''
 
 /**
- * The choices for a set's team type, empty first.
+ * What the *dropdown* uses for "no particular team type" — and, as with the QR handout option, it
+ * cannot be the value the API uses.
  *
- * The empty option is not a placeholder — it is the crew set, and the commonest answer. Labelled
- * so it reads as a deliberate choice rather than an unfilled field.
+ * The API's value is `null`, and PrimeVue's `Select` decides whether anything is selected with
+ * `isNotEmpty(modelValue)`, for which `null` is empty. So an option valued `null` renders as the
+ * placeholder no matter what is chosen: "Ingen bestemt holdtype" — the *commonest* answer, since the
+ * crew set is unmarked — looked like an unfilled field. Same trap, same fix (task 163).
+ *
+ * Safe against collision because it is not one of shared-go's team types.
+ */
+export const TEAM_TYPE_NONE_OPTION = 'ingen'
+
+/** A set's stored `teamType` as the dropdown's value. */
+export const teamTypeToOption = (teamType: TeamType | null | undefined): string =>
+  teamType ? teamType : TEAM_TYPE_NONE_OPTION
+
+/** The dropdown's value as a `teamType` for the API. */
+export const teamTypeToValue = (option: string | null | undefined): TeamType | null =>
+  !option || option === TEAM_TYPE_NONE_OPTION ? null : (option as TeamType)
+
+/**
+ * The choices for a set's team type, "none" first.
+ *
+ * That first option is not a placeholder — it is the crew set, and the commonest answer. Labelled, and
+ * carrying a real value rather than `null`, so it reads and behaves as a deliberate choice.
  */
 export const teamTypeOptions = [
-  { value: null, label: 'Ingen bestemt holdtype' },
+  { value: TEAM_TYPE_NONE_OPTION, label: 'Ingen bestemt holdtype' },
   ...(Object.keys(teamTypeLabels) as TeamType[]).map((value) => ({
-    value,
+    value: value as string,
     label: teamTypeLabels[value],
   })),
 ]
@@ -266,85 +344,18 @@ export const isDegenerate = (extent: Extent): boolean =>
   extent.northWest.latitude === extent.southEast.latitude ||
   extent.northWest.longitude === extent.southEast.longitude
 
-// --- the seam check ---
+// --- a set's areas ---
 
 /** Every extent of every sheet in a set. */
 export const setExtents = (set: Kortsaet): Extent[] => set.kort.flatMap((sheet) => sheet.extents)
 
-/** The smallest rectangle containing them all, or undefined when there are none. */
-export const unionBounds = (extents: Extent[]): Extent | undefined => {
-  if (extents.length === 0) return undefined
-  return {
-    northWest: {
-      latitude: Math.max(...extents.map((e) => e.northWest.latitude)),
-      longitude: Math.min(...extents.map((e) => e.northWest.longitude)),
-    },
-    southEast: {
-      latitude: Math.min(...extents.map((e) => e.southEast.latitude)),
-      longitude: Math.max(...extents.map((e) => e.southEast.longitude)),
-    },
-  }
-}
-
-const covers = (extent: Extent, lat: number, lng: number): boolean =>
-  lat <= extent.northWest.latitude &&
-  lat >= extent.southEast.latitude &&
-  lng >= extent.northWest.longitude &&
-  lng <= extent.southEast.longitude
-
-/**
- * The ground inside the set's own bounding box that no sheet shows.
- *
- * This is the seam check, and it is exact rather than approximate — which is possible only because
- * every rectangle is axis-aligned. Cutting on every distinct latitude and longitude produces a grid
- * in which each cell is either wholly covered or wholly uncovered, so the uncovered cells *are* the
- * complement. No polygon clipping, no dependency, no sampling that could miss a thin seam — and a
- * thin seam is precisely the failure worth catching, since it is a strip of ground no sheet shows
- * and a patrol walking into it has nothing in their hands.
- *
- * Measured against the set's own bounding box, not against "the race area": that has no recorded
- * boundary, all sheets lie inside it by construction, and a percentage of it would always read
- * ~100% while a seam went unnoticed (PRD 010 §8).
- *
- * Cells are merged along each row, so two sheets side by side with a gap between them yield one
- * band rather than a mosaic of squares an operator has to interpret.
- */
-export const gapCells = (extents: Extent[]): Extent[] => {
-  if (extents.length < 2) return []
-
-  const lats = [...new Set(extents.flatMap((e) => [e.northWest.latitude, e.southEast.latitude]))].sort((a, b) => b - a)
-  const lngs = [...new Set(extents.flatMap((e) => [e.northWest.longitude, e.southEast.longitude]))].sort((a, b) => a - b)
-
-  const gaps: Extent[] = []
-  for (let row = 0; row < lats.length - 1; row += 1) {
-    const north = lats[row]
-    const south = lats[row + 1]
-    // The cell's midpoint decides coverage. Sound because no rectangle edge falls strictly inside a
-    // cell — every edge became a grid line — so the midpoint's answer is the whole cell's answer.
-    const midLat = (north + south) / 2
-    let run: Extent | null = null
-
-    for (let col = 0; col < lngs.length - 1; col += 1) {
-      const west = lngs[col]
-      const east = lngs[col + 1]
-      const midLng = (west + east) / 2
-      const uncovered = !extents.some((extent) => covers(extent, midLat, midLng))
-
-      if (uncovered) {
-        if (run) run.southEast.longitude = east
-        else run = { northWest: { latitude: north, longitude: west }, southEast: { latitude: south, longitude: east } }
-      } else if (run) {
-        gaps.push(run)
-        run = null
-      }
-    }
-    if (run) gaps.push(run)
-  }
-  return gaps
-}
-
-/** Whether a set's sheets leave a seam between them. */
-export const hasSeam = (set: Kortsaet): boolean => gapCells(setExtents(set)).length > 0
+// The seam check that used to live here is gone (task 155), and the reasoning is worth keeping so it
+// is not rebuilt: it measured the ground inside the set's own bounding box that no sheet showed, and
+// called it a gap. But there is no requirement to cover that box. The sheets follow the route, the
+// route is not a rectangle, and the corners between its legs are ground nobody walks — so every
+// healthy set "failed", and "9 områder er ikke på noget kort" was noise an operator learned to
+// ignore. Coverage is judged by looking at the areas against the terrain, which is what showing a
+// set's areas on the map is for.
 
 // --- the split-checkgroup warning ---
 
@@ -413,9 +424,10 @@ export interface CheckgroupLike {
 /**
  * Whether a checkgroup is fully, partly or not at all on the sheet.
  *
- * `some` exists to be visible: a half-ticked checkgroup is usually a mistake in the making, since a
- * checkgroup is revealed as a whole, so the header shows a third state rather than rounding to on
- * or off.
+ * No longer drives the picker — `TreeSelect` in checkbox mode owns the tri-state and the select-all
+ * propagation (task 153) — but kept because it is the one definition of "this checkgroup is split
+ * across sheets" that reads as a rule rather than as UI plumbing, and `splitCheckgroups` warns about
+ * exactly that.
  */
 export const groupSelectionState = (group: CheckgroupLike, picked: Set<string>): 'all' | 'some' | 'none' => {
   if (group.checkpoints.length === 0) return 'none'
@@ -427,9 +439,10 @@ export const groupSelectionState = (group: CheckgroupLike, picked: Set<string>):
 /**
  * Apply the select-all for a checkgroup.
  *
- * Ticks all when any are missing rather than inverting each one: with three of four already on, an
- * operator reaching for the group header means "all of them", never "swap them". Only a fully
- * ticked group clears.
+ * Superseded by `TreeSelect`'s own checkbox propagation in the dialog (task 153), and kept for the
+ * same reason as `groupSelectionState`: it states the intended semantics — a group header means "all
+ * of them", never "swap them" — which is worth pinning in a test even while PrimeVue does the
+ * ticking. Reach for it if a second surface ever needs a select-all outside a tree.
  */
 export const toggleGroupSelection = (group: CheckgroupLike, picked: Set<string>): Set<string> => {
   const next = new Set(picked)
