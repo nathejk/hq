@@ -13,6 +13,19 @@
 // token and its terms-of-use attribution should exist once.
 
 import L from 'leaflet'
+import { fetchTileLayer, fetchTileLayerWms } from './fetchTileLayer'
+
+// # Tiles are fetched, not left to the browser's <img>
+//
+// Every layer here loads through `fetchTileLayer` (task 161), which retries a failed tile and imposes a
+// timeout. That fixes the grey squares the Dataforsyningen WMS leaves behind under load.
+//
+// The first attempt at this was a `tileerror` handler that re-assigned `img.src`, and it turned an
+// occasional grey square into a **blank map from zoom 12 up**: re-assigning `src` makes Leaflet's
+// `_tileReady` run twice per tile, which restarts a fade that `_updateOpacity` then refuses to finish
+// for any tile that is no longer `current`. Retrying has to happen *before* Leaflet is told the tile is
+// done — which means inside `createTile`, which is what `fetchTileLayer` overrides. Do not reintroduce
+// a retry at this level.
 
 /** The layer shown first, and the one operators reason about the terrain with. */
 export const DEFAULT_BASE_LAYER = 'Topografisk 1:25.000'
@@ -25,7 +38,7 @@ export const DEFAULT_BASE_LAYER = 'Topografisk 1:25.000'
  */
 export function createBaseLayers(): Record<string, L.TileLayer | L.TileLayer.WMS> {
   return {
-    [DEFAULT_BASE_LAYER]: L.tileLayer.wms('https://api.dataforsyningen.dk/dtk_25_DAF', {
+    [DEFAULT_BASE_LAYER]: fetchTileLayerWms('https://api.dataforsyningen.dk/dtk_25_DAF', {
       layers: 'DTK25',
       format: 'image/png',
       transparent: true,
@@ -35,18 +48,18 @@ export function createBaseLayers(): Record<string, L.TileLayer | L.TileLayer.WMS
       token: '0d5816d7e175e934301f0277686c43f8',
       maxZoom: 19,
     } as L.WMSOptions),
-    Luftfoto: L.tileLayer(
+    Luftfoto: fetchTileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
       {
         attribution: '&copy; Esri &mdash; Sources: Esri, DigitalGlobe, Earthstar Geographics',
         maxZoom: 19,
       },
     ),
-    OpenStreetMap: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    OpenStreetMap: fetchTileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
       maxZoom: 19,
     }),
-    Topografisk: L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    Topografisk: fetchTileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
       attribution:
         '&copy; <a href="https://opentopomap.org">OpenTopoMap</a> (<a href="https://creativecommons.org/licenses/by-sa/3.0/">CC-BY-SA</a>)',
       maxZoom: 17,
