@@ -3,8 +3,8 @@
 **Status:** doing
 **Author:** agent session (with knj)
 **Created:** 2026-09-03
-**Last updated:** 2026-09-09 (152 closed; 153's scope decision implemented, its
-measurements pending real traffic)
+**Last updated:** 2026-09-09 (152 and 153 closed; the position layer on `/kort`
+now contradicts the non-goal in §4 — see the note there)
 **Approved:** 2026-09-03
 **Shipped:**
 **Target users:** organizer (HQ operators, løbsledelse, SOS/dispatch), and — indirectly — participants whose hej-app reports the positions
@@ -597,12 +597,24 @@ must carry OpenAPI annotations** in the same style as existing handlers:
   one member; a six-member patrol is ~90–140 ms and ~1.3 MB unreduced, so the
   payload target needs a budget applied, which is what `maxPoints` is for.
 
-  **Still open, and blocked on the event rather than on work:** row count and growth
-  against real traffic, and boot time with versus without the telemetry projection.
-  Neither is measurable on a dev stream holding 1.2k test points. Note for whoever
-  takes them: the local JetStream has **no monitoring port enabled** and no `nats`
-  CLI, so stream size — the number this decision really turns on — cannot be read
-  in development at all. Enabling `-m 8222` before the event is worth the one line.
+  **Volume and boot cost, quantified 2026-09-09 (task 153).** Measured in dev, where
+  the traffic is small but the *unit* costs are real: ~61 bytes per point on the wire
+  (73,205 bytes for the 1,202 points that arrived), ~240 points per message, and a
+  boot that replays HQ's whole 29,393-message `NATHEJK` history in 2.6–5.1 s — so
+  replay runs at ~7–10k messages/second. Extrapolated to one event at this PRD's
+  ceiling (~2.9 M points): **~176 MB and ~12,000 messages per year**, which is ~40%
+  more messages than HQ's entire history to date, added annually; and, unscoped,
+  **~1.2–1.7 s of extra boot time per past event, for ever**. Year-scoped, that term
+  does not grow.
+
+  Verified rather than assumed: the consumer registered with JetStream carries
+  `filter_subject: TELEMETRY.2026.track.*.reported`. Had the library created an
+  unfiltered consumer and matched subjects client-side, year-scoping would have been
+  decorative — every message still delivered, merely discarded later — and the boot
+  cost would have been unchanged while the code claimed otherwise.
+
+  The remaining honest caveat: these are extrapolations from measured unit costs, not
+  observations of a real event. Re-take both after the race with the same method.
 - **Contract drift:** the subject and payload are pinned here (§4a and above) but
   live in another repo, and there is no API to ask. A silent shape change means a
   silently empty projection, so the consumer should log unhandled subjects the way
@@ -661,8 +673,7 @@ Tasks created in `roadmap/tasks/open/` on approval:
 - [x] 150 — `TrackMapDialog.vue`
 - [x] 151 — Per-person telemetry erasure (compliance) — `roadmap/api/telemetry-erasure.md`
 - [x] 152 — Raise the batch-cap sizing with hej-app
-- [~] 153 — Decide hq's telemetry scope and measure replay cost — decision made and
-      implemented (year-scoped subject); two measurements still need real traffic
+- [x] 153 — Decide hq's telemetry scope and measure replay cost
 
 ### Found along the way
 
