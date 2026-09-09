@@ -68,6 +68,10 @@ services:
       #MONOLITH_BASEURL: https://natpas.nathejk.dk
       JWT_COOKIE_NAME: jwttoken
       AUTH_BASEURL: https://lukmigind.nathejk.dk
+      # Where the browser fetches photograph bytes. hq holds only the metadata; the
+      # objects live in foto's content-addressed store, so the URLs this API hands
+      # out are absolute and point at the local foto stack.
+      PHOTO_BASEURL: https://foto.local.nathejk.dk
     depends_on:
     - mysql
 

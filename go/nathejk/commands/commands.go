@@ -15,6 +15,7 @@ import (
 	"nathejk.dk/nathejk/table/checkpoint"
 	"nathejk.dk/nathejk/table/dispatch"
 	"nathejk.dk/nathejk/table/kort"
+	"nathejk.dk/nathejk/table/photocover"
 	"nathejk.dk/nathejk/table/shelter"
 	"nathejk.dk/nathejk/table/sos"
 	"nathejk.dk/nathejk/table/spejdernote"
@@ -53,6 +54,10 @@ type Commands struct {
 
 	// Kort is the write side for the printed sheets themselves.
 	Kort kort.Commands
+
+	// PhotoCover is which photograph represents a patrulje. hq's own concern: foto
+	// decides what a photograph is, an organizer decides which one to look at first.
+	PhotoCover photocover.Commands
 
 	// Transfer moves a paid member between not-yet-started teams, carrying their seat
 	// and merchandise with them (PRD 012). It lives in shared-go because the money it

@@ -53,6 +53,8 @@ import (
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/patruljenumber"
 	"nathejk.dk/nathejk/table/personnel"
+	"nathejk.dk/nathejk/table/photo"
+	"nathejk.dk/nathejk/table/photocover"
 	"nathejk.dk/nathejk/table/scan"
 	"nathejk.dk/nathejk/table/shelter"
 	"nathejk.dk/nathejk/table/sos"
@@ -86,6 +88,13 @@ type config struct {
 	}
 	sms struct {
 		dsn string
+	}
+
+	// photo is where the photograph bytes are served from. hq holds only the
+	// metadata: the objects live in foto's content-addressed store, and every image
+	// URL this API hands out points there. See cmd/api/photos.go.
+	photo struct {
+		baseurl string
 	}
 	smtp mailer.Config
 }
@@ -121,6 +130,7 @@ func main() {
 
 	flag.StringVar(&cfg.sms.dsn, "sms-dsn", os.Getenv("SMS_DSN"), "SMS DSN")
 	flag.StringVar(&cfg.jetstream.dsn, "jetstream-dsn", os.Getenv("JETSTREAM_DSN"), "NATS Streaming DSN")
+	flag.StringVar(&cfg.photo.baseurl, "photo-baseurl", getEnv("PHOTO_BASEURL", "https://foto.nathejk.dk"), "Base url of the foto service, which serves photograph bytes")
 
 	flag.StringVar(&cfg.db.dsn, "db-dsn", os.Getenv("DB_DSN"), "Database DSN")
 	flag.IntVar(&cfg.db.maxOpenConns, "db-max-open-conns", 25, "Database max open connections")
@@ -196,6 +206,20 @@ func main() {
 	korttable := kort.New(publisher, writer, db.DB())
 	checkpersonnel := checkpersonnel.New(publisher, writer, reader)
 	scantable := scan.New(writer, db.DB())
+	// Photographs of the patrols (foto's PRD 001). foto publishes them onto the NATHEJK
+	// stream and stores the bytes; hq projects the metadata so a patrol page can list a
+	// team's pictures without calling another service, and links the bytes back to foto.
+	//
+	// The publisher is deliberately nil: hq never records a photograph, it only reads
+	// them. photo.New tolerates that and its Publish returns ErrNoPublisher, so a
+	// mistake here fails loudly rather than putting hq's name on foto's events.
+	phototable, err := photo.New(nil, writer, db.DB())
+	if err != nil {
+		logger.PrintFatal(err, nil)
+	}
+	// Which of those photographs represents a patrulje. hq's own entity — see its
+	// package doc for why it is not a column on the copied photo table.
+	photocovertable := photocover.New(publisher, writer, db.DB())
 	// Where people were: positions reported by the hej-app (PRD 011). The only consumer in this
 	// list that reads a *second* stream — its subject's domain is TELEMETRY, and the stream library
 	// derives the stream name from that, so the stream must exist or mux.Run fails below.
@@ -306,6 +330,8 @@ func main() {
 		korttable,
 		checkpersonnel,
 		scantable,
+		phototable,
+		photocovertable,
 		tracktable,
 		loktable,
 		year,
@@ -334,6 +360,8 @@ func main() {
 	}
 
 	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, vehicletable, ordertable, sostable, spejderstatustable, sheltertable, spejdernotetable, dispatchtable, korttable, tracktable, spejdertable)
+	models.Photo = phototable
+	models.PhotoCover = photocovertable
 	cmds := commands.New(publisher, models)
 	cmds.Year = year
 	cmds.Checkpoint = checkpoint
@@ -349,6 +377,7 @@ func main() {
 	cmds.Dispatch = dispatchtable
 	cmds.KortSet = korttable
 	cmds.Kort = korttable
+	cmds.PhotoCover = photocovertable
 	// Both arguments are klantable: it is the read model the override dirty-checks
 	// against *and* the entity that owns what deleting a klan means.
 	cmds.Klan = commands.NewKlan(publisher, klantable, klantable)

@@ -48,6 +48,13 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodPut, "/api/patrulje/:id", app.updatePatruljeHandler)
 	router.HandlerFunc(http.MethodPut, "/api/patrulje/:id/start", app.startPatruljeHandler)
 	router.HandlerFunc(http.MethodGet, "/api/patrulje/:id/scans", app.scansPatruljeHandler)
+	// Photographs of the patrols (foto's PRD 001). hq projects foto's events and serves
+	// the metadata; the image bytes are fetched from foto itself — see photos.go.
+	router.HandlerFunc(http.MethodGet, "/api/patrulje/:id/photos", app.showPatruljePhotosHandler)
+	router.HandlerFunc(http.MethodPut, "/api/patrulje/:id/photos/cover", app.selectPatruljeCoverHandler)
+	// One photograph per team for the whole year, for the thumbnails in lists. Its own
+	// path rather than /api/patrulje/covers, which httprouter refuses beside `:id`.
+	router.HandlerFunc(http.MethodGet, "/api/patruljefotos", app.showPatruljeCoversHandler)
 	router.HandlerFunc(http.MethodGet, "/api/lok/:id", app.showLokHandler)
 	router.HandlerFunc(http.MethodPatch, "/api/lok/:id", app.updateLokHandler)
 	router.HandlerFunc(http.MethodGet, "/api/lok", app.showLoksHandler)
