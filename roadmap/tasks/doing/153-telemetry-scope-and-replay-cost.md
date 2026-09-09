@@ -37,7 +37,7 @@ telemetry projection, and the p95 of the patrol track endpoint (target < 300 ms,
 - [ ] Api boot time measured with and without the telemetry projection — **baseline only, see below**
 - [x] Patrol track endpoint p95 and payload size measured on a worst-realistic-case patrol
 - [x] Scope decision made (year-scoped vs. all history) and implemented
-- [ ] Decision and numbers recorded in PRD 011 §8
+- [x] Decision and numbers recorded in PRD 011 §8
 
 ## Decision: year-scoped consumer subject (implemented)
 
