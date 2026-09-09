@@ -1,12 +1,11 @@
 # PRD 011 — Telemetry: who has reported a position, and where they went
 
-**Status:** doing
+**Status:** done
 **Author:** agent session (with knj)
 **Created:** 2026-09-03
-**Last updated:** 2026-09-09 (152 and 153 closed; the position layer on `/kort`
-now contradicts the non-goal in §4 — see the note there)
+**Last updated:** 2026-09-09
 **Approved:** 2026-09-03
-**Shipped:**
+**Shipped:** 2026-09-09
 **Target users:** organizer (HQ operators, løbsledelse, SOS/dispatch), and — indirectly — participants whose hej-app reports the positions
 
 <!--
@@ -95,6 +94,14 @@ corners). PRD 001 (nødtelefon/SOS) and PRD 009 (dispatch) both resolve
   on the main map is the obvious next feature and is deliberately out of scope;
   this PRD delivers the endpoints it would need. `/kort` stays checkpoint-focused
   (PRD 010).
+
+  **Superseded 2026-09-09 by PRD 013.** The obvious next feature turned out to be
+  the next feature: `/kort` gained a *Sidst kendte position* layer, per **patrulje**
+  rather than per participant, merging each team's newest scan with its newest
+  reported position. This non-goal is left standing rather than deleted because it
+  was the right scope for this PRD — it shipped the endpoints and the read models
+  that PRD 013 then composed — and because a PRD records what was agreed, not what
+  happened next.
 - **Geofencing, alerts, off-route detection, or ETA prediction.** No derived
   intelligence in this PRD — only faithful storage and display.
 - **Positions for non-people.** Vehicles (PRD 009) are not in this stream yet;
@@ -706,6 +713,12 @@ presets narrow from everything rather than out from a slice.
 
 ## 11. Open Questions
 
+Four questions outlived this PRD. They are **carried on the board** rather than left
+here, because a question inside a `done/` document is a question nobody will read
+again: tasks 169 (the three guessed thresholds), 170 (the personnel/crewmember id
+space), 171 (klan track aggregation) and 173 (marking low-confidence fixes). None
+blocks the shipped feature; each is noted in place below.
+
 - ~~**Subject shape.**~~ **Answered (2026-09-03):**
   `TELEMETRY.{year}.track.{personId}.reported`. Entity token `track`, stream
   `TELEMETRY`. Fully closed — nothing in this PRD is now blocked on another repo.
@@ -735,25 +748,28 @@ presets narrow from everything rather than out from a slice.
   threshold would leave most indicators muted most of the time and the state would
   stop carrying information. 15 minutes? An hour? Should it differ for a racing
   patrol and a gøgler? **Implemented as 30 min** (`STALE_AFTER_MS`, task 143) — a
-  default in one place, not a decision.
+  default in one place, not a decision. **Carried as task 169.**
 - **Gap threshold.** What delta between consecutive points starts a new segment?
   This is the one number the whole track rendering hangs on. Too small and a
   normal track shatters into confetti; too large and we bridge a gap we should
   have shown. **Implemented as 5 minutes** (`GapThresholdMs`, task 145), i.e. ten
   samples, still to be checked against the real distribution of deltas.
+  **Carried as task 169.**
 - ~~**`crewmate`.**~~ **Answered (2026-09-03):** it is `crewmember`
   (`shared-go/tables/crewmember`). Residual: a gøgler/friend/bandit lives in
   `personnel`, not `crewmember`, though both are keyed by `userId` — confirm the
   producer treats those ids as one space, since the indicator relies on it.
+  **Carried as task 170.**
 - **Seniors and klan.** The spejder rule (all members + scans, per patrol) is
   specified. Should a klan behave the same way with its seniors, or is a klan
-  member's own track sufficient?
+  member's own track sufficient? **Carried as task 171.**
 - ~~**Implausible points.**~~ **Answered (2026-09-03):** the producer already
   drops what is not a position at all (NaN, Null Island, impossible clocks,
   >100 km accuracy) and deliberately keeps poor-but-real fixes. HQ therefore does
   **not** filter: it stores everything and renders faithfully, with `accuracy`
   available to mark low-confidence points. Residual UI question only: do we mark
   them, and how — thinner line, hollow vertex, accuracy circle on click?
+  **Carried as task 173.**
 - ~~**Gap rendering.**~~ **Answered (2026-09-03):** gaps are the normal shape of
   the data, so tracks are modelled and returned as **segments** and drawn as one
   polyline per segment; a bridged gap, if shown at all, is dashed and dimmed. The
