@@ -20,6 +20,7 @@ import (
 	"nathejk.dk/nathejk/table/dispatch"
 	"nathejk.dk/nathejk/table/kort"
 	"nathejk.dk/nathejk/table/lok"
+	"nathejk.dk/nathejk/table/maphandout"
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/personnel"
 	"nathejk.dk/nathejk/table/photo"
@@ -118,6 +119,10 @@ type Models struct {
 	SpejderStatus spejderstatus.Queries
 	// Track is where people were: positions reported by the hej-app (PRD 011).
 	Track track.Queries
+
+	// MapHandout is which map sheets / QR codes a team has been handed, current and past
+	// (see the projection's package doc for why hq keeps its own history of this).
+	MapHandout maphandout.Queries
 
 	// Roster answers which team a member is currently on (PRD 012).
 	//

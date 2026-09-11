@@ -50,6 +50,7 @@ import (
 	"nathejk.dk/nathejk/table/dispatch"
 	"nathejk.dk/nathejk/table/kort"
 	"nathejk.dk/nathejk/table/lok"
+	"nathejk.dk/nathejk/table/maphandout"
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/patruljenumber"
 	"nathejk.dk/nathejk/table/personnel"
@@ -206,6 +207,10 @@ func main() {
 	korttable := kort.New(publisher, writer, db.DB())
 	checkpersonnel := checkpersonnel.New(publisher, writer, reader)
 	scantable := scan.New(writer, db.DB())
+	// Which map sheets / QR codes a team has been handed, current and past (PRD-less; see
+	// the maphandout package doc). Projects skan's qr.registered as history, because skan
+	// keeps only the current holder and a patrol page needs every sheet it ever held.
+	maphandouttable := maphandout.New(writer, db.DB())
 	// Photographs of the patrols (foto's PRD 001). foto publishes them onto the NATHEJK
 	// stream and stores the bytes; hq projects the metadata so a patrol page can list a
 	// team's pictures without calling another service, and links the bytes back to foto.
@@ -330,6 +335,7 @@ func main() {
 		korttable,
 		checkpersonnel,
 		scantable,
+		maphandouttable,
 		phototable,
 		photocovertable,
 		tracktable,
@@ -362,6 +368,7 @@ func main() {
 	models := data.NewModels(db.DB(), year, klantable, seniortable, patruljetable, personneltable, paymenttable, checkgroup, checkpoint, checkpersonnel, scantable, loktable, sectiontable, crewmembertable, vehicletable, ordertable, sostable, spejderstatustable, sheltertable, spejdernotetable, dispatchtable, korttable, tracktable, spejdertable)
 	models.Photo = phototable
 	models.PhotoCover = photocovertable
+	models.MapHandout = maphandouttable
 	cmds := commands.New(publisher, models)
 	cmds.Year = year
 	cmds.Checkpoint = checkpoint

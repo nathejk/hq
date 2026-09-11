@@ -184,7 +184,17 @@ func (app *application) showPatruljeHandler(w http.ResponseWriter, r *http.Reque
 		sosCases = nil
 	}
 
-	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"config": config, "team": team, "contact": contact, "members": members, "payments": payments, "orders": orders, "sosCases": sosCases}, nil)
+	// The map sheets / QR codes handed to this patrulje, current and past (a sheet moves
+	// with reassigned scouts when a team is discontinued, so "past" is real). Context like
+	// the SOS list above: folded in here rather than given its own request, and a failure
+	// is logged without taking the page down.
+	maps, err := app.models.MapHandout.ByTeam(r.Context(), app.YearSlug(r), teamId)
+	if err != nil {
+		log.Printf("MapHandout.ByTeam %q", err)
+		maps = nil
+	}
+
+	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"config": config, "team": team, "contact": contact, "members": members, "payments": payments, "orders": orders, "sosCases": sosCases, "maps": maps}, nil)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}

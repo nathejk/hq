@@ -40,16 +40,18 @@ const { data, pending, error, refresh } = useLiveResource(
       members: response.data.members || [],
       orders: response.data.orders || [],
       sosCases: response.data.sosCases || [],
+      maps: response.data.maps || [],
       config: response.data.config || {},
     };
   },
-  { dependsOn: [`patrulje:${props.teamId}`, 'spejder', 'order', 'payment', 'sos'] },
+  { dependsOn: [`patrulje:${props.teamId}`, 'spejder', 'order', 'payment', 'sos', 'qr'] },
 );
 
 const patrulje = computed(() => data.value?.team ?? {});
 const spejdere = computed(() => data.value?.members ?? []);
 const orders = computed(() => data.value?.orders ?? []);
 const sosCases = computed(() => data.value?.sosCases ?? []);
+const maps = computed(() => data.value?.maps ?? []);
 const config = computed(() => data.value?.config ?? {});
 
 // --- member lifecycle status (PRD 006) ---
@@ -249,6 +251,14 @@ const formatAmount = (value, currency) => {
 // Shared rather than parsed here: the order and payment tables serve Go's
 // time.Time text form, which Safari refuses to parse. See parseApiDate.
 const formatDateTime = (value) => daymonthhhmm(value)
+
+// Map handouts carry a unix time in *seconds* (maphandout.firstUts), so scale to the
+// milliseconds daymonthhhmm expects — the same conversion the scan trail does.
+const formatUts = (uts) => (uts ? daymonthhhmm(uts * 1000) : '')
+
+// Where a handed-out map is now. A code reassigned when this team was discontinued
+// reads as moved, with the current holder named.
+const mapMovedTo = (m) => [m.currentTeamNumber, m.currentTeamName].filter(Boolean).join(' ')
 const statusLabel = (status) => (status === 'PAID' ? 'Betalt' : 'Åben')
 const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
 
@@ -414,6 +424,32 @@ const isTransfer = (order) => (order.lines ?? []).some((l) => (l.lineId ?? '').s
             <Column field="status" header="Status">
                 <template #body="{data}">
                     <Tag :value="statusLabel(data.status)" :severity="statusSeverity(data.status)" />
+                </template>
+            </Column>
+        </DataTable>
+
+        <!--
+          Kort / QR-koder (map handouts). Every sheet this patrulje has ever been given,
+          not only the ones it still holds: when a team is discontinued its scouts and
+          their maps are reassigned, so a code shown here as "Flyttet til …" is expected,
+          not an error. The QR id is the printed sticker number; the map name comes from
+          the kort sheet it was bound to, blank for a code registered before its sheet
+          was recorded.
+        -->
+        <h1 class="font-nathejk text-2xl mt-5">Kort / QR-koder</h1>
+        <DataTable :value="maps" sortMode="single" sortField="firstUts" :sortOrder="1" :stripedRows="true">
+            <template #empty>Ingen kort udleveret</template>
+            <Column field="qrId" header="QR" sortable></Column>
+            <Column header="Kort">
+                <template #body="{data}">{{ data.mapName || 'Ukendt kort' }}</template>
+            </Column>
+            <Column field="firstUts" header="Udleveret" sortable>
+                <template #body="{data}">{{ formatUts(data.firstUts) }}</template>
+            </Column>
+            <Column header="Status">
+                <template #body="{data}">
+                    <Tag v-if="data.current" severity="success" value="Hos patruljen" />
+                    <Tag v-else severity="secondary" :value="'Flyttet til ' + mapMovedTo(data)" />
                 </template>
             </Column>
         </DataTable>
