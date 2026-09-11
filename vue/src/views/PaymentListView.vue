@@ -114,7 +114,10 @@ const statusSeverity = (statusLabel) => (statusLabel === 'Betalt' ? 'success' : 
 </script>
 
 <template>
-  <h1 class="font-nathejk text-2xl">Ordrehistorik</h1>
+  <div class="flex flex-wrap items-baseline justify-between gap-2">
+    <h1 class="font-nathejk text-2xl">Ordrehistorik</h1>
+    <a href="/api/excel/plukliste">Plukliste (Excel)</a>
+  </div>
 
   <div class="my-3 rounded border border-gray-200 bg-gray-50 p-3 text-sm">
     <div class="font-semibold pb-1">{{ shownOrders.length }} ordrer vist</div>
