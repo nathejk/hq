@@ -90,6 +90,12 @@ var schemaMigrations = []string{
 	// dropped by hand. A column nobody can add without manual intervention is a
 	// column that will be missing in production one day.
 	`ALTER TABLE patrulje ADD COLUMN IF NOT EXISTS activeMemberCount INT NOT NULL DEFAULT 0`,
+
+	// startedUts: when the patrol went on the route. Added here as well as in table.sql
+	// for the same reason as activeMemberCount above — a long-lived database never gains
+	// a column from CREATE TABLE IF NOT EXISTS, and the .started handler's UPDATE would
+	// fail with "Unknown column" on every start until the table was dropped by hand.
+	`ALTER TABLE patrulje ADD COLUMN IF NOT EXISTS startedUts INT NOT NULL DEFAULT 0`,
 }
 
 //go:embed table.sql

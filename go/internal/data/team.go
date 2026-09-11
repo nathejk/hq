@@ -30,6 +30,10 @@ type Patrulje struct {
 	// SignupStatus is carried so a caller can tell those two cases apart without a
 	// second request.
 	SignupStatus types.SignupStatus `json:"signupStatus"`
+
+	// StartedUts is when the patrol went on the route (unix seconds), or 0 if it has
+	// not started. The patrol trail shows it as the first event above the scans.
+	StartedUts int64 `json:"startedUts"`
 }
 type Klan struct {
 	ID          types.TeamID       `json:"id"`
@@ -62,7 +66,7 @@ func (m TeamModel) GetPatrulje(teamID types.TeamID) (*Patrulje, error) {
 	}
 
 	query := `SELECT p.teamId, p.teamNumber, p.name, p.groupName, p.korps, p.liga, p.memberCount,
-			p.activeMemberCount, p.signupStatus
+			p.activeMemberCount, p.signupStatus, p.startedUts
 		FROM patrulje p
 		JOIN patruljestatus ps ON p.teamId = ps.teamID
 		WHERE p.teamId = ?`
@@ -77,6 +81,7 @@ func (m TeamModel) GetPatrulje(teamID types.TeamID) (*Patrulje, error) {
 		&p.MemberCount,
 		&p.ActiveMemberCount,
 		&p.SignupStatus,
+		&p.StartedUts,
 	)
 	if err != nil {
 		switch {

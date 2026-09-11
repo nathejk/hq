@@ -62,8 +62,12 @@ func (c *consumer) HandleMessage(msg stream.Message) error {
 		if err := msg.Body(&body); err != nil {
 			return err
 		}
-		query := "UPDATE patrulje SET signupStatus=%q, memberCount=%d WHERE teamId=%q"
-		args := []any{types.SignupStatusStarted, len(body.Members), body.TeamID}
+		// startedUts is the moment the patrol went on the route: the publish time of the
+		// .started event. Persisted here because it lives nowhere else — patruljestatus.startedUts
+		// is hardcoded to 1 on signup and never means "started" — and the patrol trail needs it
+		// as the first event above the scans.
+		query := "UPDATE patrulje SET signupStatus=%q, memberCount=%d, startedUts=%d WHERE teamId=%q"
+		args := []any{types.SignupStatusStarted, len(body.Members), msg.Time().Unix(), body.TeamID}
 		return c.w.Consume(fmt.Sprintf(query, args...))
 
 	default:

@@ -276,7 +276,11 @@ func (app *application) scansPatruljeHandler(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"team": team, "scans": scans}, nil)
+	// The raw scans carry a scannerId and a phone; the trail shows who that was
+	// instead — a bandit by number, crew by section and post. See enrichScans.
+	events := app.enrichScans(r.Context(), app.YearSlug(r), scans)
+
+	err = app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"team": team, "scans": events}, nil)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 	}

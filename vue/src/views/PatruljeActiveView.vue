@@ -1,20 +1,18 @@
 <script setup>
 import { computed, watch } from 'vue';
-import { useToast } from 'primevue/usetoast';
-import { FilterMatchMode } from '@primevue/core/api';
 import { http } from '@/plugins/axios';
 import { useLiveResource } from '@/composables/useLiveResource';
+import { daymonthhhmm } from '@/composables/datefilters';
 
 const props = defineProps({
     teamId: {type: String, required: false},
 })
 
-const toast = useToast();
-
 // Read-only, and the one place in the SPA where a *scan* landing is the whole
 // point: this is the running patrol's checkpoint trail. Hence the `qr` dependency
 // (the subject is NATHEJK.*.qr.*.scanned; `scan` is only the table's name), which
-// has to be type-level because a scan event names the qr, never the team.
+// has to be type-level because a scan event names the qr, never the team. The
+// instance dependency covers the start row, whose time lives on the patrulje.
 //
 // Cost, measured rather than assumed: this endpoint answers in ~3.4ms with a 5.5KB
 // body, and the busiest minute in the existing scan data is 17 scans, so even a
@@ -34,49 +32,80 @@ const { data, error } = useLiveResource(
 const patrulje = computed(() => data.value?.team ?? {});
 const scans = computed(() => data.value?.scans ?? []);
 
+// The scans in time order, with the start prepended as its own event. The endpoint
+// already returns scans ordered by uts ascending, and the start is always the
+// earliest, so a prepend keeps the trail chronological. The synthetic row carries
+// `type: 'start'` so the template can label it and skip the position link a start
+// has no coordinates for; scan rows carry the resolved `scanner` the server built.
+const events = computed(() => {
+  const rows = scans.value.map((s) => ({
+    type: 'scan',
+    uts: s.uts,
+    scanner: s.scanner ?? { kind: 'unknown' },
+    latitude: s.latitude,
+    longitude: s.longitude,
+  }));
+  if (patrulje.value.startedUts) {
+    rows.unshift({
+      type: 'start',
+      uts: patrulje.value.startedUts,
+      label: `Startet · ${patrulje.value.memberCount} spejdere`,
+    });
+  }
+  return rows;
+});
+
+// A bandit catches teams ("Fanget af"); everyone else scans them ("Scannet af"). The
+// phone number is deliberately never shown — it is not something an operator can act
+// on at a glance. A bandit reads as <number> <name> <klan>; crew as <section> <name>,
+// with the post appended when they scanned while staffing one.
+const eventVerb = (e) => (e.scanner?.kind === 'bandit' ? 'Fanget af' : 'Scannet af');
+const scannerText = (s) => {
+  if (!s) return 'ukendt';
+  if (s.kind === 'bandit') {
+    return [s.armNumber, s.name, s.klan].filter(Boolean).join(' · ') || 'ukendt bandit';
+  }
+  if (s.kind === 'crew') {
+    const who = [s.sectionLabel, s.name].filter(Boolean).join(' · ');
+    return s.checkpointName ? `${who} @ ${s.checkpointName}` : who || 'ukendt';
+  }
+  // Unknown scanner: the phone is all we have, but it beats "ukendt".
+  return s.phone || 'ukendt';
+};
+
+// A scanner saves without a fix as "" or "0"; only a real pair gets a map link.
+const hasPosition = (e) =>
+  e.latitude && e.longitude && e.latitude !== '0' && e.longitude !== '0';
+const mapsUrl = (e) => `https://www.google.com/maps?q=${e.latitude},${e.longitude}`;
+
 watch(error, (err) => {
   if (err) console.log('patrulje scans load failed', err);
 });
-const start = async () => {
-  const payload = {
-    teamId: props.teamId,
-    members: [],
-  }
-  spejdere.value.forEach(s => payload.members.push({ memberId: s.memberId, name: s.name, phone: s.phone, phoneParent: s.phoneParent, starter: s.starter}))
-  try {
-    const response = await http.put('/patrulje/' + props.teamId + '/start', payload);
-    if (response.status == 200) {
-      toast.add({ severity: 'info', summary: 'Patrulje '+ patrulje.value.name + ' startet', detail: 'Videre til foto', life: 3000 });
-    } else {
-      toast.add({
-        closable: true,
-        life: 5000,
-        severity: 'error',
-        summary: 'Kunne ikke starte patrulje',
-        detail: 'Kunne ikke starte patrulje',
-      });
-      console.log('respinse', response)
-    }
-  } catch (error) {
-    toast.add({ severity: 'error', closable: true, life: 5000, summary: 'Kunne ikke starte patruljen', detail: error.message });
-    console.log('start patrulje failed', error);
-  }
-}
-
-const starterCount = computed(() => spejdere.value.filter(s => s.starter).length)
-
 </script>
 
 <template>
     <div class="card !bg-slate-300 pb-3" id="patruljer">
-
-        <DataTable :value="scans" class="!bg-transparent" size="small">
-            <Column field="uts" header="Navn"></Column>
-            <Column field="scannerPhone" header="Telefon"></Column>
+        <DataTable :value="events" class="!bg-transparent" size="small">
+            <Column header="Tidspunkt">
+                <template #body="{data}">
+                    <span :class="data.type === 'start' ? 'font-semibold' : ''">{{ daymonthhhmm(data.uts * 1000) }}</span>
+                </template>
+            </Column>
+            <Column header="Hændelse">
+                <template #body="{data}">
+                    <span v-if="data.type === 'start'" class="font-semibold">{{ data.label }}</span>
+                    <span v-else><span class="text-slate-600">{{ eventVerb(data) }}:</span> {{ scannerText(data.scanner) }}</span>
+                </template>
+            </Column>
+            <Column header="Position">
+                <template #body="{data}">
+                    <a v-if="hasPosition(data)" :href="mapsUrl(data)" target="_blank" rel="noopener">Kort</a>
+                </template>
+            </Column>
+            <template #empty>
+                <span class="text-slate-600">Ingen hændelser endnu</span>
+            </template>
         </DataTable>
-
-        <div class="grid mt-3">
-        </div>
     </div>
 </template>
 
