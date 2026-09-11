@@ -73,11 +73,13 @@ func (app *application) excelPluklisteHandler(w http.ResponseWriter, r *http.Req
 	}
 
 	crew, err := app.pluklisteRows(ctx, `
-		SELECT c.name, c.phone, t.quantity, t.size
+		SELECT c.name, c.phone, t.quantity, t.size,
+		       COALESCE(NULLIF(s.label, ''), c.sectionSlug) AS section
 		FROM (`+tshirtLines+`) t
 		JOIN crewmember c ON c.userId = t.memberId AND c.deleted = 0
+		LEFT JOIN section s ON s.slug = c.sectionSlug AND s.year = c.year
 		WHERE c.year = ?
-		ORDER BY c.name`, year, 4)
+		ORDER BY section, c.name`, year, 5)
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 		return
@@ -111,7 +113,8 @@ func (app *application) excelPluklisteHandler(w http.ResponseWriter, r *http.Req
 	writePluklisteSheet(xlsx, "Gøglere", styleTitle, view, base, baseW, goglere)
 
 	xlsx.NewSheet("Crew")
-	writePluklisteSheet(xlsx, "Crew", styleTitle, view, base, baseW, crew)
+	writePluklisteSheet(xlsx, "Crew", styleTitle, view,
+		append(base, "Sektion"), append(baseW, 30), crew)
 
 	writeXlsx(app, w, r, xlsx, "plukliste")
 }
