@@ -61,23 +61,28 @@ const onRowCollapse = (event) => {
   //  toast.add({ severity: 'success', summary: 'Row Group Collapsed', detail: 'Value: ' + event.data, life: 3000 });
 };
 
-const getSeverity = (status) => {
-    switch (status) {
-        case 'unqualified', 'PAY':
-            return 'danger';
-
-        case 'qualified', 'STARTED':
-            return 'success';
-
-        case 'new', 'PAID':
-            return 'info';
-
-        case 'negotiation':
-            return 'warn';
-
-        case 'renewal':
-            return null;
+// The status tag for a row. Four states an operator cares about, by colour:
+//
+//   aktiv     (green)      racing right now — started, with members still on the route
+//   betalt    (blue)       fully paid, ready, not yet started
+//   delbetalt (yellow)     accepted and paid for the minimum, but an added member is
+//                          not yet paid for ("delvis betalt", shortened)
+//   udgået    (light grey) started, but nobody is left racing — discontinued
+//
+// udgået is not a stored status: a started team whose activeMemberCount has reached
+// zero *is* discontinued (there is no event for it — see the spejderstatus
+// projection), so it is derived here rather than read from a column.
+const statusTag = (row) => {
+    if (row.signupStatus === 'STARTED') {
+        return row.activeMemberCount > 0
+            ? { value: 'aktiv', severity: 'success' }
+            : { value: 'udgået', severity: 'secondary' };
     }
+    if (row.signupStatus === 'PAID') return { value: 'betalt', severity: 'info' };
+    if (row.signupStatus === 'SEMIPAID') return { value: 'delbetalt', severity: 'warn' };
+    // The list is filtered to participants, so nothing else is expected here; show the
+    // raw status rather than hiding a state we did not anticipate.
+    return { value: (row.signupStatus || '').toLowerCase(), severity: 'contrast' };
 };
 </script>
 
@@ -120,9 +125,9 @@ const getSeverity = (status) => {
             <Column field="group" header="Gruppe / Division" sortable></Column>
             <Column field="korps" header="Korps"></Column>
             <Column field="memberCount" header="Spejdere" dataType="numeric" ></Column>
-            <Column field="status" header="Status">
+            <Column field="signupStatus" header="Status" sortable>
                 <template #body="{data}">
-                    <Tag :value="data.paidAmount/100" :severity="getSeverity(data.signupStatus)" />
+                    <Tag v-bind="statusTag(data)" />
                 </template>
             </Column>
             <Column field="date" header="Date"></Column>
