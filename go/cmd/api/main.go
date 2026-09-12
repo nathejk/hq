@@ -388,6 +388,9 @@ func main() {
 	// Both arguments are klantable: it is the read model the override dirty-checks
 	// against *and* the entity that owns what deleting a klan means.
 	cmds.Klan = commands.NewKlan(publisher, klantable, klantable)
+	// The operational note for banditter and postmandskab. patruljetable is the read
+	// model it dirty-checks against and reads the patrol's year from.
+	cmds.Patrulje = commands.NewPatrulje(publisher, patruljetable)
 	// Moving a paid member between not-yet-started teams (PRD 012). Publishes only —
 	// nothing new on the mux; the order, payment and spejder projections already
 	// mounted are what consume it. Its three collaborators are narrow read

@@ -155,13 +155,17 @@ func (q *querier) GetByID(ctx context.Context, teamID types.TeamID) (*Patrulje, 
 		return nil, tables.ErrRecordNotFound
 	}
 
-	query := `SELECT p.teamId, p.teamNumber, p.name, p.groupName, p.korps, p.liga, p.memberCount, p.activeMemberCount, p.signupStatus
+	// year, remark and remarkSeverity are selected because the remark command reads this
+	// row: it needs the note to dirty-check against, and the year to publish onto the
+	// patrol's own year rather than whatever the caller happens to think is current.
+	query := `SELECT p.teamId, p.year, p.teamNumber, p.name, p.groupName, p.korps, p.liga, p.memberCount, p.activeMemberCount, p.signupStatus, p.remark, p.remarkSeverity
 		FROM patrulje p
 		JOIN patruljestatus ps ON p.teamId = ps.teamID
 		WHERE p.teamId = ?`
 	var p Patrulje
 	err := q.db.QueryRow(query, teamID).Scan(
 		&p.TeamID,
+		&p.Year,
 		&p.TeamNumber,
 		&p.Name,
 		&p.Group,
@@ -170,6 +174,8 @@ func (q *querier) GetByID(ctx context.Context, teamID types.TeamID) (*Patrulje, 
 		&p.MemberCount,
 		&p.ActiveMemberCount,
 		&p.SignupStatus,
+		&p.Remark,
+		&p.RemarkSeverity,
 	)
 	if err != nil {
 		switch {

@@ -41,6 +41,11 @@ type Patrulje struct {
 	TshirtCount       int                `json:"tshirtCount"`
 	SignupStatus      types.SignupStatus `json:"signupStatus"`
 	PaidAmount        int                `json:"paidAmount"`
+
+	// Remark is HQ's operational note for banditter and postmandskab; RemarkSeverity how
+	// loudly to show it, and whether it is in force at all. See messages.go.
+	Remark         string `json:"remark"`
+	RemarkSeverity string `json:"remarkSeverity"`
 }
 
 type table struct {
@@ -96,6 +101,11 @@ var schemaMigrations = []string{
 	// a column from CREATE TABLE IF NOT EXISTS, and the .started handler's UPDATE would
 	// fail with "Unknown column" on every start until the table was dropped by hand.
 	`ALTER TABLE patrulje ADD COLUMN IF NOT EXISTS startedUts INT NOT NULL DEFAULT 0`,
+
+	// The operational note for banditter and postmandskab, added for the same reason as
+	// the two columns above: an existing database gains nothing from table.sql.
+	`ALTER TABLE patrulje ADD COLUMN IF NOT EXISTS remark TEXT NOT NULL DEFAULT ""`,
+	`ALTER TABLE patrulje ADD COLUMN IF NOT EXISTS remarkSeverity VARCHAR(20) NOT NULL DEFAULT ""`,
 }
 
 //go:embed table.sql

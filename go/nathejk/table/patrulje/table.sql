@@ -14,5 +14,15 @@ CREATE TABLE IF NOT EXISTS patrulje (
     contactEmail VARCHAR(99) NOT NULL DEFAULT "",
     contactRole VARCHAR(99) NOT NULL DEFAULT "",
     signupStatus VARCHAR(9) NOT NULL DEFAULT "",
+
+    -- Operational note shown to banditter and postmandskab ("Info til banditter og
+    -- postmandskab"), and how loudly to show it. Authored by HQ, not by the team.
+    --
+    -- remarkSeverity doubles as the on/off switch: `inactive` means the note is filed but
+    -- not in force, which is why it is one field rather than a note plus a boolean that
+    -- could disagree with it. "" is an unused note, the state almost every patrol is in.
+    remark TEXT NOT NULL DEFAULT "",
+    remarkSeverity VARCHAR(20) NOT NULL DEFAULT "",
+
     PRIMARY KEY (teamId)
 );

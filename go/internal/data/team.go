@@ -34,6 +34,12 @@ type Patrulje struct {
 	// StartedUts is when the patrol went on the route (unix seconds), or 0 if it has
 	// not started. The patrol trail shows it as the first event above the scans.
 	StartedUts int64 `json:"startedUts"`
+
+	// Remark is HQ's operational note for banditter and postmandskab, RemarkSeverity how
+	// loudly to show it — `inactive` meaning filed but not in force, and "" that no note
+	// was ever written. See nathejk/table/patrulje/messages.go.
+	Remark         string `json:"remark"`
+	RemarkSeverity string `json:"remarkSeverity"`
 }
 type Klan struct {
 	ID          types.TeamID       `json:"id"`
@@ -66,7 +72,7 @@ func (m TeamModel) GetPatrulje(teamID types.TeamID) (*Patrulje, error) {
 	}
 
 	query := `SELECT p.teamId, p.teamNumber, p.name, p.groupName, p.korps, p.liga, p.memberCount,
-			p.activeMemberCount, p.signupStatus, p.startedUts
+			p.activeMemberCount, p.signupStatus, p.startedUts, p.remark, p.remarkSeverity
 		FROM patrulje p
 		JOIN patruljestatus ps ON p.teamId = ps.teamID
 		WHERE p.teamId = ?`
@@ -82,6 +88,8 @@ func (m TeamModel) GetPatrulje(teamID types.TeamID) (*Patrulje, error) {
 		&p.ActiveMemberCount,
 		&p.SignupStatus,
 		&p.StartedUts,
+		&p.Remark,
+		&p.RemarkSeverity,
 	)
 	if err != nil {
 		switch {

@@ -10,6 +10,7 @@ import (
 	jsonapi "nathejk.dk/cmd/api/app"
 	"nathejk.dk/internal/data"
 	"nathejk.dk/nathejk/commands"
+	nathejktable "nathejk.dk/nathejk/table"
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/scan"
 )
@@ -30,6 +31,24 @@ type TeamConfig struct {
 	// populates it — klaner are not handled through the nødtelefon, so their members
 	// have no lifecycle — hence omitempty rather than an empty array on every payload.
 	MemberStatuses []SlugLabel `json:"memberStatuses,omitempty"`
+
+	// RemarkSeverities is the vocabulary for the "Info til banditter og postmandskab"
+	// note. Served for the same reason MemberStatuses is: the slugs are persisted values,
+	// so the picker must offer exactly what the command will accept.
+	RemarkSeverities []SlugLabel `json:"remarkSeverities,omitempty"`
+}
+
+// RemarkSeverities is the note's severities with Danish labels, in the order offered.
+//
+// "Ikke aktiv" is last because it is the way *out* of using the feature, not a level of
+// it: choosing it keeps the text on file while standing it down, which is why the client
+// greys the textarea rather than clearing it.
+func RemarkSeverities() []SlugLabel {
+	return []SlugLabel{
+		{Slug: patrulje.RemarkSeverityInformation, Label: "Information"},
+		{Slug: patrulje.RemarkSeverityStop, Label: "Fuld stop"},
+		{Slug: patrulje.RemarkSeverityInactive, Label: "Ikke aktiv"},
+	}
 }
 
 // MemberStatuses is the member lifecycle with Danish labels, served to the SPA rather
@@ -168,6 +187,8 @@ func (app *application) showPatruljeHandler(w http.ResponseWriter, r *http.Reque
 		// loose in the envelope because that is where this page already looks for the
 		// server's vocabulary — korps, t-shirt sizes, and now statuses.
 		MemberStatuses: MemberStatuses(),
+		// The vocabulary for the "Info til banditter og postmandskab" note.
+		RemarkSeverities: RemarkSeverities(),
 	}
 	contact, _ := app.models.Teams.GetContact(teamId)
 
@@ -199,6 +220,52 @@ func (app *application) showPatruljeHandler(w http.ResponseWriter, r *http.Reque
 		app.ServerErrorResponse(w, r, err)
 	}
 }
+
+// setPatruljeRemarkHandler stores the operational note for banditter and postmandskab.
+//
+// A no-op save answers 200 rather than an error: the client sends the whole note on every
+// save, so "nothing changed" is an ordinary outcome of pressing Save twice, not something
+// an operator needs telling about. The command still publishes nothing, which is what
+// keeps a redundant save from making every open patrol page revalidate.
+func (app *application) setPatruljeRemarkHandler(w http.ResponseWriter, r *http.Request) {
+	teamID := types.TeamID(app.ReadNamedParam(r, "id"))
+	if teamID == "" {
+		app.NotFoundResponse(w, r)
+		return
+	}
+	var input struct {
+		Remark   string `json:"remark"`
+		Severity string `json:"severity"`
+	}
+	if err := app.ReadJSON(w, r, &input); err != nil {
+		app.BadRequestResponse(w, r, err)
+		return
+	}
+
+	err := app.commands.Patrulje.SetRemark(r.Context(), teamID, input.Remark, input.Severity)
+	switch {
+	case err == nil, errors.Is(err, commands.ErrRemarkUnchanged):
+	case errors.Is(err, commands.ErrRemarkSeverityInvalid):
+		app.FailedValidationResponse(w, r, map[string]string{"severity": "ukendt værdi"})
+		return
+	// The patrulje querier's own not-found, from nathejk/table — not shared-go's
+	// identically named one, which this would silently never match.
+	case errors.Is(err, nathejktable.ErrRecordNotFound):
+		app.NotFoundResponse(w, r)
+		return
+	default:
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+
+	// No echo of the saved note: the projection applies asynchronously, so a row read back
+	// here could still be the old one. The client refetches — the live signal the event
+	// produces tells it to.
+	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"teamId": teamID}, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
 func (app *application) updatePatruljeHandler(w http.ResponseWriter, r *http.Request) {
 	teamID := types.TeamID(app.ReadNamedParam(r, "id"))
 	var input struct {

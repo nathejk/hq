@@ -84,6 +84,12 @@ type Commands struct {
 		SetStatus(context.Context, types.TeamID, types.SignupStatus) error
 		Delete(context.Context, types.TeamID) error
 	}
+
+	// Patrulje is the patrulje write side hq owns: the operational note for banditter
+	// and postmandskab. See patrulje.go for why it is not part of UpdatePatrulje.
+	Patrulje interface {
+		SetRemark(ctx context.Context, teamID types.TeamID, remark, severity string) error
+	}
 	Lok interface {
 		UpdateLok(types.LokID, string, int, []types.UserID, []types.TeamID) error
 		DeleteLok(types.LokID) error

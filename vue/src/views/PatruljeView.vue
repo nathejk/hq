@@ -280,6 +280,74 @@ const isTransfer = (order) => (order.lines ?? []).some((l) => (l.lineId ?? '').s
 const discontinued = computed(
   () => patrulje.value.signupStatus === 'STARTED' && patrulje.value.activeMemberCount === 0,
 )
+
+// --- Info til banditter og postmandskab (the remark) ---
+//
+// Collapsed to a single button until it is used, because almost no patrol will have one and
+// an always-open textarea on every patrol page is noise that trains operators to scroll past
+// the place a real "Fuld stop" would appear.
+//
+// "In use" is: there is text, or the severity is actively in force. That makes emptying the
+// text and choosing "Ikke aktiv" the way to put the feature away again — the page collapses
+// back to the button — while a stood-down note that still has text keeps showing, greyed,
+// because somebody deliberately wrote it and that is worth seeing.
+const remarkSeverities = computed(() => config.value.remarkSeverities ?? [])
+const hasRemark = computed(
+  () =>
+    !!patrulje.value.remark ||
+    (!!patrulje.value.remarkSeverity && patrulje.value.remarkSeverity !== 'inactive'),
+)
+
+const remarkOpen = ref(false)
+const remarkDraft = ref({ remark: '', severity: 'information' })
+const remarkSaving = ref(false)
+
+// Opening seeds the draft from the server's copy, so cancelling leaves nothing behind and
+// re-opening never shows a stale edit.
+const openRemark = () => {
+  remarkDraft.value = {
+    remark: patrulje.value.remark ?? '',
+    severity: patrulje.value.remarkSeverity || 'information',
+  }
+  remarkOpen.value = true
+}
+const closeRemark = () => { remarkOpen.value = false }
+
+// "Ikke aktiv" greys the text out rather than clearing it: the note is filed, not deleted,
+// and an operator putting it back in force should not have to retype it.
+const remarkDisabled = computed(() => remarkDraft.value.severity === 'inactive')
+
+const remarkSeverityLabel = (slug) =>
+  remarkSeverities.value.find((s) => s.slug === slug)?.label ?? slug
+
+// Colour follows meaning, and only "Fuld stop" is an alarm. `inactive` is deliberately grey
+// so a stood-down note cannot be mistaken for one in force.
+const remarkSeverityClass = (slug) =>
+  slug === 'stop'
+    ? 'border-red-300 bg-red-100 text-red-900'
+    : slug === 'information'
+      ? 'border-amber-300 bg-amber-100 text-amber-900'
+      : 'border-gray-300 bg-gray-100 text-gray-600'
+
+const saveRemark = async () => {
+  remarkSaving.value = true
+  try {
+    await http.put('/patrulje/' + props.teamId + '/remark', {
+      remark: remarkDraft.value.remark,
+      severity: remarkDraft.value.severity,
+    })
+    remarkOpen.value = false
+    // The projection applies asynchronously and the server echoes nothing, so refetch
+    // rather than patching the local copy — the live signal would do it anyway, this just
+    // does not wait for the round trip.
+    await refresh()
+  } catch (err) {
+    toast.add({ severity: 'error', closable: true, life: 5000,
+                summary: 'Kunne ikke gemme info', detail: err.message })
+  } finally {
+    remarkSaving.value = false
+  }
+}
 </script>
 
 <template>
@@ -303,6 +371,46 @@ const discontinued = computed(
                 <h1 class="font-nathejk text-2xl">{{ patrulje.number || '×' }} - {{ patrulje.name }}</h1>
 
                 <Button label="Tilmelding" icon="pi pi-external-link" iconPos="right" @click="linkToSignUp" />
+            </div>
+        </div>
+
+        <!--
+          Info til banditter og postmandskab. Three states, in increasing footprint: a plain
+          text button when no note exists, the note itself when one does, and the editor when
+          open. Most patrols never leave the first.
+        -->
+        <div class="my-3">
+            <template v-if="!remarkOpen">
+                <Button v-if="!hasRemark" label="Info til banditter og postmandskab"
+                        icon="pi pi-plus" text size="small" @click="openRemark" />
+                <div v-else class="flex items-start gap-2 rounded border p-3"
+                     :class="remarkSeverityClass(patrulje.remarkSeverity)">
+                    <div class="grow">
+                        <div class="text-xs uppercase tracking-wide font-semibold">
+                            Info til banditter og postmandskab · {{ remarkSeverityLabel(patrulje.remarkSeverity) }}
+                        </div>
+                        <div v-if="patrulje.remark" class="whitespace-pre-wrap">{{ patrulje.remark }}</div>
+                        <div v-else class="italic opacity-70">Ingen tekst</div>
+                    </div>
+                    <Button icon="pi pi-pencil" text size="small" aria-label="Rediger" @click="openRemark" />
+                </div>
+            </template>
+
+            <div v-else class="rounded border border-gray-300 bg-gray-50 p-3">
+                <label class="block text-sm font-semibold pb-1">Info til banditter og postmandskab</label>
+                <SelectButton v-model="remarkDraft.severity" :options="remarkSeverities"
+                              optionLabel="label" optionValue="slug" :allowEmpty="false" size="small" />
+                <Textarea v-model="remarkDraft.remark" rows="3" class="w-full mt-2"
+                          :disabled="remarkDisabled"
+                          placeholder="F.eks. hvorfor patruljen ikke må sendes videre" />
+                <div v-if="remarkDisabled" class="text-xs text-gray-500 pb-1">
+                    Teksten er gemt, men vises ikke som aktiv info.
+                </div>
+                <div class="flex gap-2 mt-1">
+                    <Button label="Gem" icon="pi pi-check" size="small"
+                            :loading="remarkSaving" @click="saveRemark" />
+                    <Button label="Annuller" text size="small" @click="closeRemark" />
+                </div>
             </div>
         </div>
 

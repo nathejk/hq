@@ -21,12 +21,29 @@ func (c *consumer) Consumes() (subjs []stream.Subject) {
 		subject.FromStr("NATHEJK:*.patrulje.*.updated"),
 		subject.FromStr("NATHEJK:*.patrulje.*.numberassigned"),
 		subject.FromStr("NATHEJK:*.patrulje.*.started"),
+		subject.FromStr("NATHEJK:*.patrulje.*.remark.set"),
 	}
 }
 
 func (c *consumer) HandleMessage(msg stream.Message) error {
 	//log.Printf("patrulje.go RECEIVED %q", msg.Subject().Subject())
 	switch true {
+	// Checked before the four-part patterns below. This subject has six parts, so
+	// `NATHEJK.*.patrulje.*.updated` would not match it — but the reverse ordering has
+	// bitten this codebase before (see the spejderstatus consumer), so keep the specific
+	// one first.
+	case msg.Subject().Match("NATHEJK.*.patrulje.*.remark.set"):
+		var body RemarkSet
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		// The whole note is restated by every event, so this is a plain overwrite: no
+		// IF(...) guard against an empty value, because clearing the note is a thing an
+		// operator does deliberately and must not be silently ignored.
+		query := "UPDATE patrulje SET remark=%q, remarkSeverity=%q WHERE teamId=%q"
+		args := []any{body.Remark, body.Severity, body.TeamID}
+		return c.w.Consume(fmt.Sprintf(query, args...))
+
 	case msg.Subject().Match("NATHEJK.*.patrulje.*.signedup"):
 		var body messages.NathejkTeamSignedUp
 		if err := msg.Body(&body); err != nil {
