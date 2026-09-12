@@ -164,7 +164,12 @@ const saveCorrection = async (member) => {
 // for a member who *started* here and continues elsewhere, and it keeps them on this
 // roster. This one changes which team they belong to, so they leave this list entirely.
 // Hence it is only offered before the patrol has started.
-const canReassign = computed(() => patrulje.value.status !== 'STARTED');
+//
+// Reads signupStatus, not status. It used to test `patrulje.status`, a field this payload
+// carries but never fills — so the comparison was always "" !== 'STARTED' and the button
+// never hid on a started patrol. The server refused the move anyway (see the reassign
+// handler's own SignupStatus check), so this offered an action that could only fail.
+const canReassign = computed(() => patrulje.value.signupStatus !== 'STARTED');
 
 // The dialog's whole state in one ref, so closing it cannot leave a stale destination
 // or a spinner behind.

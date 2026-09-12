@@ -12,14 +12,17 @@ type TeamModel struct {
 }
 
 type Patrulje struct {
-	ID          types.TeamID `json:"id"`
-	Number      string       `json:"number"`
-	Status      string       `json:"status"`
-	Name        string       `json:"name"`
-	Group       string       `json:"group"`
-	Korps       string       `json:"korps"`
-	Liga        string       `json:"liga"`
-	MemberCount int          `json:"memberCount"`
+	ID     types.TeamID `json:"id"`
+	Number string       `json:"number"`
+	// There is deliberately no `Status` field. One existed, was never selected by
+	// GetPatrulje, and therefore serialized as `"status": ""` on every patrol — which the
+	// SPA read to decide whether the pre-race member move was still allowed, and so always
+	// got "not started". SignupStatus below is the status; a second, empty one is a trap.
+	Name        string `json:"name"`
+	Group       string `json:"group"`
+	Korps       string `json:"korps"`
+	Liga        string `json:"liga"`
+	MemberCount int    `json:"memberCount"`
 
 	// ActiveMemberCount is the team's strength on the route: members still racing.
 	// Maintained by the spejderstatus projection (PRD 006). Zero on a team that
