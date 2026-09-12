@@ -89,6 +89,7 @@ type Commands struct {
 	// and postmandskab. See patrulje.go for why it is not part of UpdatePatrulje.
 	Patrulje interface {
 		SetRemark(ctx context.Context, teamID types.TeamID, remark, severity string) error
+		ClearRemark(ctx context.Context, teamID types.TeamID) error
 	}
 	Lok interface {
 		UpdateLok(types.LokID, string, int, []types.UserID, []types.TeamID) error

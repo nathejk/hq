@@ -266,6 +266,33 @@ func (app *application) setPatruljeRemarkHandler(w http.ResponseWriter, r *http.
 	}
 }
 
+// clearPatruljeRemarkHandler removes the note. See ClearRemark for why deleting is not the
+// same act as standing the note down to "Ikke aktiv".
+func (app *application) clearPatruljeRemarkHandler(w http.ResponseWriter, r *http.Request) {
+	teamID := types.TeamID(app.ReadNamedParam(r, "id"))
+	if teamID == "" {
+		app.NotFoundResponse(w, r)
+		return
+	}
+
+	err := app.commands.Patrulje.ClearRemark(r.Context(), teamID)
+	switch {
+	// Deleting a note that is already gone is a success: the caller wanted no note, and
+	// there is none.
+	case err == nil, errors.Is(err, commands.ErrRemarkUnchanged):
+	case errors.Is(err, nathejktable.ErrRecordNotFound):
+		app.NotFoundResponse(w, r)
+		return
+	default:
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+
+	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"teamId": teamID}, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
 func (app *application) updatePatruljeHandler(w http.ResponseWriter, r *http.Request) {
 	teamID := types.TeamID(app.ReadNamedParam(r, "id"))
 	var input struct {

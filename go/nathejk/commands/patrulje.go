@@ -71,3 +71,27 @@ func (c *patruljeCommander) SetRemark(ctx context.Context, teamID types.TeamID, 
 	msg.SetMeta(&messages.Metadata{Producer: "hq-api"})
 	return c.p.Publish(msg)
 }
+
+// ClearRemark removes the note entirely, returning the patrol to the state it was in before
+// anybody wrote one.
+//
+// Its own method rather than SetRemark("", ""), because an empty severity is not something an
+// operator may choose — SetRemark rejects it, which is what stops a note being saved with no
+// severity at all. Deleting is a different act with a different meaning, so it says so.
+//
+// Distinct from severity `inactive`: that keeps the text on file so it can be put back into
+// force, whereas this discards it.
+func (c *patruljeCommander) ClearRemark(ctx context.Context, teamID types.TeamID) error {
+	team, err := c.q.GetByID(ctx, teamID)
+	if err != nil {
+		return err
+	}
+	if team.Remark == "" && team.RemarkSeverity == "" {
+		return ErrRemarkUnchanged
+	}
+
+	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK.%s.patrulje.%s.remark.set", team.Year, teamID)))
+	msg.SetBody(&patrulje.RemarkSet{TeamID: teamID})
+	msg.SetMeta(&messages.Metadata{Producer: "hq-api"})
+	return c.p.Publish(msg)
+}

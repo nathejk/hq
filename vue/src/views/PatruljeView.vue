@@ -291,12 +291,37 @@ const discontinued = computed(
 // text and choosing "Ikke aktiv" the way to put the feature away again — the page collapses
 // back to the button — while a stood-down note that still has text keeps showing, greyed,
 // because somebody deliberately wrote it and that is worth seeing.
-const remarkSeverities = computed(() => config.value.remarkSeverities ?? [])
 const hasRemark = computed(
   () =>
     !!patrulje.value.remark ||
     (!!patrulje.value.remarkSeverity && patrulje.value.remarkSeverity !== 'inactive'),
 )
+
+// The colours each severity is shown in, keyed by the slug the server persists. Presentation,
+// so it lives here rather than on the payload — but it does mean this view already knows the
+// three slugs, which is why the fallback below is not a second source of truth.
+const remarkColours = {
+  information: 'border-amber-300 bg-amber-100 text-amber-900',
+  stop: 'border-red-300 bg-red-100 text-red-900',
+  inactive: 'border-gray-300 bg-gray-100 text-gray-600',
+}
+const remarkSeverityClass = (slug) => remarkColours[slug] ?? remarkColours.inactive
+
+// Labels come from the server (config.remarkSeverities), so the picker offers exactly what the
+// command accepts. The fallback matters in practice: this page renders from cache before it
+// revalidates, so a client holding a payload from before this feature shipped would otherwise
+// show an editor with no severity chooser at all.
+const remarkSeverityFallback = [
+  { slug: 'information', label: 'Information' },
+  { slug: 'stop', label: 'Fuld stop' },
+  { slug: 'inactive', label: 'Ikke aktiv' },
+]
+const remarkSeverities = computed(() => {
+  const served = config.value.remarkSeverities
+  return served && served.length ? served : remarkSeverityFallback
+})
+const remarkSeverityLabel = (slug) =>
+  remarkSeverities.value.find((s) => s.slug === slug)?.label ?? slug
 
 const remarkOpen = ref(false)
 const remarkDraft = ref({ remark: '', severity: 'information' })
@@ -317,18 +342,6 @@ const closeRemark = () => { remarkOpen.value = false }
 // and an operator putting it back in force should not have to retype it.
 const remarkDisabled = computed(() => remarkDraft.value.severity === 'inactive')
 
-const remarkSeverityLabel = (slug) =>
-  remarkSeverities.value.find((s) => s.slug === slug)?.label ?? slug
-
-// Colour follows meaning, and only "Fuld stop" is an alarm. `inactive` is deliberately grey
-// so a stood-down note cannot be mistaken for one in force.
-const remarkSeverityClass = (slug) =>
-  slug === 'stop'
-    ? 'border-red-300 bg-red-100 text-red-900'
-    : slug === 'information'
-      ? 'border-amber-300 bg-amber-100 text-amber-900'
-      : 'border-gray-300 bg-gray-100 text-gray-600'
-
 const saveRemark = async () => {
   remarkSaving.value = true
   try {
@@ -344,6 +357,22 @@ const saveRemark = async () => {
   } catch (err) {
     toast.add({ severity: 'error', closable: true, life: 5000,
                 summary: 'Kunne ikke gemme info', detail: err.message })
+  } finally {
+    remarkSaving.value = false
+  }
+}
+
+// Delete, as opposed to standing the note down: this discards the text so the page collapses
+// back to the button.
+const deleteRemark = async () => {
+  remarkSaving.value = true
+  try {
+    await http.delete('/patrulje/' + props.teamId + '/remark')
+    remarkOpen.value = false
+    await refresh()
+  } catch (err) {
+    toast.add({ severity: 'error', closable: true, life: 5000,
+                summary: 'Kunne ikke slette info', detail: err.message })
   } finally {
     remarkSaving.value = false
   }
@@ -398,9 +427,24 @@ const saveRemark = async () => {
 
             <div v-else class="rounded border border-gray-300 bg-gray-50 p-3">
                 <label class="block text-sm font-semibold pb-1">Info til banditter og postmandskab</label>
-                <SelectButton v-model="remarkDraft.severity" :options="remarkSeverities"
-                              optionLabel="label" optionValue="slug" :allowEmpty="false" size="small" />
-                <Textarea v-model="remarkDraft.remark" rows="3" class="w-full mt-2"
+                <!--
+                  Plain buttons rather than a SelectButton: each option has to carry its own
+                  meaning's colour (yellow for Information, red for Fuld stop, grey for Ikke
+                  aktiv), and a SelectButton styles every option alike. The chosen one is
+                  filled and ringed; the rest stay outlined so the choice is unambiguous.
+                -->
+                <div class="flex flex-wrap gap-2 pb-2">
+                    <button v-for="s in remarkSeverities" :key="s.slug" type="button"
+                            class="rounded border px-3 py-1 text-sm"
+                            :class="[remarkSeverityClass(s.slug),
+                                     remarkDraft.severity === s.slug
+                                       ? 'ring-2 ring-offset-1 ring-gray-500 font-semibold'
+                                       : 'opacity-60']"
+                            @click="remarkDraft.severity = s.slug">
+                        {{ s.label }}
+                    </button>
+                </div>
+                <Textarea v-model="remarkDraft.remark" rows="3" class="w-full"
                           :disabled="remarkDisabled"
                           placeholder="F.eks. hvorfor patruljen ikke må sendes videre" />
                 <div v-if="remarkDisabled" class="text-xs text-gray-500 pb-1">
@@ -410,6 +454,11 @@ const saveRemark = async () => {
                     <Button label="Gem" icon="pi pi-check" size="small"
                             :loading="remarkSaving" @click="saveRemark" />
                     <Button label="Annuller" text size="small" @click="closeRemark" />
+                    <!-- Slet discards the note entirely, as opposed to "Ikke aktiv" which
+                         files it. Hidden until there is something to delete. -->
+                    <Button v-if="patrulje.remark || patrulje.remarkSeverity"
+                            label="Slet" icon="pi pi-trash" text severity="danger" size="small"
+                            class="ml-auto" :loading="remarkSaving" @click="deleteRemark" />
                 </div>
             </div>
         </div>
