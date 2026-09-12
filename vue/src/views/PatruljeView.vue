@@ -270,10 +270,31 @@ const statusSeverity = (status) => (status === 'PAID' ? 'success' : 'warn')
 // Detected from the lines rather than from a column on the order: the ids are already
 // deterministic and carry the transfer, so nothing extra had to be stored for this.
 const isTransfer = (order) => (order.lines ?? []).some((l) => (l.lineId ?? '').startsWith('transfer:'))
+
+// Udgået: the patrol started and has nobody left racing.
+//
+// Both halves are required. There is no event for discontinuation — activeMemberCount
+// reaching zero *is* the fact (the spejderstatus projection owns the count) — but zero on a
+// team that never started means nothing at all, so testing the count alone would brand every
+// patrol of a year that has not raced yet as withdrawn.
+const discontinued = computed(
+  () => patrulje.value.signupStatus === 'STARTED' && patrulje.value.activeMemberCount === 0,
+)
 </script>
 
 <template>
     <div class="card" id="patruljer">
+        <!--
+          Udgået, stated before anything else on the page: every number below it — strength,
+          maps, the members' own statuses — reads differently for a patrol that has left the
+          race, and an operator must not have to infer that from a count.
+        -->
+        <div v-if="discontinued"
+             class="mb-3 flex items-center gap-2 rounded border border-amber-300 bg-amber-100 p-3 text-amber-900">
+            <i class="pi pi-exclamation-triangle" />
+            <span><span class="font-semibold">Patruljen er udgået</span> — ingen medlemmer er tilbage i løbet.</span>
+        </div>
+
         <div class="flex items-start gap-3">
             <!-- The patrol's photograph, from the covers resource shared with the list.
                  Clicking it opens every picture of this team, with the cover picker. -->
