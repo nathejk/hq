@@ -231,8 +231,12 @@ know at 16:00 that it needs two cars, which is the entire point.
 **Tasks**
 
 - [ ] A task has a **kind**: `pickup` (people), `transport` (A to B), `collection` (fetch to
-      HQ), `delivery` (take out from HQ). Four kinds because they read differently on a board
-      and default their places differently — not because their lifecycles differ.
+      HQ), `delivery` (take out from HQ), `samarit` (samaritter sent to look at somebody where
+      they stand). Kinds because they read differently on a board and default their places
+      differently — not because their lifecycles differ.
+- [ ] A `samarit` call-out **moves nothing**: it has one place, becomes a single `action` stop on
+      a tour, and cannot record people aboard — being looked at is not being collected. If they
+      then have to come along, that is a second task, of kind `pickup`.
 - [ ] A task has a **pick-up place** and a **drop-off place**, each of which is a checkpoint, a
       lok, HQ, or free text. Free text is the normal case for "på Slangerupvej ved skovbrynet",
       not a fallback for missing data.
@@ -261,6 +265,15 @@ know at 16:00 that it needs two cars, which is the entire point.
       load.
 - [ ] Stops can be **reordered, added and removed** while the tour is `planned` or `underway`;
       **visited stops are fixed**.
+- [ ] **A tour stops at each place at most once.** Two discontinued scouts collected from two
+      roadsides is one drive home, not two arrivals at HQ — so planning a task whose place the
+      tour already visits *joins that stop* rather than adding a second one, and a new pickup is
+      pulled in ahead of the dropoff it shares so the load still precedes its unload. A task
+      that moves something between two posts adds no return leg: the car waits at the dropoff
+      until the next task, which is what an idle car does. A plan that does drive to the same
+      unvisited place twice is **warned about, not refused** — a car really may have to come
+      back for a forgotten trailer. Returning to a place the car has already *left* is a second
+      trip that happened, and warns about nothing.
 - [ ] Marking a stop **visited** advances the tour and completes or progresses the tasks at it.
 - [ ] A tour with no remaining unvisited stops offers to **complete**.
 - [ ] **Warn when a tour's pickups exceed the vehicle's seats.** `seatCount` is already on the

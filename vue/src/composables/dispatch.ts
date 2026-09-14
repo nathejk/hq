@@ -18,7 +18,7 @@ import { severityLabel, severityTagSeverity, severityOptions } from './severity'
 // (task 112): two race-night desks should not have two words for urgent.
 export { severityLabel as priorityLabel, severityTagSeverity as priorityTagSeverity, severityOptions as priorityOptions }
 
-export type TaskKind = 'pickup' | 'transport' | 'collection' | 'delivery'
+export type TaskKind = 'pickup' | 'transport' | 'collection' | 'delivery' | 'samarit'
 export type TaskState = 'queued' | 'planned' | 'underway' | 'done' | 'cancelled'
 export type TourState = 'planned' | 'underway' | 'completed' | 'cancelled'
 export type PlaceKind = 'checkpoint' | 'lok' | 'hq' | 'text'
@@ -148,17 +148,20 @@ const kindLabels: Record<string, string> = {
   transport: 'Transport',
   collection: 'Indsamling',
   delivery: 'Levering',
+  samarit: 'Samaritter',
 }
 
 export const kindLabel = (kind: string) => kindLabels[kind] ?? kind
 
-// The four kinds read differently on a board, which is the reason they exist — so they look
-// different too. A pickup is people and gets the car; the rest are things.
+// The kinds read differently on a board, which is the reason they exist — so they look
+// different too. A pickup is people and gets the car; a samaritter call-out is people too but
+// brings nobody back; the rest are things.
 const kindIcons: Record<string, string> = {
   pickup: 'pi pi-user',
   transport: 'pi pi-arrow-right-arrow-left',
   collection: 'pi pi-download',
   delivery: 'pi pi-upload',
+  samarit: 'pi pi-heart-fill',
 }
 
 export const kindIcon = (kind: string) => kindIcons[kind] ?? 'pi pi-box'
@@ -260,6 +263,161 @@ export const placeLine = (place?: Place) => {
   return placeKindLabel(place.kind)
 }
 
+/**
+ * The one line that says where a task happens.
+ *
+ * Two places joined by an arrow for everything that moves — and a single place for a samaritter
+ * call-out, which moves nothing. Rendering its empty dropoff would put "→ Adresse" on the board,
+ * a destination nobody drives to and the operator would have to learn to ignore.
+ */
+export const taskRoute = (task: Pick<Task, 'kind' | 'pickup' | 'dropoff'>) => {
+  const from = placeLine(task.pickup)
+  // A place with no label and no kind but `text` is one nobody filled in — which is exactly what
+  // a call-out's dropoff is, and what an aborted edit of any other kind leaves behind.
+  const unset = !task.dropoff?.label && (task.dropoff?.kind ?? 'text') === 'text'
+  if (task.kind === 'samarit' || unset) return from
+  return `${from} → ${placeLine(task.dropoff)}`
+}
+
+// --- planning a task onto a tour (task 118) ---
+
+/**
+ * The identity of a place, for deciding whether two stops are the *same* stop.
+ *
+ * Known places are identified by what they are, not by what somebody typed: a checkpoint is the
+ * same checkpoint however the label was spelled, and there is exactly one HQ. Free text is
+ * compared case- and space-insensitively, which is as far as it is honest to go — "ved skovbrynet"
+ * and "Slangerupvej" may well be the same gate, and no string comparison can know that.
+ *
+ * Returns null for a place nobody has filled in. An unnamed place is not equal to another unnamed
+ * place: two scouts waiting somewhere unrecorded are two stops, and merging them would lose one.
+ */
+const placeKey = (place?: Place): string | null => {
+  if (!place) return null
+  if (place.kind !== 'text') return `${place.kind}:${place.refId ?? ''}`
+  const label = place.label?.trim().toLowerCase()
+  return label ? `text:${label}` : null
+}
+
+/** Whether two places are the same place a car would stop at. */
+export const samePlace = (a?: Place, b?: Place) => {
+  const key = placeKey(a)
+  return key !== null && key === placeKey(b)
+}
+
+/**
+ * The stops one task needs on a tour.
+ *
+ * A pickup, transport, collection or delivery becomes **two** stops — where it is loaded and where
+ * it is unloaded — because that is what it is: a task that moves something occupies two places,
+ * and a single stop would make "when will they be collected" and "when will they arrive" the same
+ * number.
+ *
+ * A samaritter call-out becomes **one** stop with role `action`: it moves nothing, so a second
+ * stop would be a place the car never goes and a time the desk would be asked about.
+ *
+ * A task whose place nobody filled in still gets a stop, labelled with what it is for — the plan
+ * is allowed to be vaguer than the map, and the driver is on the phone anyway.
+ */
+export const stopsForTask = (task: Task): TourStop[] => {
+  const stop = (fallback: string, place: Place, role: Role): TourStop => ({
+    stopId: '',
+    sortOrder: 0,
+    place: place?.label ? place : { kind: 'text', label: fallback },
+    plannedUts: null,
+    override: false,
+    visitedUts: null,
+    tasks: [{ taskId: task.id, role }],
+  })
+  if (task.kind === 'samarit') return [stop('Tilses', task.pickup, 'action')]
+  return [stop('Hentes', task.pickup, 'load'), stop('Afleveres', task.dropoff, 'unload')]
+}
+
+/**
+ * Add a task to a tour's stops, reusing the places the tour already visits.
+ *
+ * **A tour never stops at the same place twice.** Two discontinued scouts collected from two
+ * roadsides is one drive home, not two arrivals at HQ; a second HQ row is a stop no driver makes
+ * and a time the board would predict for it. So a stop whose place the tour already has joins that
+ * stop instead of being appended — which is also what makes "3 opgaver" on one row the normal
+ * sight it should be.
+ *
+ * Merging is only ever done with a stop **not yet visited**: a place the car has already left is
+ * history, and hanging new work off it would mark that work done the moment the tour moves on.
+ *
+ * The load is kept in front of its own unload, because a plan that contradicts itself is refused
+ * by the API (`ErrUnloadBeforeLoad`) — so a dropoff the tour already visits pulls the new pickup
+ * in ahead of it rather than producing a 422 the operator has to interpret. A transport dropped on
+ * a tour whose last stop is where it is going therefore lands *before* that stop; a tour that ends
+ * at a dropoff simply waits there for the next task, which is what an idle car does.
+ *
+ * `afterStopId` is where the operator dropped it, and is respected wherever it does not
+ * contradict the above.
+ */
+export const planTaskOntoStops = (
+  stops: TourStop[],
+  task: Task,
+  afterStopId?: string,
+): TourStop[] => {
+  const next = stops.map((s) => ({ ...s, tasks: [...s.tasks] }))
+  const at =
+    afterStopId && next.some((s) => s.stopId === afterStopId)
+      ? next.findIndex((s) => s.stopId === afterStopId) + 1
+      : next.length
+
+  // A stop the tour already makes at this place, and has not yet made. `before` bounds the search
+  // for a load, so it cannot merge into a stop that comes after its own unload.
+  const mergeable = (part: TourStop, before?: number) =>
+    next.findIndex(
+      (s, i) =>
+        (before === undefined || i < before) && !s.visitedUts && samePlace(s.place, part.place),
+    )
+
+  const attach = (stop: TourStop, part: TourStop) => {
+    for (const t of part.tasks) {
+      if (!stop.tasks.some((existing) => existing.taskId === t.taskId && existing.role === t.role)) {
+        stop.tasks.push(t)
+      }
+    }
+  }
+
+  const parts = stopsForTask(task)
+
+  // Whether a part may join a stop the tour already makes is decided from the *task's* places, not
+  // from the stop we just built: an unfilled place is given a label saying what it is for
+  // ("Hentes"), and two stops labelled that way are two unrecorded roadsides, not one place.
+  const named = (place?: Place) => !!place?.label
+
+  // A call-out is one stop with nothing to order it against.
+  if (parts.length === 1) {
+    const i = named(task.pickup) ? mergeable(parts[0]) : -1
+    if (i >= 0) attach(next[i], parts[0])
+    else next.splice(at, 0, parts[0])
+    return next
+  }
+
+  const [load, unload] = parts
+  let unloadIdx = named(task.dropoff) ? mergeable(unload) : -1
+  const loadIdx = named(task.pickup)
+    ? mergeable(load, unloadIdx >= 0 ? unloadIdx : undefined)
+    : -1
+
+  let loadAt: number
+  if (loadIdx >= 0) {
+    attach(next[loadIdx], load)
+    loadAt = loadIdx
+  } else {
+    loadAt = unloadIdx >= 0 ? Math.min(at, unloadIdx) : at
+    next.splice(loadAt, 0, load)
+    if (unloadIdx >= loadAt) unloadIdx += 1
+  }
+
+  if (unloadIdx >= 0) attach(next[unloadIdx], unload)
+  else next.splice(Math.max(at, loadAt + 1), 0, unload)
+
+  return next
+}
+
 // --- capacity, and the answer to "when?" for a task nobody has planned (task 116) ---
 
 /**
@@ -280,6 +438,9 @@ export const ALLOWANCE_MINUTES: Record<TaskKind, number> = {
   transport: 20,
   collection: 20,
   delivery: 20,
+  // A call-out is the drive plus looking somebody over, which is not a stop you tick off in
+  // passing: a blister gets cleaned and taped where the scout is standing.
+  samarit: 30,
 }
 
 /** Units on duty at an instant. */

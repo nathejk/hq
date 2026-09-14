@@ -41,7 +41,8 @@ import {
   estimateFor,
   kindIcon,
   kindLabel,
-  placeLine,
+  planTaskOntoStops,
+  taskRoute,
   priorityLabel,
   priorityTagSeverity,
   stateLabel,
@@ -327,36 +328,14 @@ async function saveStops(tour: Tour, stops: TourStop[]) {
 /**
  * Put a queued task on a tour.
  *
- * A pickup or transport becomes **two** stops — where it is loaded and where it is unloaded —
- * because that is what it is: a task that moves something occupies two places, and a single stop
- * would make "when will they be collected" and "when will they arrive" the same number.
+ * The stops themselves — and the rule that a tour never returns to the same place twice — live in
+ * `composables/dispatch`, where they can be tested without a board on screen.
  */
-function stopsForTask(task: Task): TourStop[] {
-  const blank = (label: string, place: Task['pickup'], role: 'load' | 'unload'): TourStop => ({
-    stopId: '',
-    sortOrder: 0,
-    place: place?.label ? place : { kind: 'text', label },
-    plannedUts: null,
-    override: false,
-    visitedUts: null,
-    tasks: [{ taskId: task.id, role }],
-  })
-  return [blank('Hentes', task.pickup, 'load'), blank('Afleveres', task.dropoff, 'unload')]
-}
-
 function onDropTask(tour: Tour, payload: { taskId: string; afterStopId?: string }) {
   dragging.value = false
   const task = tasksById.value[payload.taskId]
   if (!task) return
-  const stops = [...tour.stops]
-  const added = stopsForTask(task)
-  if (payload.afterStopId) {
-    const at = stops.findIndex((s) => s.stopId === payload.afterStopId)
-    stops.splice(at + 1, 0, ...added)
-  } else {
-    stops.push(...added)
-  }
-  void saveStops(tour, stops)
+  void saveStops(tour, planTaskOntoStops(tour.stops, task, payload.afterStopId))
 }
 
 function onMoveStop(tour: Tour, payload: { stopId: string; direction: -1 | 1 }) {
@@ -609,7 +588,7 @@ function errorDetail(err: any) {
                   />
                 </div>
                 <div class="text-xs text-gray-600">
-                  {{ placeLine(task.pickup) }} → {{ placeLine(task.dropoff) }}
+                  {{ taskRoute(task) }}
                   <span v-if="task.spaceNeeds"> · {{ task.spaceNeeds }}</span>
                 </div>
               </div>

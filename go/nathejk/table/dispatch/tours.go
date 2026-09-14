@@ -317,7 +317,7 @@ func (c commander) SetStops(ctx context.Context, actor Actor, year types.YearSlu
 			return nil, err
 		}
 	}
-	return []Warning{}, nil
+	return repeatedPlaceWarnings(out), nil
 }
 
 // StartTour records that the car has set off.
@@ -529,6 +529,66 @@ func taskIDs(stops []TourStop) map[TaskID]bool {
 		}
 	}
 	return ids
+}
+
+// repeatedPlaceWarnings reports a plan that drives to the same place twice.
+//
+// One tour, one visit per place: two discontinued scouts collected from two roadsides is one
+// drive home, not two arrivals at HQ. A second row for the same place is a stop no driver makes,
+// with a predicted time for it, and it makes a full car look like two half-empty ones.
+//
+// A **warning, not a refusal**, for the reason the seat check is: the desk knows things the
+// platform does not, and a car that really does have to come back for a forgotten trailer must be
+// able to say so. The board avoids producing these in the first place by merging a task's stop
+// into the place the tour already visits.
+//
+// Only *unvisited* stops are compared. A place the car has already left and later returns to is a
+// second trip that actually happened, and history is not a planning mistake.
+func repeatedPlaceWarnings(stops []Stop) []Warning {
+	warnings := []Warning{}
+	seen := map[string]bool{}
+	for _, s := range stops {
+		if s.VisitedUts != nil {
+			continue
+		}
+		key := placeKey(s.Place)
+		// An unnamed place is not equal to another unnamed place: two scouts waiting somewhere
+		// nobody wrote down are two stops, and calling them one would lose a scout.
+		if key == "" {
+			continue
+		}
+		if seen[key] {
+			warnings = append(warnings, Warning{
+				Code:    "repeated_place",
+				Message: "Turen kører til " + placeName(s.Place) + " mere end én gang",
+			})
+			continue
+		}
+		seen[key] = true
+	}
+	return warnings
+}
+
+// placeKey identifies a place by what it is rather than by what somebody typed: one HQ, one
+// checkpoint however its label was spelled. Free text is compared case- and space-insensitively,
+// which is as far as it is honest to go. Empty for a place nobody filled in.
+func placeKey(p Place) string {
+	if p.Kind != "" && p.Kind != PlaceText {
+		return string(p.Kind) + ":" + p.RefID
+	}
+	label := strings.ToLower(strings.TrimSpace(p.Label))
+	if label == "" {
+		return ""
+	}
+	return "text:" + label
+}
+
+// placeName is a place as an operator reads it, for a message.
+func placeName(p Place) string {
+	if p.Label != "" {
+		return p.Label
+	}
+	return string(p.Kind)
 }
 
 // checkLoadBeforeUnload refuses a plan in which something is delivered before it is collected.

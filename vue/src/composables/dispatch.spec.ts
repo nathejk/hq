@@ -4,13 +4,16 @@ import {
   DEADLINE_WARNING_MINUTES,
   type Duty,
   type Task,
+  type TourStop,
   deadlineRisk,
   estimateFor,
   formatSpan,
   nextDutyStart,
+  planTaskOntoStops,
   unitReadiness,
   unitsOnDuty,
   untilUts,
+  taskRoute,
 } from './dispatch'
 
 // The arithmetic behind the two numbers the kørsel board is judged on: how long somebody has
@@ -205,5 +208,112 @@ describe('spans', () => {
   it('says whether a deadline is ahead or behind', () => {
     expect(untilUts(nowUts + 42 * minute, nowMs)).toBe('om 42m')
     expect(untilUts(nowUts - 8 * minute, nowMs)).toBe('for 8m siden')
+  })
+})
+
+describe('the route line', () => {
+  it('joins both ends of something that moves', () => {
+    expect(taskRoute(task())).toBe('ved Post 2B → HQ')
+  })
+
+  it('is one place for a samaritter call-out, which moves nothing', () => {
+    // A call-out has no destination, and "→ Adresse" is a place nobody drives to.
+    expect(
+      taskRoute(task({ kind: 'samarit', dropoff: { kind: 'text', label: '' } })),
+    ).toBe('ved Post 2B')
+  })
+})
+
+describe('planning a task onto a tour', () => {
+  const stop = (label: string, over: Partial<TourStop> = {}): TourStop => ({
+    stopId: `s-${label}`,
+    sortOrder: 0,
+    place: { kind: 'text', label },
+    plannedUts: null,
+    override: false,
+    visitedUts: null,
+    tasks: [],
+    ...over,
+  })
+  const hqStop = (over: Partial<TourStop> = {}) =>
+    stop('HQ', { stopId: 's-hq', place: { kind: 'hq', label: 'HQ' }, ...over })
+  const pickupTask = (id: string, from: string): Task =>
+    task({ id, kind: 'pickup', pickup: { kind: 'text', label: from }, dropoff: { kind: 'hq', label: 'HQ' } })
+
+  it('is a load and an unload for something that moves', () => {
+    const stops = planTaskOntoStops([], pickupTask('t-1', 'ved Post 2B'))
+    expect(stops.map((s) => s.place.label)).toEqual(['ved Post 2B', 'HQ'])
+    expect(stops.map((s) => s.tasks[0].role)).toEqual(['load', 'unload'])
+  })
+
+  it('never returns to HQ twice: a second pickup joins the drive home', () => {
+    // Two discontinued scouts from two roadsides is one arrival at HQ, with two scouts in the car.
+    let stops = planTaskOntoStops([], pickupTask('t-1', 'ved Post 2B'))
+    stops = planTaskOntoStops(stops, pickupTask('t-2', 'ved Lok 3'))
+    expect(stops.map((s) => s.place.label)).toEqual(['ved Post 2B', 'ved Lok 3', 'HQ'])
+    expect(stops[2].tasks).toEqual([
+      { taskId: 't-1', role: 'unload' },
+      { taskId: 't-2', role: 'unload' },
+    ])
+  })
+
+  it('pulls a new pickup in front of the HQ stop it shares', () => {
+    // The load must not come after its own unload — the API refuses that plan outright.
+    const stops = planTaskOntoStops([hqStop({ tasks: [{ taskId: 't-1', role: 'unload' }] })], pickupTask('t-2', 'ved Lok 3'))
+    expect(stops.map((s) => s.place.label)).toEqual(['ved Lok 3', 'HQ'])
+    expect(stops[1].tasks.map((t) => t.taskId)).toEqual(['t-1', 't-2'])
+  })
+
+  it('leaves a transport idle at its dropoff rather than sending it home', () => {
+    const stops = planTaskOntoStops(
+      [],
+      task({
+        id: 't-3',
+        kind: 'transport',
+        pickup: { kind: 'checkpoint', refId: 'cp-2a', label: 'Post 2A' },
+        dropoff: { kind: 'checkpoint', refId: 'cp-2b', label: 'Post 2B' },
+      }),
+    )
+    expect(stops.map((s) => s.place.label)).toEqual(['Post 2A', 'Post 2B'])
+  })
+
+  it('will not hang new work off a stop the car has already left', () => {
+    // Merging into history would mark the new task done the moment the tour moves on.
+    const stops = planTaskOntoStops([hqStop({ visitedUts: 9000 })], pickupTask('t-2', 'ved Lok 3'))
+    expect(stops.map((s) => s.place.label)).toEqual(['HQ', 'ved Lok 3', 'HQ'])
+  })
+
+  it('keeps two places nobody named apart', () => {
+    // Two scouts waiting somewhere unrecorded are two stops; merging them would lose one.
+    let stops = planTaskOntoStops([], task({ id: 't-1', pickup: { kind: 'text', label: '' } }))
+    stops = planTaskOntoStops(stops, task({ id: 't-2', pickup: { kind: 'text', label: '' } }))
+    expect(stops.filter((s) => s.place.label === 'Hentes')).toHaveLength(2)
+  })
+
+  it('gives a samaritter call-out one stop, and reuses a place already on the tour', () => {
+    const callout = task({
+      id: 't-4',
+      kind: 'samarit',
+      pickup: { kind: 'checkpoint', refId: 'cp-2a', label: 'Post 2A' },
+      dropoff: { kind: 'text', label: '' },
+    })
+    const existing = stop('Post 2A', { place: { kind: 'checkpoint', refId: 'cp-2a', label: 'Post 2A' } })
+    const stops = planTaskOntoStops([existing], callout)
+    expect(stops).toHaveLength(1)
+    expect(stops[0].tasks).toEqual([{ taskId: 't-4', role: 'action' }])
+  })
+
+  it('drops the task where the operator dropped it', () => {
+    const stops = planTaskOntoStops(
+      [stop('Post 2A'), stop('Post 2C')],
+      task({
+        id: 't-5',
+        kind: 'transport',
+        pickup: { kind: 'text', label: 'Post 2B' },
+        dropoff: { kind: 'text', label: 'Post 2D' },
+      }),
+      's-Post 2A',
+    )
+    expect(stops.map((s) => s.place.label)).toEqual(['Post 2A', 'Post 2B', 'Post 2D', 'Post 2C'])
   })
 })

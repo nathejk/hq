@@ -423,3 +423,79 @@ func TestClearingATourDepartureIsDistinctFromLeavingItAlone(t *testing.T) {
 }
 
 func ptrptr(v *int64) **int64 { return &v }
+
+func TestStoppingTwiceAtTheSamePlaceWarnsButIsAllowed(t *testing.T) {
+	// One tour, one visit per place: two scouts collected from two roadsides is one drive home,
+	// not two arrivals at HQ. A warning rather than a refusal, because a car that really does have
+	// to come back for a forgotten trailer must still be plannable.
+	p := &recordingPublisher{}
+	c := commander{p: p, q: tourQueries{stubQueries: stubQueries{tour: departedAt(1000)}}}
+
+	warnings, err := c.SetStops(context.Background(), Actor{}, "2026", "tour-1", []StopInput{
+		{Place: Place{Kind: PlaceText, Label: "ved Post 2B"}},
+		{Place: Place{Kind: PlaceHQ, Label: "HQ"}},
+		{Place: Place{Kind: PlaceHQ, Label: "Hovedkvarteret"}},
+	})
+	if err != nil {
+		t.Fatalf("SetStops: %v", err)
+	}
+	if len(warnings) != 1 || warnings[0].Code != "repeated_place" {
+		t.Fatalf("warnings = %+v, want one repeated_place", warnings)
+	}
+}
+
+func TestAPlanThatVisitsEachPlaceOnceWarnsAboutNothing(t *testing.T) {
+	p := &recordingPublisher{}
+	c := commander{p: p, q: tourQueries{stubQueries: stubQueries{tour: departedAt(1000)}}}
+
+	warnings, err := c.SetStops(context.Background(), Actor{}, "2026", "tour-1", []StopInput{
+		{Place: Place{Kind: PlaceCheckpoint, RefID: "cp-2a", Label: "Post 2A"}},
+		{Place: Place{Kind: PlaceCheckpoint, RefID: "cp-2b", Label: "Post 2B"}},
+		{Place: Place{Kind: PlaceHQ, Label: "HQ"}},
+	})
+	if err != nil {
+		t.Fatalf("SetStops: %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Errorf("warnings = %+v, want none", warnings)
+	}
+}
+
+func TestTwoPlacesNobodyFilledInAreNotTheSamePlace(t *testing.T) {
+	// Two scouts waiting somewhere nobody wrote down are two stops. Warning about it would teach
+	// the desk to ignore the warning that matters.
+	p := &recordingPublisher{}
+	c := commander{p: p, q: tourQueries{stubQueries: stubQueries{tour: departedAt(1000)}}}
+
+	warnings, err := c.SetStops(context.Background(), Actor{}, "2026", "tour-1", []StopInput{
+		{Place: Place{Kind: PlaceText}},
+		{Place: Place{Kind: PlaceText}},
+	})
+	if err != nil {
+		t.Fatalf("SetStops: %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Errorf("warnings = %+v, want none", warnings)
+	}
+}
+
+func TestComingBackToAPlaceTheCarHasAlreadyLeftIsNotAWarning(t *testing.T) {
+	// History is not a planning mistake: the car went to HQ, left, and is going again.
+	visited := int64(9000)
+	p := &recordingPublisher{}
+	c := commander{p: p, q: tourQueries{stubQueries: stubQueries{
+		tour: departedAt(1000, TourStop{StopID: "stop-a", Place: Place{Kind: PlaceHQ, Label: "HQ"}, VisitedUts: &visited}),
+	}}}
+
+	warnings, err := c.SetStops(context.Background(), Actor{}, "2026", "tour-1", []StopInput{
+		{StopID: "stop-a", Place: Place{Kind: PlaceHQ, Label: "HQ"}},
+		{Place: Place{Kind: PlaceText, Label: "ved Post 2B"}},
+		{Place: Place{Kind: PlaceHQ, Label: "HQ"}},
+	})
+	if err != nil {
+		t.Fatalf("SetStops: %v", err)
+	}
+	if len(warnings) != 0 {
+		t.Errorf("warnings = %+v, want none", warnings)
+	}
+}
