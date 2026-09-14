@@ -1,10 +1,10 @@
 # 186 — Verify phone-query latency on production-sized data
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-09-14
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session 2026-09-14
+**Started:** 2026-09-14
 **Completed:**
 
 ## Description
