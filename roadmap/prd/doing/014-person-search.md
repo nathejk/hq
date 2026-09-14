@@ -159,7 +159,7 @@ one shortcut, eight digits, one click.
       common case is index-only.
 - [ ] A name query is a case-insensitive substring match against the person's
       name, and against a contact person's name.
-- [ ] Every result carries: `kind` (spejder, senior, gøgler, friend, bandit, crew,
+- [ ] Every result carries: `kind` (spejder, senior, gøgler, friend, crew,
       patruljekontakt, klankontakt), display name, the phone that matched and which
       role it played, the team or section, and a route the SPA can link to.
 - [ ] Every result states the person's current standing: the member lifecycle
@@ -248,7 +248,7 @@ New package `go/nathejk/table/searchperson/`, following the established shape
 
 ```
 search_person
-  kind                   VARCHAR   -- spejder|senior|gøgler|friend|bandit|crew|patruljekontakt|klankontakt
+  kind                   VARCHAR   -- spejder|senior|gøgler|friend|crew|patruljekontakt|klankontakt
   id                     VARCHAR   -- memberId, userId, or teamId for a contact person
   year                   VARCHAR
   teamId                 VARCHAR
@@ -292,9 +292,21 @@ existing six tables already consume:
 | `NATHEJK.*.spejder.*.{updated,deleted,reassigned}` | spejder rows |
 | `NATHEJK.*.senior.*.{updated,deleted}` | senior rows |
 | `NATHEJK.*.{gøgler,friend}.*.{signedup,updated}` | personnel rows |
-| `NATHEJK.*.crewmember.*.{registered,updated,deleted}` | crew rows |
+| `NATHEJK.*.crewmember.*.{registered,updated}`, `NATHEJK.*.crew.*.signedup` | crew rows |
 | `NATHEJK:*.patrulje.*.{signedup,updated}` | patruljekontakt rows |
 | `NATHEJK:*.*.*.signedup` | klankontakt / crew contact rows |
+
+**There is no `bandit` kind.** Task 175 established this: `bandit.*.armNumber.assigned` is
+the only bandit-entity event, it carries neither a name nor a phone number, and both the
+senior and personnel projections consume it merely to stamp an arm number onto a row that
+already exists. The people themselves arrive as seniors. An earlier draft of this PRD listed
+`bandit` as a kind, which would have produced a table of empty rows and advertised a live
+dependency that never fires.
+
+**Crew and personnel rows carry no `teamId`**, because their events carry no team: a crew
+member's section arrives on `crewmember.*.section.assigned`, which is identity-free and so
+not subscribed to here. Their context therefore comes from the read-time join in task 179
+(to `personnel` and `crewmember`), exactly as team names do — not from a column here.
 
 Two traps in that list, both already visible in the existing consumers:
 
@@ -369,7 +381,7 @@ system".
   first keystroke does not ask the server for every person in the event.
 - `dependsOn` names entity **types**, since a new match is a row whose id was
   never seen. The tokens are the *event subject's* entity, not the projection's
-  name: `spejder`, `senior`, `patrulje`, `klan`, `gøgler`, `friend`, `bandit`,
+  name: `spejder`, `senior`, `patrulje`, `klan`, `gøgler`, `friend`,
   `crewmember`, `crew`. There is no `personnel` token — that exact mistake is
   documented in `go/internal/live/entities.go`. Verify against the advertised set
   and the SPA's dev-console warning rather than against this list.

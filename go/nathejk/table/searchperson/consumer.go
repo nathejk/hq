@@ -22,6 +22,17 @@ func (t *Table) Consumes() []cqrs.Subject {
 	return []cqrs.Subject{
 		cqrs.SubjectFromStr("NATHEJK.*.spejder.*.updated"),
 		cqrs.SubjectFromStr("NATHEJK.*.spejder.*.reassigned"),
+		cqrs.SubjectFromStr("NATHEJK.*.senior.*.updated"),
+		cqrs.SubjectFromStr("NATHEJK.*.gøgler.*.signedup"),
+		cqrs.SubjectFromStr("NATHEJK.*.gøgler.*.updated"),
+		cqrs.SubjectFromStr("NATHEJK.*.friend.*.signedup"),
+		cqrs.SubjectFromStr("NATHEJK.*.friend.*.updated"),
+		cqrs.SubjectFromStr("NATHEJK.*.crewmember.*.registered"),
+		cqrs.SubjectFromStr("NATHEJK.*.crewmember.*.updated"),
+		// A crew signup is what mints a crew member — the crewmember projection treats it
+		// that way, with userId == teamId. Without it, crew are unfindable until somebody
+		// edits them.
+		cqrs.SubjectFromStr("NATHEJK.*.crew.*.signedup"),
 	}
 }
 
@@ -42,6 +53,18 @@ func (t *Table) HandleMessage(msg cqrs.Message) error {
 		return t.handleSpejderUpdated(msg)
 	case msg.Subject().Match("NATHEJK.*.spejder.*.reassigned"):
 		return t.handleSpejderReassigned(msg)
+	case msg.Subject().Match("NATHEJK.*.senior.*.updated"):
+		return t.handleSeniorUpdated(msg)
+	case msg.Subject().Match("NATHEJK.*.gøgler.*.signedup"),
+		msg.Subject().Match("NATHEJK.*.friend.*.signedup"),
+		msg.Subject().Match("NATHEJK.*.crew.*.signedup"):
+		return t.handleSignedUp(msg)
+	case msg.Subject().Match("NATHEJK.*.gøgler.*.updated"),
+		msg.Subject().Match("NATHEJK.*.friend.*.updated"):
+		return t.handlePersonnelUpdated(msg)
+	case msg.Subject().Match("NATHEJK.*.crewmember.*.registered"),
+		msg.Subject().Match("NATHEJK.*.crewmember.*.updated"):
+		return t.handleCrewMember(msg)
 	default:
 		// Not an error. The mux may hand over a subject this projection does not care
 		// about, and failing would dead-letter somebody else's event.
@@ -68,16 +91,7 @@ func (t *Table) handleSpejderUpdated(msg cqrs.Message) error {
 		return err
 	}
 
-	id := string(body.MemberID)
-	if id == "" {
-		id = string(legacy.MemberID)
-	}
-	if id == "" {
-		// From the subject, which is the more trustworthy source anyway: the broker
-		// matched on it. A row with an empty id would collide with every other
-		// id-less row of its kind.
-		id = subjectEntityID(msg.Subject())
-	}
+	id := firstNonEmpty(string(body.MemberID), string(legacy.MemberID), subjectEntityID(msg.Subject()))
 	if id == "" {
 		return fmt.Errorf("searchperson: spejder.updated with no memberId")
 	}
@@ -121,6 +135,147 @@ func (t *Table) handleSpejderReassigned(msg cqrs.Message) error {
 		quote(truncate(string(body.MemberID), 99)),
 		quote(subjectYear(msg.Subject())),
 	))
+}
+
+// handleSeniorUpdated indexes a klan member.
+//
+// Same two-phase decode as the spejder branch, and for the same reason: the senior-updated
+// shape carries the editable fields, the legacy added shape carries the team.
+//
+// Note there is no phoneParent here. Seniors are adults; the column stays empty rather than
+// being filled with something that is not a guardian's number.
+func (t *Table) handleSeniorUpdated(msg cqrs.Message) error {
+	var body messages.NathejkSeniorUpdated
+	if err := msg.Body(&body); err != nil {
+		return err
+	}
+	var legacy messages.NathejkMemberAdded
+	if err := msg.Body(&legacy); err != nil {
+		return err
+	}
+
+	id := firstNonEmpty(string(body.MemberID), string(legacy.MemberID), subjectEntityID(msg.Subject()))
+	if id == "" {
+		return fmt.Errorf("searchperson: senior.updated with no memberId")
+	}
+
+	return t.upsert(person{
+		Kind:   KindSenior,
+		ID:     id,
+		Year:   subjectYear(msg.Subject()),
+		TeamID: string(legacy.TeamID),
+		Name:   body.Name,
+		Email:  string(body.Email),
+		Phone:  string(body.Phone),
+		At:     datetime(msg.Time()),
+	})
+}
+
+// handleSignedUp indexes whoever just signed up, for the entity types whose signup *is* the
+// person: gøgler, friend and crew.
+//
+// One handler for three subjects because the payload is the same shape and the only
+// difference is the kind, which is read off the subject. The alternative — three near-identical
+// handlers — is where a copy-paste error would put a friend's details under a gøgler's kind.
+//
+// This is emphatically **not** the branch that handles a patrulje or klan signup: those signups
+// describe a *team*, and the person in them is a contact person, which is a different kind with
+// a different key (task 176).
+func (t *Table) handleSignedUp(msg cqrs.Message) error {
+	var body messages.NathejkTeamSignedUp
+	if err := msg.Body(&body); err != nil {
+		return err
+	}
+
+	// The signup's teamId *is* the person's id for these types: a crew signup mints the crew
+	// member with userId == teamId, and personnel are keyed the same way.
+	id := firstNonEmpty(string(body.TeamID), subjectEntityID(msg.Subject()))
+	if id == "" {
+		// Not an error: an id-less signup cannot be indexed, but it is the signup pipeline's
+		// problem, not something to dead-letter the replay over.
+		return nil
+	}
+
+	kind := Kind(subjectPart(msg.Subject(), 2))
+	if kind == "crew" {
+		// Already the right token; named here only so the mapping is visible.
+		kind = KindCrew
+	}
+
+	return t.upsert(person{
+		Kind:  kind,
+		ID:    id,
+		Year:  subjectYear(msg.Subject()),
+		Name:  body.Name,
+		Email: string(body.Email),
+		Phone: string(body.Phone),
+		At:    datetime(msg.Time()),
+	})
+}
+
+// handlePersonnelUpdated re-indexes a gøgler or friend after an edit.
+//
+// The kind comes from the subject rather than the body, which carries no notion of which
+// population the person belongs to. That also means an update cannot move somebody between
+// kinds — correct, since the subject is what the broker routed on.
+func (t *Table) handlePersonnelUpdated(msg cqrs.Message) error {
+	var body messages.NathejkPersonnelUpdated
+	if err := msg.Body(&body); err != nil {
+		return err
+	}
+
+	id := firstNonEmpty(string(body.UserID), subjectEntityID(msg.Subject()))
+	if id == "" {
+		return fmt.Errorf("searchperson: personnel updated with no userId")
+	}
+
+	return t.upsert(person{
+		Kind:  Kind(subjectPart(msg.Subject(), 2)),
+		ID:    id,
+		Year:  subjectYear(msg.Subject()),
+		Name:  body.Name,
+		Email: string(body.Email),
+		Phone: string(body.Phone),
+		At:    datetime(msg.Time()),
+	})
+}
+
+// handleCrewMember indexes a crew member, registered or edited.
+//
+// Both events are folded by one handler because both are upserts of the same three fields.
+// The registered/updated distinction matters to the crewmember projection, which carries more
+// columns; here it does not.
+func (t *Table) handleCrewMember(msg cqrs.Message) error {
+	var body messages.NathejkCrewMemberUpdated
+	if err := msg.Body(&body); err != nil {
+		return err
+	}
+
+	id := firstNonEmpty(string(body.UserID), subjectEntityID(msg.Subject()))
+	if id == "" {
+		return fmt.Errorf("searchperson: crewmember event with no userId")
+	}
+
+	return t.upsert(person{
+		Kind:  KindCrew,
+		ID:    id,
+		Year:  subjectYear(msg.Subject()),
+		Name:  body.Name,
+		Email: string(body.Email),
+		Phone: string(body.Phone),
+		At:    datetime(msg.Time()),
+	})
+}
+
+// firstNonEmpty returns the first non-empty string, for the body-then-subject fallback every
+// handler needs.
+func firstNonEmpty(vs ...string) string {
+	for _, v := range vs {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
 }
 
 // person is one row on its way into the table.

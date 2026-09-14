@@ -319,6 +319,171 @@ func TestShortSubjectDoesNotPanic(t *testing.T) {
 	}
 }
 
+// One round trip per source. Table-driven because the interesting part is that all the
+// populations land in one table under the right kind — what would break silently is a
+// copy-pasted handler filing a friend under a gøgler's kind.
+func TestEachSourceProducesItsOwnKind(t *testing.T) {
+	cases := []struct {
+		name    string
+		subject string
+		body    map[string]any
+		want    map[string]string
+	}{{
+		name:    "senior",
+		subject: "NATHEJK.2026.senior.member-2.updated",
+		body: map[string]any{
+			"memberId": "member-2",
+			"teamId":   "klan-9",
+			"name":     "Bente Bentsen",
+			"phone":    "22334455",
+			"mail":     "bente@example.dk",
+		},
+		want: map[string]string{
+			"kind":            "senior",
+			"id":              "member-2",
+			"teamId":          "klan-9",
+			"name":            "Bente Bentsen",
+			"phoneNormalized": "22334455",
+		},
+	}, {
+		name:    "gøgler signup",
+		subject: "NATHEJK.2026.gøgler.user-3.signedup",
+		body: map[string]any{
+			"teamId": "user-3",
+			"name":   "Carl Carlsen",
+			"phone":  "+45 33 44 55 66",
+			"email":  "carl@example.dk",
+		},
+		want: map[string]string{
+			"kind":            "gøgler",
+			"id":              "user-3",
+			"name":            "Carl Carlsen",
+			"phoneNormalized": "33445566",
+			"email":           "carl@example.dk",
+		},
+	}, {
+		name:    "gøgler update",
+		subject: "NATHEJK.2026.gøgler.user-3.updated",
+		body:    map[string]any{"userId": "user-3", "name": "Carl Carlsen", "phone": "33445566"},
+		want:    map[string]string{"kind": "gøgler", "id": "user-3"},
+	}, {
+		name:    "friend signup",
+		subject: "NATHEJK.2026.friend.user-4.signedup",
+		body:    map[string]any{"teamId": "user-4", "name": "Dorte Dortesen", "phone": "44556677"},
+		want:    map[string]string{"kind": "friend", "id": "user-4"},
+	}, {
+		// The event that makes a crew signup into a crew member. Without this branch, crew
+		// are unfindable until somebody happens to edit them.
+		name:    "crew signup",
+		subject: "NATHEJK.2026.crew.user-5.signedup",
+		body:    map[string]any{"teamId": "user-5", "name": "Erik Eriksen", "phone": "55667788"},
+		want:    map[string]string{"kind": "crew", "id": "user-5", "phoneNormalized": "55667788"},
+	}, {
+		name:    "crewmember registered",
+		subject: "NATHEJK.2026.crewmember.user-6.registered",
+		body:    map[string]any{"userId": "user-6", "name": "Frida Fridasen", "phone": "66778899"},
+		want:    map[string]string{"kind": "crew", "id": "user-6", "name": "Frida Fridasen"},
+	}, {
+		name:    "crewmember updated",
+		subject: "NATHEJK.2026.crewmember.user-6.updated",
+		body:    map[string]any{"userId": "user-6", "name": "Frida Fridasen", "phone": "66778899"},
+		want:    map[string]string{"kind": "crew", "id": "user-6"},
+	}}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			table, w := newTable(t)
+			if err := table.HandleMessage(message(t, tc.subject, tc.body)); err != nil {
+				t.Fatalf("HandleMessage: %v", err)
+			}
+			if len(w.Statements) != 1 {
+				t.Fatalf("expected one statement, got %v", w.Statements)
+			}
+			for col, val := range tc.want {
+				if want := col + "=" + quote(val); !strings.Contains(w.Last(), want) {
+					t.Errorf("statement missing %q:\n%s", want, w.Last())
+				}
+			}
+			if !strings.Contains(w.Last(), "year='2026'") {
+				t.Errorf("year not taken from the subject:\n%s", w.Last())
+			}
+		})
+	}
+}
+
+// A senior is an adult, so nothing may land in the guardian column. Filling it from some
+// other field would make the UI annotate the hit as "forælders nummer" and mislead an
+// operator about who is going to answer.
+func TestSeniorHasNoParentPhone(t *testing.T) {
+	table, w := newTable(t)
+	msg := message(t, "NATHEJK.2026.senior.member-2.updated", map[string]any{
+		"memberId": "member-2",
+		"phone":    "22334455",
+	})
+	if err := table.HandleMessage(msg); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if !strings.Contains(w.Last(), "phoneParent=''") {
+		t.Errorf("a senior must have no guardian number:\n%s", w.Last())
+	}
+}
+
+// A gøgler and a friend must not collide, and neither may be filed as "personnel" — that is
+// the table's name, not an entity token, and a client depending on it would wait forever.
+func TestPersonnelKindComesFromTheSubject(t *testing.T) {
+	for _, kind := range []string{"gøgler", "friend"} {
+		table, w := newTable(t)
+		msg := message(t, "NATHEJK.2026."+kind+".user-1.updated", map[string]any{
+			"userId": "user-1",
+			"name":   "Samme Person",
+		})
+		if err := table.HandleMessage(msg); err != nil {
+			t.Fatalf("HandleMessage: %v", err)
+		}
+		if !strings.Contains(w.Last(), "kind="+quote(kind)) {
+			t.Errorf("expected kind %q:\n%s", kind, w.Last())
+		}
+		if strings.Contains(w.Last(), "kind='personnel'") {
+			t.Error("filed under the table's name rather than the entity token")
+		}
+	}
+}
+
+// Nothing subscribes to bandit. A bandit is a senior with an arm number, and the only
+// bandit-entity event carries neither a name nor a number — indexing it would produce empty
+// rows and advertise a live dependency that never fires.
+func TestBanditIsNotAPopulation(t *testing.T) {
+	table, w := newTable(t)
+	for _, subj := range table.Consumes() {
+		if strings.Contains(subj.Subject(), "bandit") {
+			t.Fatalf("subscribed to a bandit subject: %s", subj.Subject())
+		}
+	}
+	msg := message(t, "NATHEJK.2026.bandit.member-2.armNumber.assigned", map[string]any{"armNumber": "42"})
+	if err := table.HandleMessage(msg); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if len(w.Statements) != 0 {
+		t.Errorf("expected no write for an arm number, got %v", w.Statements)
+	}
+}
+
+// A signup whose body omits the id still gets one from the subject, which is the more
+// trustworthy source anyway: the broker matched on it. Without this fallback a real signup
+// with a body-shape we did not anticipate would be silently unfindable.
+func TestSignupFallsBackToTheSubjectID(t *testing.T) {
+	table, w := newTable(t)
+	if err := table.HandleMessage(message(t, "NATHEJK.2026.crew.user-9.signedup", map[string]any{
+		"name":  "Ingen Id I Body",
+		"phone": "99887766",
+	})); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if !strings.Contains(w.Last(), "id='user-9'") {
+		t.Errorf("id not taken from the subject:\n%s", w.Last())
+	}
+}
+
 func TestTruncateClipsToColumnWidth(t *testing.T) {
 	if got := truncate(strings.Repeat("a", 250), 199); len(got) != 199 {
 		t.Errorf("got %d bytes, want 199", len(got))

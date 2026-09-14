@@ -26,6 +26,13 @@ not re-implemented in a second place where it could disagree with the first.
 Team and section **names** are joined here too (`patrulje`, `klan`, `section`) — the
 projection stores only `teamId`.
 
+**Crew and personnel rows have no `teamId` at all** (task 175: their events carry no team,
+and a crew member's section arrives on an identity-free `section.assigned` event that
+`searchperson` does not subscribe to). Their context has to come from a join to `personnel`
+and `crewmember` on the person's id — `personnel.klan` / `groupName`, and
+`crewmember.sectionSlug` → `section`. Without it, every gøgler and crew result row is a bare
+name, which is barely a search result.
+
 Details:
 
 - **A spejder with no `spejderstatus` row is ordinary, not an error.** Statuses begin at
@@ -38,6 +45,7 @@ Details:
 ## Acceptance Criteria
 
 - [ ] Results carry lifecycle status for spejdere, signup status otherwise, and the deleted flag
+- [ ] Crew and personnel rows get their context by joining `crewmember`/`personnel` on id
 - [ ] Team/section name resolved by join, not denormalized into `search_person`
 - [ ] A spejder with no status row returns unknown rather than a fabricated status
 - [ ] `deleted` and lifecycle status are separate fields in the response

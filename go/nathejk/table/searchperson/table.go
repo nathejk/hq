@@ -59,7 +59,28 @@ type Kind string
 
 const (
 	KindSpejder Kind = "spejder"
+	KindSenior  Kind = "senior"
+
+	// KindGoegler and KindFriend are the two personnel populations. They are separate
+	// kinds rather than one "personnel", because `personnel` is the *table's* name and
+	// there is no such live entity token — a client depending on `personnel` would wait
+	// forever.
+	//
+	// ASCII identifiers with Danish values, matching the rest of the codebase: no exported
+	// Go identifier here carries an ø.
+	KindGoegler Kind = "gøgler"
+	KindFriend  Kind = "friend"
+
+	KindCrew Kind = "crew"
 )
+
+// There is deliberately no KindBandit.
+//
+// A bandit is not a population of its own: `bandit.*.armNumber.assigned` is the only
+// bandit-entity event, it carries neither a name nor a number, and both the senior and
+// personnel projections consume it merely to stamp an arm number onto a row that already
+// exists. The people themselves arrive as seniors. Adding a bandit kind would produce a
+// table of empty rows and a live dependency that never fires.
 
 // Table is the projection.
 type Table struct {

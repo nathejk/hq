@@ -23,6 +23,9 @@ projection now subscribes to entity tokens from six event families, and the fron
 against a hand-written list. The expected tokens are `spejder`, `senior`, `gøgler`, `friend`,
 `crewmember`, `crew`, `patrulje`, plus whatever the wildcard `signedup` subscription yields.
 
+There is deliberately no `bandit` token — task 175 established that a bandit is a senior with
+an arm number, not a population, so nothing here subscribes to a bandit subject.
+
 There is no `personnel` token, and `scan` is really `qr`. Both mistakes are documented in
 `go/internal/live/entities.go` because both have been made before, and both fail *silently*:
 the page looks live and simply never updates.
