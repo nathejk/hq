@@ -1,10 +1,10 @@
 # 187 — Find people whose number shares a field with another number
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-14
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session 2026-09-15
+**Started:** 2026-09-15
 **Completed:**
 
 ## Description
