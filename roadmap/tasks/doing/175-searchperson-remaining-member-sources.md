@@ -1,10 +1,10 @@
 # 175 — Add senior, personnel and crewmember sources to search_person
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-14
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session 2026-09-14
+**Started:** 2026-09-14
 **Completed:**
 
 ## Description
@@ -46,3 +46,6 @@ Copy subject literals from the existing consumers. `senior`/`crewmember` are in 
 ## Progress Log
 
 - 2026-09-14 22:08 — Task created from PRD 014 §10.
+- 2026-09-14 23:00 — Picked up. Read all three source consumers first. Plan: one handler per
+  event shape, `kind` taken from subject part 2 so gøgler and friend stay distinct without
+  duplicated code.
