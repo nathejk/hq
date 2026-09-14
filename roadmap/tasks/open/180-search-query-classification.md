@@ -53,6 +53,8 @@ so rather than silently truncating.
 - [ ] Parent number matches and is reported as the parent's
 - [ ] Name match is case-insensitive including æ/ø/å
 - [ ] Year is a required argument; a test asserts no cross-year leakage
+- [ ] Query layer returns deleted rows, flagged — it never filters them out (deferred here
+      from task 177, which had no query layer to put it in)
 - [ ] Cap enforced and truncation reported
 - [ ] Table-driven tests for all of the above
 - [ ] `go build ./...` and `go test ./...` pass

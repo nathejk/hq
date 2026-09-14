@@ -48,6 +48,13 @@ func (t *Table) Consumes() []cqrs.Subject {
 		// carried. So a corrected klan contact currently exists nowhere in the read model,
 		// and after this it exists here.
 		cqrs.SubjectFromStr("NATHEJK.*.klan.*.updated"),
+
+		// Removal from a roster. Subscribed to precisely so these people are **kept**: the
+		// source tables DELETE the row, and this projection flags it instead. See
+		// handleRemoved.
+		cqrs.SubjectFromStr("NATHEJK.*.spejder.*.deleted"),
+		cqrs.SubjectFromStr("NATHEJK.*.senior.*.deleted"),
+		cqrs.SubjectFromStr("NATHEJK.*.crewmember.*.deleted"),
 	}
 }
 
@@ -88,6 +95,12 @@ func (t *Table) HandleMessage(msg cqrs.Message) error {
 		return t.handleTeamUpdated(msg, KindPatruljeContact)
 	case msg.Subject().Match("NATHEJK.*.klan.*.updated"):
 		return t.handleTeamUpdated(msg, KindKlanContact)
+	case msg.Subject().Match("NATHEJK.*.spejder.*.deleted"):
+		return t.handleRemoved(msg, KindSpejder)
+	case msg.Subject().Match("NATHEJK.*.senior.*.deleted"):
+		return t.handleRemoved(msg, KindSenior)
+	case msg.Subject().Match("NATHEJK.*.crewmember.*.deleted"):
+		return t.handleRemoved(msg, KindCrew)
 	default:
 		// Not an error. The mux may hand over a subject this projection does not care
 		// about, and failing would dead-letter somebody else's event.
@@ -368,6 +381,53 @@ func (t *Table) handleTeamUpdated(msg cqrs.Message, kind Kind) error {
 		Phone:  string(body.ContactPhone),
 		At:     datetime(msg.Time()),
 	})
+}
+
+// handleRemoved marks somebody as no longer on a roster, and keeps them.
+//
+// This is the one place `searchperson` deliberately diverges from the projections it is
+// derived from. `spejder`, `senior` and (partly) `crewmember` respond to these events with a
+// DELETE; here the row survives with `deleted = 1`.
+//
+// The reason is the case search exists for. A scout is taken off a roster in August; their
+// guardian rings in September. If the row were gone, search would answer "ingen match" — which
+// an operator cannot distinguish from "this person was never involved", and which is worse
+// than no answer at all because it sounds definitive. Kept and flagged, the answer becomes
+// "udmeldt fra Ørnene", which is the truth.
+//
+// **Not** the same thing as withdrawing during the race. A scout who left the route is still
+// on the roster; that story lives in `spejderstatus` and reaches search through the read-time
+// join. "Udmeldt" (never started) and "released" (went home during the night) are different
+// facts and the UI must be able to tell them apart.
+//
+// One statement, and no INSERT: flagging a row that does not exist is a no-op, which is
+// correct. A deletion for somebody who was never indexed carries no name or number, so there
+// is nothing to create — and inventing an empty flagged row would put a person in the index
+// who cannot be found by anything.
+func (t *Table) handleRemoved(msg cqrs.Message, kind Kind) error {
+	var body struct {
+		MemberID string `json:"memberId"`
+		UserID   string `json:"userId"`
+	}
+	if err := msg.Body(&body); err != nil {
+		return err
+	}
+
+	// One anonymous struct rather than the three typed shapes (NathejkScoutDeleted,
+	// NathejkMemberDeleted, NathejkCrewMemberDeleted), because the only field any of them
+	// contributes here is the id, under one of two names.
+	id := firstNonEmpty(body.MemberID, body.UserID, subjectEntityID(msg.Subject()))
+	if id == "" {
+		return nil
+	}
+
+	return t.w.Consume(fmt.Sprintf(
+		"UPDATE search_person SET deleted=1, updatedAt=%s WHERE kind=%s AND id=%s AND year=%s",
+		datetime(msg.Time()),
+		quote(string(kind)),
+		quote(truncate(id, 99)),
+		quote(subjectYear(msg.Subject())),
+	))
 }
 
 // firstNonEmpty returns the first non-empty string, for the body-then-subject fallback every

@@ -644,6 +644,144 @@ func TestNoWildcardInTheEntityPosition(t *testing.T) {
 	}
 }
 
+// The retention requirement, per source: created → removed → still there and flagged →
+// re-added → unflagged.
+//
+// The whole point is that the middle step is an UPDATE and never a DELETE. The source
+// projections delete; this one must not, or search answers "ingen match" for somebody the
+// event has met — and an operator cannot tell that from "never involved".
+func TestRemovedPeopleAreRetainedAndFlagged(t *testing.T) {
+	cases := []struct {
+		name     string
+		kind     string
+		create   string
+		remove   string
+		idField  string
+		entityID string
+	}{{
+		name:     "spejder",
+		kind:     "spejder",
+		create:   "NATHEJK.2026.spejder.member-1.updated",
+		remove:   "NATHEJK.2026.spejder.member-1.deleted",
+		idField:  "memberId",
+		entityID: "member-1",
+	}, {
+		name:     "senior",
+		kind:     "senior",
+		create:   "NATHEJK.2026.senior.member-2.updated",
+		remove:   "NATHEJK.2026.senior.member-2.deleted",
+		idField:  "memberId",
+		entityID: "member-2",
+	}, {
+		name:     "crew",
+		kind:     "crew",
+		create:   "NATHEJK.2026.crewmember.user-6.registered",
+		remove:   "NATHEJK.2026.crewmember.user-6.deleted",
+		idField:  "userId",
+		entityID: "user-6",
+	}}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			table, w := newTable(t)
+			body := map[string]any{tc.idField: tc.entityID, "name": "Findes Stadig", "phone": "12345678"}
+
+			if err := table.HandleMessage(message(t, tc.create, body)); err != nil {
+				t.Fatalf("create: %v", err)
+			}
+			if err := table.HandleMessage(message(t, tc.remove, map[string]any{tc.idField: tc.entityID})); err != nil {
+				t.Fatalf("remove: %v", err)
+			}
+
+			removal := w.Last()
+			// "DELETE FROM" rather than "DELETE": the statement legitimately contains the
+			// word `deleted`, and matching on that made this assertion fail against correct
+			// code.
+			if strings.Contains(strings.ToUpper(removal), "DELETE FROM") {
+				t.Fatalf("removal must keep the row, got a delete:\n%s", removal)
+			}
+			for _, want := range []string{
+				"UPDATE search_person SET deleted=1",
+				"kind=" + quote(tc.kind),
+				"id=" + quote(tc.entityID),
+				"year='2026'",
+			} {
+				if !strings.Contains(removal, want) {
+					t.Errorf("removal missing %q:\n%s", want, removal)
+				}
+			}
+
+			// Re-added. Without an explicit deleted=0 the person would stay "udmeldt"
+			// forever, which is a worse lie than deleting them would have been.
+			if err := table.HandleMessage(message(t, tc.create, body)); err != nil {
+				t.Fatalf("re-add: %v", err)
+			}
+			readd := w.Last()
+			if !strings.Contains(readd, "deleted=0") {
+				t.Errorf("a re-added person must be unflagged:\n%s", readd)
+			}
+			// Both in the insert and in the update branch, or the clearing only works for
+			// somebody who was never indexed before.
+			if strings.Count(readd, "deleted=0") < 2 {
+				t.Errorf("deleted=0 must appear in the update branch too:\n%s", readd)
+			}
+		})
+	}
+}
+
+// A guard against a future tidy-up. PRD 014 calls retention the requirement most likely to be
+// quietly broken by a well-meaning "clean up the deleted rows" change, so the absence of a
+// DELETE is asserted rather than merely intended.
+func TestNothingEverDeletesFromTheIndex(t *testing.T) {
+	table, w := newTable(t)
+	subjects := []string{
+		"NATHEJK.2026.spejder.member-1.deleted",
+		"NATHEJK.2026.senior.member-2.deleted",
+		"NATHEJK.2026.crewmember.user-6.deleted",
+	}
+	for _, subj := range subjects {
+		if err := table.HandleMessage(message(t, subj, map[string]any{
+			"memberId": "member-1", "userId": "user-6",
+		})); err != nil {
+			t.Fatalf("HandleMessage(%s): %v", subj, err)
+		}
+	}
+	for _, stmt := range w.Statements {
+		if strings.Contains(strings.ToUpper(stmt), "DELETE FROM") {
+			t.Errorf("a removal deleted the row instead of flagging it:\n%s", stmt)
+		}
+	}
+}
+
+// A removal for somebody who was never indexed is a no-op, not an insert. Creating an empty
+// flagged row would put a person in the index who cannot be found by name or by number — a row
+// that exists only to be scanned past.
+func TestRemovalNeverInsertsARow(t *testing.T) {
+	table, w := newTable(t)
+	if err := table.HandleMessage(message(t, "NATHEJK.2026.spejder.member-99.deleted", map[string]any{
+		"memberId": "member-99",
+	})); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if strings.Contains(strings.ToUpper(w.Last()), "INSERT") {
+		t.Errorf("a removal must not create a row:\n%s", w.Last())
+	}
+}
+
+// Removing a spejder must not flag a senior who happens to share the id string. The kinds are
+// separate id spaces with no coordination between them.
+func TestRemovalIsScopedToItsKind(t *testing.T) {
+	table, w := newTable(t)
+	if err := table.HandleMessage(message(t, "NATHEJK.2026.spejder.shared-id.deleted", map[string]any{
+		"memberId": "shared-id",
+	})); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if !strings.Contains(w.Last(), "kind='spejder'") {
+		t.Errorf("removal is not scoped to a kind:\n%s", w.Last())
+	}
+}
+
 func TestTruncateClipsToColumnWidth(t *testing.T) {
 	if got := truncate(strings.Repeat("a", 250), 199); len(got) != 199 {
 		t.Errorf("got %d bytes, want 199", len(got))
