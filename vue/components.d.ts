@@ -56,6 +56,7 @@ declare module 'vue' {
     MultiSelect: typeof import('primevue/multiselect')['default']
     MultiSwitch: typeof import('./src/components/MultiSwitch.vue')['default']
     Navigation: typeof import('./src/components/Navigation.vue')['default']
+    NavSearch: typeof import('./src/components/NavSearch.vue')['default']
     NavUserMenu: typeof import('./src/components/NavUserMenu.vue')['default']
     Panel: typeof import('primevue/panel')['default']
     PatruljePhoto: typeof import('./src/components/PatruljePhoto.vue')['default']

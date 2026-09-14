@@ -4,6 +4,9 @@ import { FontAwesomeIcon } from '@fortawesome/vue-fontawesome'
 import { useGlobalState } from '@/composables/globalstate'
 import { useConnectionState } from '@/composables/useConnectionState'
 import UserMenu from '@/components/NavUserMenu.vue'
+// Person search (PRD 014). In the chrome so it is on every page: the operator reaching for it has a
+// phone ringing, and a search you must navigate to is a search that does not get used.
+import NavSearch from '@/components/NavSearch.vue'
 
 const { navTitle } = useGlobalState()
 
@@ -257,6 +260,7 @@ import 'primeicons/primeicons.css'
         </div>
 
         <!-- User Profile -->
+        <NavSearch />
         <UserMenu />
 
         <div v-if="false" class="flex items-center p-2">
