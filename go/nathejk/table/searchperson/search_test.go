@@ -66,46 +66,76 @@ func TestClassify(t *testing.T) {
 	}
 }
 
-// A complete number must be an equality match, because that is the case the whole projection
-// exists to make an index seek. A LIKE here would quietly turn every emergency lookup into a
-// scan and nothing would report it.
-func TestExactPhoneQueryUsesEquality(t *testing.T) {
+// A whole number is matched as a substring, not an equality — the change made by task 187.
+//
+// The reason is a real pattern in the register: a guardian field often holds two numbers as free
+// text, `mor 22 79 01 52 eller Far 22110715`, which normalizes to one 16-digit string. Under an
+// equality match neither parent was findable, which defeated the feature's premise in exactly
+// the field an inbound call is most likely to match.
+func TestPhoneQueryMatchesAsASubstring(t *testing.T) {
 	where, args := classify("+45 12 34 56 78").predicate()
 
-	if !strings.Contains(where, "sp.phoneNormalized = ?") {
-		t.Errorf("expected an equality match, got %q", where)
-	}
-	if strings.Contains(where, "LIKE") {
-		t.Errorf("an 8-digit query must not use LIKE, got %q", where)
+	if !strings.Contains(where, "sp.phoneNormalized LIKE ?") {
+		t.Errorf("expected a substring match, got %q", where)
 	}
 	// The guardian's number is searched as readily as the scout's own: it is very often the
 	// parent who rings.
-	if !strings.Contains(where, "sp.phoneParentNormalized = ?") {
+	if !strings.Contains(where, "sp.phoneParentNormalized LIKE ?") {
 		t.Errorf("the guardian's number is not searched, got %q", where)
 	}
-	if len(args) != 2 || args[0] != "12345678" || args[1] != "12345678" {
-		t.Errorf("args = %v, want the normalized number twice", args)
+	for _, a := range args {
+		if a != "%12345678%" {
+			t.Errorf("arg = %v, want the normalized number wrapped in wildcards", a)
+		}
 	}
 }
 
-// A partial number is a prefix match, which the same index still serves as a range scan.
-func TestPartialPhoneQueryUsesPrefix(t *testing.T) {
-	where, args := classify("1234").predicate()
+// The case this looseness exists for, at the level where it is decided.
+func TestCollapsedTwoNumberFieldIsFindableByEitherHalf(t *testing.T) {
+	// `mor 22 79 01 52 eller Far 22110715` as the projection stores it.
+	const collapsed = "2279015222110715"
 
-	if !strings.Contains(where, "LIKE ?") {
-		t.Errorf("expected a prefix match, got %q", where)
+	for _, needle := range []string{"22790152", "22110715"} {
+		c := classify(needle)
+
+		_, args := c.predicate()
+		pattern, _ := args[0].(string)
+		if !strings.Contains(collapsed, needle) {
+			t.Fatalf("test premise wrong: %q is not inside %q", needle, collapsed)
+		}
+		if pattern != "%"+needle+"%" {
+			t.Errorf("pattern = %q, want it to match mid-string", pattern)
+		}
+
+		// And the hit must be labelled as the guardian's, not the person's own. Equality
+		// here would fall through to nameRole and claim the number was theirs.
+		if got := c.roleOf(row{phoneParentNormalized: collapsed}); got != PhoneRoleParent {
+			t.Errorf("roleOf for %q = %q, want parent", needle, got)
+		}
 	}
+}
+
+// A number pasted in twice — `+452244565222445652` in the live register — becomes findable by the
+// same mechanism, without any rule of its own.
+func TestDoubledNumberIsFindable(t *testing.T) {
+	c := classify("22445652")
+	if got := c.roleOf(row{phoneNormalized: "452244565222445652"}); got != PhoneRoleOwn {
+		t.Errorf("roleOf = %q, want own", got)
+	}
+}
+
+// A fragment matches mid-number too. Worth pinning as intended rather than incidental: an
+// operator with six digits of a number read back badly should find it wherever those digits sit.
+func TestPartialPhoneQueryMatchesMidNumber(t *testing.T) {
+	_, args := classify("1234").predicate()
 	for _, a := range args {
-		s, ok := a.(string)
-		if !ok {
-			t.Fatalf("unexpected arg type %T", a)
+		if a != "%1234%" {
+			t.Errorf("arg = %v, want %q", a, "%1234%")
 		}
-		if strings.HasPrefix(s, "%") {
-			t.Errorf("a leading wildcard cannot use the index: %q", s)
-		}
-		if s != "1234%" {
-			t.Errorf("arg = %q, want %q", s, "1234%")
-		}
+	}
+
+	if got := classify("4565").roleOf(row{phoneNormalized: "22445652"}); got != PhoneRoleOwn {
+		t.Error("a fragment in the middle of a number did not match")
 	}
 }
 
@@ -188,9 +218,11 @@ func TestOrderPutsThisYearAndLiveRecordsFirst(t *testing.T) {
 	order, args := classify("12345678").order("2026")
 
 	for _, want := range []string{
-		"(sp.year = ?) DESC",            // this year before any other
-		"(sp.phoneNormalized = ?) DESC", // their own number before one that merely reaches them
-		"sp.deleted ASC",                // still involved before departed
+		"(sp.year = ?) DESC", // this year before any other
+		// An exact hit before a coincidental substring — what makes the loose match tolerable.
+		"(sp.phoneNormalized = ? OR sp.phoneParentNormalized = ?) DESC",
+		"(sp.phoneNormalized LIKE ?) DESC", // their own number before one that merely reaches them
+		"sp.deleted ASC",                   // still involved before departed
 	} {
 		if !strings.Contains(order, want) {
 			t.Errorf("order missing %q: %s", want, order)
@@ -200,8 +232,23 @@ func TestOrderPutsThisYearAndLiveRecordsFirst(t *testing.T) {
 	if !strings.Contains(order, "sp.id ASC") {
 		t.Errorf("no stable tiebreak: %s", order)
 	}
-	if len(args) != 2 {
-		t.Errorf("args = %v, want the year and the number", args)
+	if len(args) != 4 {
+		t.Errorf("args = %v, want the year, the number twice and the pattern", args)
+	}
+}
+
+// Exactness is expressed in the ordering, since it is no longer expressed in the predicate. If
+// this regresses, the person whose number was actually dialled can sit below a coincidence.
+func TestExactMatchesSortAboveSubstringMatches(t *testing.T) {
+	order, _ := classify("12345678").order("2026")
+
+	exact := strings.Index(order, "= ? OR sp.phoneParentNormalized = ?) DESC")
+	deleted := strings.Index(order, "sp.deleted ASC")
+	if exact < 0 {
+		t.Fatalf("no exactness term: %s", order)
+	}
+	if exact > deleted {
+		t.Errorf("exactness must outrank the other tiebreaks: %s", order)
 	}
 }
 

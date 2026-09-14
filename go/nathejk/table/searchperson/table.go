@@ -12,13 +12,15 @@
 //     columns at all. So the adult most likely to ring during signup season is the
 //     hardest person in the platform to look up.
 //   - A phone number is free text. `+45 12 34 56 78`, `12 34 56 78` and `12345678` are
-//     all in there, so matching has to be against a normalized form — and no index can
-//     serve REPLACE(REPLACE(phone,' ',”),'+45',”), which means every lookup would
-//     scan all six tables.
+//     all in there, and a guardian field may hold two numbers at once, so matching has
+//     to be against a normalized form computed once at write time rather than in an
+//     unindexable expression per query.
 //
-// At today's row counts the scan would in fact be fast enough. This exists anyway
-// because search sits on the critical path of an inbound emergency call, where a
-// predictable index seek is worth the duplication (PRD 014 §8).
+// Note that speed is **not** on that list. It was the original argument, and measurement
+// retired it: a scan over this table costs single-digit milliseconds at many times the
+// current size, and since task 187 the phone lookup *is* a scan. What the projection buys
+// is the two things above — people who were previously unfindable at all, and one place
+// where normalisation is defined — plus one query instead of six.
 //
 // # What it deliberately does not do
 //

@@ -36,6 +36,7 @@ import {
   isSearchable,
   kindLabel,
   phoneRoleLabel,
+  dialable,
   resultRoute,
   teamLabel,
   toRows,
@@ -375,7 +376,16 @@ const openRow = (row: PersonRow) => {
         <Column header="Telefon">
           <template #body="{ data }">
             <template v-if="data.phone">
-              <a :href="`tel:${data.phone}`" class="tabular-nums">{{ data.phone }}</a>
+              <!--
+                A link only where the field is one dialable number. Since task 187 a guardian
+                field holding two numbers is kept whole — `mor 22 79 01 52 eller Far 22110715` —
+                because the text is what says which parent is which; a tel: link built from it
+                would dial nothing while looking as though it should.
+              -->
+              <a v-if="dialable(data.phone)" :href="dialable(data.phone)!" class="tabular-nums">
+                {{ data.phone }}
+              </a>
+              <span v-else>{{ data.phone }}</span>
               <!--
                 The annotation is not decoration: an operator who dials a parent's number
                 believing it is the scout's opens the call with the wrong sentence.

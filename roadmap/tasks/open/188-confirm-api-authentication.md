@@ -1,7 +1,7 @@
 # 188 — Confirm who can reach /api, now that it returns minors' contact details
 
 **Status:** open
-**Priority:** high
+**Priority:** low
 **Created:** 2026-09-14
 **Picked up by:**
 **Started:**
@@ -62,3 +62,12 @@ The two questions are the same question.
 
 - 2026-09-14 03:20 — Task created from a finding in task 181. Not a regression; a pre-existing
   condition whose stakes person search raises.
+- 2026-09-15 10:10 — **Maintainer's decision: "proper authentication will follow shortly."**
+  Acknowledged and accepted — person search is not blocked on it and has shipped. Dropped from
+  high to low priority, since this task is now a reminder to write the outcome down rather than a
+  question needing an answer before the feature can be used.
+
+  What remains worth doing when that work lands: record in PRD 014 §6 what actually guards
+  `/api`, so the next person does not re-derive it; rename or justify `authenticate`, which today
+  authenticates nobody; and revisit §11's auditing question, which becomes answerable only once
+  `requestctx.User` carries a real identity.

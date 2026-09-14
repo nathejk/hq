@@ -83,9 +83,17 @@ export const SEARCH_DEPENDS_ON = [
 export const MIN_NAME_LENGTH = 3
 export const MIN_PHONE_DIGITS = 4
 
-/** Digits only, dropping a Danish country code, mirroring the server's normalisation. */
+/**
+ * Digits only, in national form, mirroring the server's `normalizePhone`.
+ *
+ * The two steps have to match the Go side exactly, or the client and the server disagree about
+ * what the operator typed. Strip the international access prefix first (`0045 12345678` as
+ * dialled), then a Danish country code — and the latter **only** from a 10-digit result, because
+ * `45` is a real Danish prefix and `45123456` is somebody's actual number.
+ */
 export function queryDigits(text: string): string {
-  const digits = text.replace(/\D/g, '')
+  let digits = text.replace(/\D/g, '')
+  if (digits.startsWith('00')) digits = digits.slice(2)
   if (digits.length === 10 && digits.startsWith('45')) return digits.slice(2)
   return digits
 }
@@ -184,6 +192,27 @@ export function phoneRoleLabel(role: PhoneRole): string {
     default:
       return ''
   }
+}
+
+/**
+ * The `tel:` target for a phone field, or null when the field is not one dialable number.
+ *
+ * A phone value is whatever the register holds, and since task 187 the projection deliberately
+ * keeps fields like `mor 22 79 01 52 eller Far 22110715` intact rather than splitting them — the
+ * entered text is what tells an operator *which* parent they are looking at. That makes a naive
+ * `tel:${phone}` link actively broken: it dials nothing, and looks like it should.
+ *
+ * So a link is offered only where the field resolves to exactly one number. A two-number field,
+ * or a value damaged beyond recognition, renders as text the operator reads themselves — which is
+ * the honest outcome, because we cannot know which of two numbers they meant to ring.
+ */
+export function dialable(phone: string): string | null {
+  const digits = queryDigits(phone)
+  if (digits.length === 8) return `tel:+45${digits}`
+  // A non-Danish number, left as dialled. queryDigits has already removed a Danish country
+  // code, so anything still 10+ digits either belongs elsewhere or is two numbers in one field.
+  if (digits.length >= 9 && digits.length <= 12 && !/^45/.test(digits)) return `tel:+${digits}`
+  return null
 }
 
 /** 44 of 164 indexed 2026 seniorer have no name in the register; a blank cell reads as a bug. */

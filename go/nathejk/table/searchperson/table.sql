@@ -18,9 +18,16 @@ CREATE TABLE IF NOT EXISTS search_person (
     -- Every number is stored twice: as entered, and as digits only.
     --
     -- The stored form is free text — `+45 12 34 56 78`, `12 34 56 78` and `12345678`
-    -- are all in the source tables — so an equality match has to be against a
-    -- normalized column. The as-entered form is kept because it is what an operator
-    -- reads back to a caller.
+    -- are all in the source tables — so matching has to be against a normalized
+    -- column. The as-entered form is kept because it is what an operator reads back
+    -- to a caller, and because it carries what the digits cannot:
+    -- `mor 22 79 01 52 eller Far 22110715` tells the operator *which parent* the
+    -- number they searched for belongs to.
+    --
+    -- The normalized form deliberately **collapses** such a field into one 16-digit
+    -- string rather than trying to split it. Substring matching then finds either
+    -- half (task 187), and nothing has to guess which label goes with which number —
+    -- the entered text is returned and the operator reads it themselves.
     phone VARCHAR(99) NOT NULL DEFAULT "",
     phoneNormalized VARCHAR(31) NOT NULL DEFAULT "",
 
@@ -45,9 +52,22 @@ CREATE TABLE IF NOT EXISTS search_person (
 
     PRIMARY KEY (kind, id, year),
 
-    -- The point of this whole projection: an 8-digit lookup must be an index seek.
-    -- Year leads because every search is year-scoped, and searching previous years
-    -- is a deliberate act rather than the default.
+    -- The phone indexes.
+    --
+    -- **These no longer serve the phone lookup.** Task 187 made phone matching a
+    -- substring (`LIKE '%digits%'`) so that a guardian field holding two numbers is
+    -- findable by either half, and a leading wildcard across two columns cannot use
+    -- an index — EXPLAIN reports `type: ALL`. Measured cost of that decision, on real
+    -- data: 4.0ms p99 at 4.6k rows, 17.3ms p99 at 73k, against a 50ms target. So it
+    -- grows linearly and stays inside budget for roughly thirty years of Nathejk, but
+    -- the headroom is ~3x where an index seek gave ~140x.
+    --
+    -- Kept anyway, deliberately: the write cost is trivial at these volumes, and they
+    -- are exactly what an exact-match fast path would need if the scan ever does get
+    -- too slow (try the indexed equality first, fall back to the scan only when it
+    -- finds nothing). Dropping them would mean a DROP INDEX migration against
+    -- production for no measured gain. Do not read their presence as a claim that
+    -- lookups are indexed — they are not.
     KEY idx_search_phone (year, phoneNormalized),
     KEY idx_search_phone_parent (year, phoneParentNormalized),
 
@@ -56,6 +76,7 @@ CREATE TABLE IF NOT EXISTS search_person (
     -- it (`type: ref`, `Using index`) rather than touching the table. So a mid-string name
     -- match is still a scan, just a cheap one over an index rather than over rows.
     --
-    -- Measured at 73k rows: 4.7ms for a name scan against 0.27ms for an indexed phone lookup.
+    -- Measured at 73k rows: 4.7ms for a name scan. Now the same order of magnitude as the
+    -- phone lookup above, which stopped being a seek in task 187.
     KEY idx_search_name (year, name)
 );

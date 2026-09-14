@@ -1,11 +1,11 @@
 # PRD 014 — Person search by phone number and name
 
-**Status:** doing
+**Status:** done
 **Author:** agent session (2026-09-14)
 **Created:** 2026-09-14
 **Last updated:** 2026-09-15
 **Approved:** 2026-09-14
-**Shipped:**
+**Shipped:** 2026-09-15
 **Target users:** organizer (HQ operators, nødtelefon crew)
 
 ---
@@ -190,9 +190,12 @@ one shortcut, eight digits, one click.
 
 ### Non-Functional
 
-- **Performance.** A phone lookup must be an index seek, not a scan — that is the
+- **Performance.** ~~A phone lookup must be an index seek, not a scan — that is the
   whole reason this PRD builds a projection rather than a `UNION` over the six
-  tables. Target: server time under 50 ms at p99 for a phone query.
+  tables.~~ **Superseded by task 187:** phone matching is a substring scan, traded
+  deliberately for finding both numbers in a shared guardian field. The target is
+  unchanged and met — server time under 50 ms at p99, measured at 4.0 ms on current
+  data and 17.3 ms at sixteen times it.
 - **Privacy.** This endpoint returns contact details for minors, aggregated across
   the whole event, which no existing endpoint does. It must sit behind the same
   authentication as every other `/api` route — **and task 181 found that this is a
@@ -201,7 +204,9 @@ one shortcut, eight digits, one click.
   in an external service. So "the same as every other route" is true and may not be
   enough. Pre-existing, not caused by this PRD, but this PRD raises the stake — one
   request now returns fifty named minors with phone numbers. **Task 188 owns
-  establishing what actually guards `/api` and recording the decision here.**
+  establishing what actually guards `/api` and recording the decision here** — the
+  maintainer has confirmed (2026-09-15) that proper authentication is coming shortly,
+  so this is accepted as a known gap rather than a blocker.
   Results deliberately do **not** include address, birthday or notes: those stay on
   the detail pages the results link to, so search is a way to *find* a person, not a
   way to bulk-export the population.
@@ -260,6 +265,15 @@ one shortcut, eight digits, one click.
   "forælders nummer" for `phoneParent`, "kontaktperson" for a team contact. An
   operator who is about to speak to someone must not be misled about who will
   answer.
+
+  It is shown **as entered**, which since task 187 does real work rather than being a
+  nicety: a guardian field holding two numbers is kept whole, so the operator reads
+  `mor 22 79 01 52 eller Far 22110715` and knows which parent they matched — something
+  no label derived by us could promise, because the order of those words in free text
+  is not reliable. It also means a `tel:` link is offered **only** where the field
+  resolves to exactly one number; a two-number field renders as text, because we
+  cannot know which of the two was meant and a link built from the whole string would
+  dial nothing while looking as though it should.
 - **Loading.** `pending` from `useLiveResource` wired to the list's loading state,
   and no separate spinner — a repeated query renders from cache and must not
   flash.
@@ -490,16 +504,17 @@ them as current.
   predictable index seek is worth the duplication. Keep the querier behind an
   interface so the two remain interchangeable.
 
-  **Measured afterwards (task 186), and the latency argument above did not hold up.**
-  The index does work — `index_merge` across both phone columns, 5 rows examined out
-  of 4,602, p99 5.2ms over HTTP against 50ms target, and flat at 0.36ms p99 when the
-  table is grown 16x to 73k rows. But a name *scan* at that same 73k rows costs only
-  4.7ms, so a scanning implementation would have met the target comfortably too.
-  Latency alone did not justify this projection. What justifies it is the rest:
-  contact persons becoming findable at all, normalisation done once at write time
-  rather than in an unindexable expression per query, one place to query instead of
-  six, and the klan contact corrections that turned out to be kept nowhere else.
-  Scope the next search feature on those reasons rather than on speed.
+  **Measured afterwards (tasks 186 and 187), and the latency argument above did not
+  hold up.** A name scan costs 4.7ms at 73k rows — sixteen times current data — so a
+  scanning implementation would have met the 50ms target comfortably. Latency alone
+  did not justify the projection. Task 187 then went further and made the phone
+  lookup a substring scan too, deliberately trading the index seek for finding both
+  numbers in a shared guardian field, which settles the matter: **this projection is
+  not justified by speed at all.** What justifies it is that contact persons become
+  findable in the first place, that normalisation is defined once at write time
+  instead of in an unindexable expression per query, that there is one place to query
+  instead of six, and — discovered on the way — that klan contact corrections are
+  kept nowhere else. Scope the next search feature on those reasons.
 
 ## 9. Success Metrics
 
@@ -545,31 +560,38 @@ Proposed tasks for `roadmap/tasks/open/` (created 2026-09-14 on approval):
 - [x] 184 — Opt-in other-years search, off by default, with year-labelled rows
 - [x] 185 — Search box and keyboard shortcut in `Navigation.vue`
 - [x] 186 — Verify p99 phone-query latency on production-sized data
-- [ ] 187 — Find people whose number shares a field with another number (from task 180)
+- [x] 187 — Find people whose number shares a field with another number (from task 180)
 - [ ] 188 — Confirm who can reach `/api`, now that it returns minors' contact details (from task 181)
 
 Note the sequencing differs slightly from the numbering: 178 (wiring) lands before
 179 (status join), because the join is easier to verify against a projection that
 is already live.
 
-**This PRD stays in `doing/` until 187 and 188 close.** The feature works and is
-serving — 4,602 people indexed, an 8-digit lookup at 5.2ms p99 — but 187 is a
-correctness gap in the headline use case (a guardian field holding two numbers makes
-neither parent findable, 33 of 1459 rows) and 188 is an open question about who can
-reach an endpoint that returns minors' contact details. Neither is a reason to
-unship; both are reasons not to call it done.
+**Everything this PRD set out to do is done.** 188 remains open by decision, not by
+oversight: proper authentication is coming separately, and search is accepted as no
+more exposed than every other `/api` route until it does. The PRD moves to `done/`
+with 188 tracked on its own — it is a platform question that outlived this feature
+rather than a piece of it.
 
 ## 11. Open Questions
 
-- **One row per person, or a `search_person_phone` pair table?** The proposed
-  schema hard-codes two phone roles in column names, which is informative but does
-  not extend to a third number. A `(phoneNormalized, kind, id, role)` table would
-  make any number findable through one index. ~~Collapse later if a third number
-  appears.~~ **A third number has appeared** — task 180's verification found 33 of
-  1459 guardian fields holding two numbers as free text
-  (`mor 22 79 01 52 eller Far 22110715`), which normalize to 16 digits and make
-  *neither* parent findable. Task 187 owns resolving this, and the pair table is the
-  likely answer.
+- ~~**One row per person, or a `search_person_phone` pair table?**~~ **Resolved in
+  task 187: neither.** A guardian field holding two numbers
+  (`mor 22 79 01 52 eller Far 22110715`, 33 of 1459 rows) is left **collapsed** into
+  one 16-digit normalized value, and phone matching is a substring (`LIKE
+  '%needle%'`), which finds either half. No schema change, and better than splitting
+  on the point that looked hardest: the *entered text* is returned, so the operator
+  reads "mor … eller Far …" and needs no label we would have had to guess at — the
+  order of those words in free text is not reliable enough to promise which parent is
+  which. The same mechanism recovers a number pasted in twice.
+
+  Two costs, both accepted deliberately. Phone lookups are no longer index seeks
+  (`type: ALL`): 4.0ms p99 at 4.6k rows, 17.3ms p99 at 73k — inside the 50ms target
+  for roughly thirty years of data, but with ~3x headroom rather than ~140x. And
+  substring matching admits false positives, including an 8-digit needle matching
+  across the join between two collapsed numbers; mitigated by sorting exact matches
+  first rather than by excluding anything, because a spurious row an operator can see
+  and dismiss is far cheaper than a missing row they cannot know about.
 - **A data-quality report for the organisers.** The same measurement found numbers
   that are simply damaged: `2128151q`, `5O401639` (letter O for zero), 7-digit
   numbers, `00000000`, `112`, and one value that looks like a number pasted twice.

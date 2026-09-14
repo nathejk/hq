@@ -85,11 +85,13 @@ type classification struct {
 	MatchName  bool
 }
 
-// Exact reports whether the phone match should be an equality rather than a prefix.
+// Exact reports whether the query holds a whole number rather than a fragment.
 //
-// Eight digits or more is a whole number, so it is an equality match and an index seek — which
-// is the case this entire projection exists to make fast. Fewer is a fragment, typically a
-// number read back badly over the phone, and gets a prefix match.
+// No longer decides *how* the match is done — phone matching is a substring in every case, so
+// that a guardian field holding two numbers is findable by either (task 187). It survives
+// because the distinction still means something to a reader and to the tests: eight digits is
+// somebody's number, four is part of one, and only the former can be expected to identify a
+// single person.
 func (c classification) Exact() bool { return len(c.Digits) >= nationalNumberLength }
 
 // classify decides whether a query is a number, a name, or both.
@@ -187,17 +189,27 @@ func (c classification) predicate() (string, []any) {
 	terms, args := []string{}, []any{}
 
 	if c.MatchPhone {
-		if c.Exact() {
-			// Equality on both indexed columns. The parent's number is searched as
-			// readily as the scout's own, because it is very often the parent who rings.
-			terms = append(terms, "sp.phoneNormalized = ?", "sp.phoneParentNormalized = ?")
-			args = append(args, c.Digits, c.Digits)
-		} else {
-			// A prefix, which the same index still serves: LIKE 'digits%' is a range
-			// scan, not the unindexable leading-wildcard form.
-			terms = append(terms, "sp.phoneNormalized LIKE ?", "sp.phoneParentNormalized LIKE ?")
-			args = append(args, c.Digits+"%", c.Digits+"%")
-		}
+		// One substring match, covering both columns, whatever the length of the needle.
+		//
+		// This is deliberately looser than an equality or a prefix, and the reason is a real
+		// pattern in the register: a guardian field very often holds *two* numbers as free
+		// text — `mor 22 79 01 52 eller Far 22110715` — which normalizes to one 16-digit
+		// string. Under an equality match neither parent could be found, which defeated the
+		// feature's premise for 33 of 1459 rows, in exactly the field an inbound call is most
+		// likely to match. A substring finds both halves, and the same trick recovers the
+		// occasional number that was pasted in twice.
+		//
+		// The cost is a leading wildcard, so this no longer uses the phone indexes and scans.
+		// Measured before committing to it (tasks 186 and 187): a scan of this table costs
+		// ~5ms at 73k rows, sixteen times its current size, against a 50ms target.
+		//
+		// The second cost is false positives, which cannot be designed away: an 8-digit needle
+		// can match across the join between two collapsed numbers, and a 4-digit one matches
+		// mid-number. Mitigated by ordering rather than by exclusion — exact matches sort
+		// first, see order — and accepted, because a spurious row an operator can see and
+		// dismiss is far cheaper than a missing row they cannot know about.
+		terms = append(terms, "sp.phoneNormalized LIKE ?", "sp.phoneParentNormalized LIKE ?")
+		args = append(args, "%"+c.Digits+"%", "%"+c.Digits+"%")
 	}
 
 	if c.MatchName {
@@ -227,9 +239,19 @@ func (c classification) order(currentYear string) (string, []any) {
 	args = append(args, currentYear)
 
 	if c.MatchPhone {
-		// Their own number before a number that merely reaches them.
-		terms = append(terms, "(sp.phoneNormalized = ?) DESC")
-		args = append(args, c.Digits)
+		// Exact matches first, then the rest.
+		//
+		// This is what makes a substring match tolerable. The predicate returns anything
+		// *containing* the digits — including a needle that straddles two collapsed numbers,
+		// and every mid-number hit for a short fragment — so without this the person whose
+		// number was actually dialled could sit below a coincidence. With it, they are first
+		// and the coincidences are visibly below them.
+		terms = append(terms,
+			"(sp.phoneNormalized = ? OR sp.phoneParentNormalized = ?) DESC",
+			// Then their own number, before a number that merely reaches them.
+			"(sp.phoneNormalized LIKE ?) DESC",
+		)
+		args = append(args, c.Digits, c.Digits, "%"+c.Digits+"%")
 	}
 
 	// Somebody still involved before somebody who left.
@@ -244,25 +266,24 @@ func (c classification) order(currentYear string) (string, []any) {
 
 // roleOf decides, for one matched row, whose number to show and how to label it.
 //
-// This is why the needle is carried into the row loop rather than left in the predicate: the
-// SQL matched either column, and only a comparison per row can say which — and an operator who
-// is about to ring somebody must be told whether a parent will answer.
+// This is why the needle is carried into the row loop rather than left in the predicate: the SQL
+// matched either column, and only a comparison per row can say which — and an operator who is
+// about to ring somebody must be told whether a parent will answer.
+//
+// Containment rather than equality, matching the predicate. A guardian field holding two numbers
+// is one 16-digit string, so the needle is a *substring* of it; testing equality here would leave
+// every such hit falling through to nameRole and labelled as the person's own number, which is
+// precisely the lie this function exists to prevent.
+//
+// Own number checked first: where a number appears in both fields, it is more useful to say "this
+// is their number" than "this reaches their guardian".
 func (c classification) roleOf(r row) PhoneRole {
-	if c.MatchPhone {
-		if c.Exact() {
-			if r.phoneNormalized == c.Digits {
-				return PhoneRoleOwn
-			}
-			if r.phoneParentNormalized == c.Digits {
-				return PhoneRoleParent
-			}
-		} else {
-			if strings.HasPrefix(r.phoneNormalized, c.Digits) && r.phoneNormalized != "" {
-				return PhoneRoleOwn
-			}
-			if strings.HasPrefix(r.phoneParentNormalized, c.Digits) && r.phoneParentNormalized != "" {
-				return PhoneRoleParent
-			}
+	if c.MatchPhone && c.Digits != "" {
+		if strings.Contains(r.phoneNormalized, c.Digits) {
+			return PhoneRoleOwn
+		}
+		if strings.Contains(r.phoneParentNormalized, c.Digits) {
+			return PhoneRoleParent
 		}
 	}
 	// A name hit, or a row that matched on name in a mixed query.

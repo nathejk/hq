@@ -4,6 +4,7 @@ import {
   MIN_PHONE_DIGITS,
   SEARCH_DEPENDS_ON,
   type PersonResult,
+  dialable,
   displayName,
   emptyState,
   isSearchable,
@@ -282,5 +283,38 @@ describe('live dependencies', () => {
   it('does not name the two tokens that do not exist', () => {
     expect(SEARCH_DEPENDS_ON).not.toContain('personnel')
     expect(SEARCH_DEPENDS_ON).not.toContain('bandit')
+  })
+})
+
+// Since task 187 the projection keeps a two-number guardian field whole, because the entered text
+// is what tells an operator which parent is which. That makes a naive `tel:${phone}` link broken
+// in a way that still looks clickable, so what may and may not become a link is pinned here.
+describe('dialable', () => {
+  it('links a single Danish number, however it was written', () => {
+    expect(dialable('12345678')).toBe('tel:+4512345678')
+    expect(dialable('12 34 56 78')).toBe('tel:+4512345678')
+    expect(dialable('+45 12 34 56 78')).toBe('tel:+4512345678')
+    expect(dialable('0045 12345678')).toBe('tel:+4512345678')
+  })
+
+  it('refuses a field holding two numbers, rather than dialling a number nobody has', () => {
+    // Both real values from the 2026 register.
+    expect(dialable('mor 22 79 01 52 eller Far 22110715')).toBeNull()
+    expect(dialable('Mor: 24281097 eller Far: 22239313')).toBeNull()
+  })
+
+  it('refuses a number pasted in twice', () => {
+    expect(dialable('+452244565222445652')).toBeNull()
+  })
+
+  it('refuses values damaged beyond recognition', () => {
+    expect(dialable('2128151q')).toBeNull() // seven digits and a stray letter
+    expect(dialable('112')).toBeNull()
+    expect(dialable('')).toBeNull()
+    expect(dialable('ukendt')).toBeNull()
+  })
+
+  it('links a non-Danish number as dialled', () => {
+    expect(dialable('+47 123 45 678')).toBe('tel:+4712345678')
   })
 })
