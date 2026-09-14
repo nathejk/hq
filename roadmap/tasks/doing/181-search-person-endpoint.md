@@ -1,10 +1,10 @@
 # 181 — GET /api/search/person endpoint
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-14
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session 2026-09-14
+**Started:** 2026-09-14
 **Completed:**
 
 ## Description
