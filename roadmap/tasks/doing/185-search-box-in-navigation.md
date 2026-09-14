@@ -1,10 +1,10 @@
 # 185 — Search box and keyboard shortcut in Navigation
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-09-14
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session 2026-09-14
+**Started:** 2026-09-14
 **Completed:**
 
 ## Description
@@ -40,3 +40,9 @@ broken.
 ## Progress Log
 
 - 2026-09-14 22:08 — Task created from PRD 014 §10.
+- 2026-09-15 00:44 — Picked up. Plan: a small `components/NavSearch.vue` (its own file with
+  `lang="ts"`, so it can be mounted and tested — `Navigation.vue` is plain JS and 300 lines of
+  menu data), used from `Navigation.vue` so it is present on every page. A `<form role="search">`
+  submitting to `/search?q=…`, a document-level shortcut that focuses it, and no dropdown. Shortcut
+  candidate is `/`: Cmd/Ctrl+K shadows Firefox's search bar and Chrome's omnibox, `/` shadows
+  nothing and is the established in-app convention.
