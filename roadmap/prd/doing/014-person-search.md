@@ -3,7 +3,7 @@
 **Status:** doing
 **Author:** agent session (2026-09-14)
 **Created:** 2026-09-14
-**Last updated:** 2026-09-14
+**Last updated:** 2026-09-15
 **Approved:** 2026-09-14
 **Shipped:**
 **Target users:** organizer (HQ operators, nødtelefon crew)
@@ -532,25 +532,32 @@ incomplete feature is invisible rather than broken.
 
 Proposed tasks for `roadmap/tasks/open/` (created 2026-09-14 on approval):
 
-- [ ] 174 — `search_person` table and projection skeleton, spejder source only
-- [ ] 175 — Add senior, personnel and crewmember sources to `search_person`
-- [ ] 176 — Add contact-person sources (patrulje columns, signup) to `search_person`
-- [ ] 177 — Retain removed members behind a `deleted` flag, with round-trip tests
-- [ ] 178 — Wire `searchperson` into the `projections` slice and confirm live tokens
-- [ ] 179 — Join current status (spejderstatus, signupStatus) into search results
-- [ ] 180 — Phone/name query classification and matching, with table-driven tests
-- [ ] 181 — `GET /api/search/person` handler with OpenAPI annotations
-- [ ] 182 — `SearchView.vue` and `/search` route, live via `useLiveResource`
-- [ ] 183 — Status badges on result rows, using `composables/severity.ts`
-- [ ] 184 — Opt-in previous-years search, off by default, with year-labelled rows
-- [ ] 185 — Search box and keyboard shortcut in `Navigation.vue`
-- [ ] 186 — Verify p99 phone-query latency on production-sized data
+- [x] 174 — `search_person` table and projection skeleton, spejder source only
+- [x] 175 — Add senior, personnel and crewmember sources to `search_person`
+- [x] 176 — Add contact-person sources (patrulje columns, signup) to `search_person`
+- [x] 177 — Retain removed members behind a `deleted` flag, with round-trip tests
+- [x] 178 — Wire `searchperson` into the `projections` slice and confirm live tokens
+- [x] 179 — Join current status (spejderstatus, signupStatus) into search results
+- [x] 180 — Phone/name query classification and matching, with table-driven tests
+- [x] 181 — `GET /api/search/person` handler with OpenAPI annotations
+- [x] 182 — `SearchView.vue` and `/search` route, live via `useLiveResource`
+- [x] 183 — Status badges on result rows
+- [x] 184 — Opt-in other-years search, off by default, with year-labelled rows
+- [x] 185 — Search box and keyboard shortcut in `Navigation.vue`
+- [x] 186 — Verify p99 phone-query latency on production-sized data
 - [ ] 187 — Find people whose number shares a field with another number (from task 180)
 - [ ] 188 — Confirm who can reach `/api`, now that it returns minors' contact details (from task 181)
 
 Note the sequencing differs slightly from the numbering: 178 (wiring) lands before
 179 (status join), because the join is easier to verify against a projection that
 is already live.
+
+**This PRD stays in `doing/` until 187 and 188 close.** The feature works and is
+serving — 4,602 people indexed, an 8-digit lookup at 5.2ms p99 — but 187 is a
+correctness gap in the headline use case (a guardian field holding two numbers makes
+neither parent findable, 33 of 1459 rows) and 188 is an open question about who can
+reach an endpoint that returns minors' contact details. Neither is a reason to
+unship; both are reasons not to call it done.
 
 ## 11. Open Questions
 
