@@ -35,6 +35,18 @@ type Spejder struct {
 	Birthday      types.Date         `json:"birthday"`
 	Returning     bool               `json:"returning"`
 	TShirtSize    string             `json:"tshirtSize"`
+
+	// VerifiedPhone and VerifiedPhoneParent are the numbers the member has verified
+	// themselves in the hej app, normalized (digits only), or empty when they have not.
+	//
+	// They are not read from the roster — they come from the memberverification projection
+	// and are set by the handler — and they deliberately duplicate Phone/PhoneParent rather
+	// than replacing or annotating them: the register's number is what an organizer edits,
+	// the verified number is what the member proved, and a client can only tell whether the
+	// value on screen is still vouched for if it is given both. Omitted from the JSON when
+	// empty, so "never verified" costs nothing on the wire.
+	VerifiedPhone       types.PhoneNumber `json:"verifiedPhone,omitempty"`
+	VerifiedPhoneParent types.PhoneNumber `json:"verifiedPhoneParent,omitempty"`
 }
 
 // GetSpejdere reads a patrol's members with their lifecycle status.

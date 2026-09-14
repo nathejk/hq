@@ -14,6 +14,7 @@ import { ref, computed, onMounted } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import { FilterMatchMode } from '@primevue/core/api';
 import { http } from '@/plugins/axios';
+import VerifiedMark from '@/components/VerifiedMark.vue';
 
 const props = defineProps({
     teamId: {type: String, required: false},
@@ -64,6 +65,39 @@ const start = async () => {
 
 const starterCount = computed(() => spejdere.value.filter(s => s.starter).length)
 
+// Which of the two numbers on a member's row the member has verified themselves in the
+// hej app (hej, PRD 015). A verified number is one question the counter does not have to
+// ask at check-in, so the shield is there to be skipped past — hence a mark on the field
+// itself rather than a column of its own.
+//
+// The check is "is the value on screen still the number that was proven?", not "has this
+// member ever verified anything". The field is editable, and the moment an operator
+// corrects it the verification no longer vouches for what it says — so the shield must
+// disappear as they type. That is why the server sends the verified number rather than a
+// boolean.
+//
+// Compared on digits only: the register holds numbers as they were typed ("12 34 56 78",
+// "+45 12345678"), the events carry them normalized, and formatting is not a difference an
+// operator should have to see.
+//
+// Nor is a country code. hej verifies through the SMS gateway and publishes what it dialled,
+// so a verified Danish number arrives international — 4523102001 for the 23102001 the patrol
+// leader typed. Both are the same phone, and an operator shown an unmarked field would ask a
+// question that was already answered. So the two are reduced to their last 8 digits when both
+// are at least that long, which is what "same Danish number, differently prefixed" means;
+// anything shorter (a partially typed number, a foreign one) is compared in full rather than
+// guessed at.
+const digits = (value) => String(value ?? '').replace(/\D/g, '')
+const isVerified = (value, verified) => {
+  const proven = digits(verified)
+  const shown = digits(value)
+  if (proven === '' || shown === '') return false
+  if (proven.length >= 8 && shown.length >= 8) {
+    return proven.slice(-8) === shown.slice(-8)
+  }
+  return proven === shown
+}
+
 </script>
 
 <template>
@@ -77,12 +111,18 @@ const starterCount = computed(() => spejdere.value.filter(s => s.starter).length
             </Column>
             <Column field="phone" header="Telefon">
                 <template #body="{data}">
-                    <InputText v-if="data.starter" type="text" v-model="data.phone" variant="filled" />
+                    <InputGroup v-if="data.starter">
+                        <InputText type="text" v-model="data.phone" variant="filled" />
+                        <VerifiedMark :verified="isVerified(data.phone, data.verifiedPhone)" />
+                    </InputGroup>
                 </template>
             </Column>
             <Column field="phoneParent" header="Kontaktperson">
                 <template #body="{data}">
-                    <InputText v-if="data.starter" type="text" v-model="data.phoneParent" variant="filled" />
+                    <InputGroup v-if="data.starter">
+                        <InputText type="text" v-model="data.phoneParent" variant="filled" />
+                        <VerifiedMark :verified="isVerified(data.phoneParent, data.verifiedPhoneParent)" />
+                    </InputGroup>
                 </template>
             </Column>
             <Column field="status" header="Starter">

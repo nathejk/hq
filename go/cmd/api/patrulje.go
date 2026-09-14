@@ -166,6 +166,31 @@ func (app *application) showPatruljeHandler(w http.ResponseWriter, r *http.Reque
 	if err != nil {
 		log.Printf("GetSpejdere %q", err)
 	}
+	// Which of each member's numbers the member has verified themselves in the hej app
+	// (hej, PRD 015). Decorating the roster here rather than joining it into GetSpejdere:
+	// verification is a different fact from the register's value — see the projection's
+	// package doc — and the numbers are returned as they were verified so the client can
+	// tell whether what is on screen is still the number that was proven.
+	//
+	// A failure is logged and the page still renders: the shield is a hint that saves a
+	// question at the counter, and losing it must not take a patrol's page down.
+	if len(members) > 0 {
+		ids := make([]types.MemberID, 0, len(members))
+		for _, m := range members {
+			ids = append(ids, m.MemberID)
+		}
+		verifications, err := app.models.MemberVerification.ByMembers(r.Context(), app.YearSlug(r), ids)
+		if err != nil {
+			log.Printf("MemberVerification.ByMembers %q", err)
+		} else {
+			for _, m := range members {
+				if v, ok := verifications[m.MemberID]; ok {
+					m.VerifiedPhone = v.Phone
+					m.VerifiedPhoneParent = v.PhoneContact
+				}
+			}
+		}
+	}
 	payments, err := app.models.Payment.GetAll(r.Context(), payment.Filter{TeamIDs: []types.TeamID{teamId}})
 	if err != nil {
 		log.Printf("GetSpejdere %q", err)

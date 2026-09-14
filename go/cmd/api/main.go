@@ -51,6 +51,7 @@ import (
 	"nathejk.dk/nathejk/table/kort"
 	"nathejk.dk/nathejk/table/lok"
 	"nathejk.dk/nathejk/table/maphandout"
+	"nathejk.dk/nathejk/table/memberverification"
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/patruljenumber"
 	"nathejk.dk/nathejk/table/personnel"
@@ -211,6 +212,9 @@ func main() {
 	// the maphandout package doc). Projects skan's qr.registered as history, because skan
 	// keeps only the current holder and a patrol page needs every sheet it ever held.
 	maphandouttable := maphandout.New(writer, db.DB())
+	// Which phone numbers members have verified themselves in the hej app (hej, PRD 015),
+	// so the patrol's start row can show the counter what it need not ask about.
+	memberverificationtable := memberverification.New(writer, db.DB())
 	// Photographs of the patrols (foto's PRD 001). foto publishes them onto the NATHEJK
 	// stream and stores the bytes; hq projects the metadata so a patrol page can list a
 	// team's pictures without calling another service, and links the bytes back to foto.
@@ -336,6 +340,7 @@ func main() {
 		checkpersonnel,
 		scantable,
 		maphandouttable,
+		memberverificationtable,
 		phototable,
 		photocovertable,
 		tracktable,
@@ -369,6 +374,7 @@ func main() {
 	models.Photo = phototable
 	models.PhotoCover = photocovertable
 	models.MapHandout = maphandouttable
+	models.MemberVerification = memberverificationtable
 	cmds := commands.New(publisher, models)
 	cmds.Year = year
 	cmds.Checkpoint = checkpoint

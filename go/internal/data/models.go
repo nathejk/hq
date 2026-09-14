@@ -21,6 +21,7 @@ import (
 	"nathejk.dk/nathejk/table/kort"
 	"nathejk.dk/nathejk/table/lok"
 	"nathejk.dk/nathejk/table/maphandout"
+	"nathejk.dk/nathejk/table/memberverification"
 	"nathejk.dk/nathejk/table/patrulje"
 	"nathejk.dk/nathejk/table/personnel"
 	"nathejk.dk/nathejk/table/photo"
@@ -123,6 +124,11 @@ type Models struct {
 	// MapHandout is which map sheets / QR codes a team has been handed, current and past
 	// (see the projection's package doc for why hq keeps its own history of this).
 	MapHandout maphandout.Queries
+
+	// MemberVerification is which phone numbers a member has verified in the hej app, so
+	// check-in can skip asking for them (hej, PRD 015). Assigned after NewModels, like the
+	// photograph models below.
+	MemberVerification memberverification.Queries
 
 	// Roster answers which team a member is currently on (PRD 012).
 	//
