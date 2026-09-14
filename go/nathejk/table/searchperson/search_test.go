@@ -238,6 +238,70 @@ func TestTooShortIsDistinctFromNoMatch(t *testing.T) {
 	}
 }
 
+// The year predicate is present unless it was explicitly opted out of. Tested directly because
+// it is the one default here with a privacy dimension, and because "the server never widens the
+// scope on its own" is a claim, not an implementation detail.
+func TestScopeIsYearBoundUnlessOptedOut(t *testing.T) {
+	where, args := Query{Year: "2026"}.scope()
+	if len(where) != 1 || where[0] != "sp.year = ?" {
+		t.Fatalf("where = %v, want a year predicate", where)
+	}
+	if len(args) != 1 || args[0] != "2026" {
+		t.Errorf("args = %v, want the year", args)
+	}
+
+	wide, wideArgs := Query{Year: "2026", IncludeOtherYears: true}.scope()
+	if len(wide) != 0 || len(wideArgs) != 0 {
+		t.Errorf("opting out should drop the predicate, got %v / %v", wide, wideArgs)
+	}
+}
+
+// Coverage across every source, including a removed person: the requirement PRD 014 names as the
+// one most likely to be quietly broken by a later "clean up the deleted rows" change.
+//
+// Asserted from event to queryable row via the statements the projection emits, per kind, so that
+// a source dropped from Consumes() or a handler that stops writing shows up here rather than as a
+// population that silently cannot be found.
+func TestEverySourceIsIndexedAndFindable(t *testing.T) {
+	events := []struct {
+		kind    string
+		subject string
+		body    map[string]any
+	}{
+		{"spejder", "NATHEJK.2026.spejder.m-1.updated", map[string]any{"memberId": "m-1", "name": "A", "phone": "11111111", "phoneContact": "99999999"}},
+		{"senior", "NATHEJK.2026.senior.m-2.updated", map[string]any{"memberId": "m-2", "name": "B", "phone": "22222222"}},
+		{"gøgler", "NATHEJK.2026.gøgler.u-3.signedup", map[string]any{"teamId": "u-3", "name": "C", "phone": "33333333"}},
+		{"friend", "NATHEJK.2026.friend.u-4.signedup", map[string]any{"teamId": "u-4", "name": "D", "phone": "44444444"}},
+		{"crew", "NATHEJK.2026.crew.u-5.signedup", map[string]any{"teamId": "u-5", "name": "E", "phone": "55555555"}},
+		{"patruljekontakt", "NATHEJK.2026.patrulje.t-6.signedup", map[string]any{"teamId": "t-6", "name": "F", "phone": "66666666"}},
+		{"klankontakt", "NATHEJK.2026.klan.t-7.signedup", map[string]any{"teamId": "t-7", "name": "G", "phone": "77777777"}},
+	}
+
+	table, w := newTable(t)
+	for _, e := range events {
+		if err := table.HandleMessage(message(t, e.subject, e.body)); err != nil {
+			t.Fatalf("%s: %v", e.kind, err)
+		}
+		stmt := w.Last()
+		if !strings.Contains(stmt, "kind="+quote(e.kind)) {
+			t.Errorf("%s produced no row of its own kind:\n%s", e.kind, stmt)
+		}
+		// Findable by name and by number, which is the whole contract.
+		if !strings.Contains(stmt, "name=") || !strings.Contains(stmt, "phoneNormalized=") {
+			t.Errorf("%s is not findable by name and number:\n%s", e.kind, stmt)
+		}
+	}
+
+	// And the removed person stays, flagged.
+	if err := table.HandleMessage(message(t, "NATHEJK.2026.spejder.m-1.deleted", map[string]any{"memberId": "m-1"})); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if removal := w.Last(); !strings.Contains(removal, "deleted=1") ||
+		strings.Contains(strings.ToUpper(removal), "DELETE FROM") {
+		t.Errorf("a removed person must be kept and flagged:\n%s", removal)
+	}
+}
+
 // writerStub accepts the schema statement and nothing else is needed for query-shaping tests.
 type writerStub struct{}
 

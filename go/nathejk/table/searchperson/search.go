@@ -145,11 +145,7 @@ func (t *Table) Search(ctx context.Context, q Query) (Results, error) {
 		limit = DefaultLimit
 	}
 
-	where, args := []string{}, []any{}
-	if !q.IncludeOtherYears {
-		where = append(where, "sp.year = ?")
-		args = append(args, q.Year)
-	}
+	where, args := q.scope()
 
 	match, matchArgs := c.predicate()
 	where = append(where, "("+match+")")
@@ -170,6 +166,20 @@ func (t *Table) Search(ctx context.Context, q Query) (Results, error) {
 	}
 	out.Results = results
 	return out, nil
+}
+
+// scope builds the year predicate.
+//
+// Its own function so the rule can be tested without a database, because it is the one default
+// in this feature with a privacy dimension: a search returns minors' contact details, and "this
+// year" is a far smaller disclosure than "every year we have ever run". The predicate is present
+// unless the caller explicitly opted out of it, and nothing in Search can widen it — not an
+// empty result, not an exact match.
+func (q Query) scope() ([]string, []any) {
+	if q.IncludeOtherYears {
+		return []string{}, []any{}
+	}
+	return []string{"sp.year = ?"}, []any{q.Year}
 }
 
 // predicate builds the match condition and its arguments.

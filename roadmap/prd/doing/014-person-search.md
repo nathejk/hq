@@ -225,14 +225,37 @@ one shortcut, eight digits, one click.
 - **Status is shown on every row, not only on the unusual ones.** A badge that
   appears only when something is wrong makes its absence carry meaning the
   operator has to know to read; showing "racing" as plainly as "udmeldt" means the
-  row can always be read at face value. Use the existing severity vocabulary in
-  `composables/severity.ts` so a departed person does not look like a normal one.
+  row can always be read at face value. ~~Use the existing severity vocabulary in
+  `composables/severity.ts`~~ — **corrected in task 183:** `severity.ts` is only the
+  Grøn/Gul/Rød *priority* scale and holds no person statuses, so following it would
+  have minted a second set of Danish words for states HQ already badges elsewhere.
+  The member-status vocabulary is inherited from PRD 006 (extracted into
+  `composables/memberStatus.ts`); `severity.ts` is used only for the *team* status
+  axis, which genuinely had no vocabulary.
+- **Colour alone does not carry the distinction search needs.** The inherited member
+  badge colours were designed for race-night screens, so *in our care*
+  (`waiting`/`transit`/`sheltered`) spans warn+danger and *somebody else's charge*
+  (`released`/`reunited`) spans secondary+info — the three-way grouping an operator
+  actually reasons about is not expressible in them. Task 183 deliberately did not
+  fork the palette (drift between two copies is worse) and instead puts the
+  unambiguous long form on hover. If that proves insufficient in use, the fix is to
+  change PRD 006's vocabulary in one place, not to add a second one here.
+- **Team statuses are prefixed "Holdet:"** — e.g. "Holdet: mangler betaling" for
+  `PAY`. This resolves §11's wording question, and identifies the real problem with
+  it: not that `PAY` is English, but that a fact about the *team* sits on a person's
+  row and needs saying so. `OUT` renders "ude", deliberately not "udgået", which
+  `sheltered` already owns.
+- **Six headings, not five:** Spejdere, Seniorer, Gøglere, **Friends**, Crew,
+  Kontaktpersoner. `friend` is its own entity token and its own population.
 - **The year control is off by default and states what it will do** — a checkbox
-  reading "søg også tidligere år", not a year dropdown pre-filled with the current
-  year. The distinction matters: a dropdown invites the operator to change the
-  year without noticing, and every list in HQ is year-scoped by the global year
-  selector already. Cross-year rows carry their year and are grouped after the
-  current year's, never interleaved.
+  reading **"Søg også i andre år"**, not "tidligere år" and not a year dropdown
+  pre-filled with the current year. "Andre" rather than "tidligere" because the data
+  is not only historical: the dev stream carries fixtures under year 9999, and
+  nothing stops a future edition existing before the current one closes. The
+  dropdown was rejected because it invites changing the year without noticing, and
+  every list in HQ is already year-scoped by the global year selector. Cross-year
+  rows carry their year and are grouped after the current year's, never interleaved.
+  The API parameter is `includeOtherYears` for the same reason.
 - **The matched phone is shown, and annotated** when it is not the person's own:
   "forælders nummer" for `phoneParent`, "kontaktperson" for a team contact. An
   operator who is about to speak to someone must not be misled about who will
@@ -240,6 +263,13 @@ one shortcut, eight digits, one click.
 - **Loading.** `pending` from `useLiveResource` wired to the list's loading state,
   and no separate spinner — a repeated query renders from cache and must not
   flash.
+
+  Implementation note from task 182, because it fails *silently*: a dynamic-key
+  resource must be held in a **`shallowRef`**, not a `ref`. A deep ref wraps the
+  resource in a reactive proxy which unwraps the refs inside it, so `pending.value`
+  and `data.value` read as `undefined` — a loading state that never appears and data
+  that never arrives, with no error anywhere. Worth knowing for any other view that
+  re-keys a resource.
 - **Empty states are three, not two:** nothing typed yet, too short to search
   (under the minimum), and searched-with-no-match.
 - The view is read-only, so it needs none of the dirty-state deferral that
@@ -460,6 +490,17 @@ them as current.
   predictable index seek is worth the duplication. Keep the querier behind an
   interface so the two remain interchangeable.
 
+  **Measured afterwards (task 186), and the latency argument above did not hold up.**
+  The index does work — `index_merge` across both phone columns, 5 rows examined out
+  of 4,602, p99 5.2ms over HTTP against 50ms target, and flat at 0.36ms p99 when the
+  table is grown 16x to 73k rows. But a name *scan* at that same 73k rows costs only
+  4.7ms, so a scanning implementation would have met the target comfortably too.
+  Latency alone did not justify this projection. What justifies it is the rest:
+  contact persons becoming findable at all, normalisation done once at write time
+  rather than in an unindexable expression per query, one place to query instead of
+  six, and the klan contact corrections that turned out to be kept nowhere else.
+  Scope the next search feature on those reasons rather than on speed.
+
 ## 9. Success Metrics
 
 - An unknown inbound number is resolved to a person in **one** interaction, where
@@ -544,9 +585,18 @@ is already live.
   2026 · 2 match i tidligere år" — would let the operator make the deliberate
   choice knowing there is something to find. It costs a second query on the empty
   path only, and it is the one thing the resolved decision leaves on the table.
-- **How should a status be worded for a non-spejder?** The lifecycle statuses read
-  naturally in Danish; a klan member's `signupStatus` of `PAY` does not, and is a
-  fact about the *team* rather than the person. Needs the operators' own vocabulary.
+- **How should a status be worded for a non-spejder?** ~~The lifecycle statuses read
+  naturally in Danish; a klan member's `signupStatus` of `PAY` does not…~~
+  **Resolved in task 183** with a "Holdet:" prefix — the problem was not the English
+  but that a team fact sits on a person's row. See §7.
+- **Should the nav search box be hidden on `/search`?** Task 185 kept it, mirroring
+  `?q=`, so a shared link does not show an empty box above full results — at the cost
+  of two search inputs on that one page. Hiding it would break "present on every
+  page" and leave the keyboard shortcut with nothing to focus. Needs an operator's
+  opinion rather than an engineer's.
+- **A cross-year result links into a year-scoped detail page** that may not hold the
+  record. Task 182 left this: the link is correct, the destination may shrug. Either
+  the detail pages need to accept a year, or cross-year rows should not link.
 - **Fuzzy matching.** Explicitly out of scope, and the case for it is real: names
   are taken down by ear over a phone. Revisit once we can see what operators
   actually type and fail to find.
