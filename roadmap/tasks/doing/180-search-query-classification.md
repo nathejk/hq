@@ -1,10 +1,10 @@
 # 180 — Phone/name query classification and matching
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-14
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session 2026-09-14
+**Started:** 2026-09-14
 **Completed:**
 
 ## Description
@@ -62,3 +62,5 @@ so rather than silently truncating.
 ## Progress Log
 
 - 2026-09-14 22:08 — Task created from PRD 014 §10.
+- 2026-09-15 02:20 — Picked up. Plan: `search.go` with a `classify` step, a matcher that carries
+  the needle so the phone role can be decided per row, and `Search` on top of task 179's join.
