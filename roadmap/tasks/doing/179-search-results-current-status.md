@@ -1,10 +1,10 @@
 # 179 — Join current status into search results
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-14
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session 2026-09-14
+**Started:** 2026-09-14
 **Completed:**
 
 ## Description
@@ -55,3 +55,5 @@ Details:
 ## Progress Log
 
 - 2026-09-14 22:08 — Task created from PRD 014 §10.
+- 2026-09-15 01:30 — Picked up. This task creates `query.go` (deferred from 174), so it also
+  settles the result shape task 180 will filter and task 181 will serialise.
