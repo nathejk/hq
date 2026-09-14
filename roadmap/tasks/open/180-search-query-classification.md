@@ -19,6 +19,13 @@ as both and the results merged.
 
 **Phone matching.**
 
+**Normalize the operator's input with `searchperson`'s own `normalizePhone`, not with
+`types.PhoneNumber.Normalize`.** Task 174 found that shared-go's function keeps every
+digit, so `+45 12 34 56 78` and `12 34 56 78` reduce to different strings; `normalizePhone`
+adds the national-form step that makes them equal. Using a different function on the query
+side than the write side would produce a mismatch that looks exactly like "this person is
+not in the system".
+
 - exactly 8 digits → equality on `phoneNormalized` / `phoneParentNormalized`. This is the
   case the whole projection exists for, and it must be an index seek.
 - 4–7 digits → prefix match, for a number read back badly over the phone.
@@ -39,6 +46,8 @@ so rather than silently truncating.
 ## Acceptance Criteria
 
 - [ ] Classification: 8 digits, 4 digits, 3 digits, `+45 12 34 56 78`, `Anders`, `Anders 42`
+- [ ] Query input normalized with `normalizePhone`, and a test that `+45 12 34 56 78` finds
+      a person stored as `12 34 56 78`
 - [ ] 8-digit query is an equality match; `EXPLAIN` confirms the index is used
 - [ ] 4–7 digits prefix-matches
 - [ ] Parent number matches and is reported as the parent's

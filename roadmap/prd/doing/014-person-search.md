@@ -338,9 +338,24 @@ begin at signup-time `registered`/`seated`, and older years predate the table
 entirely. Render an absent status as unknown rather than inventing one — a LEFT
 JOIN, and no `COALESCE` to a status that would be a lie.
 
-Normalization uses `types.PhoneNumber.Normalize()` from shared-go — the same
-function the SMS gateway uses — so a number that can be texted is a number that
-can be found.
+Normalization is **two** steps, and the second is not optional.
+`types.PhoneNumber.Normalize()` from shared-go — the same function the SMS gateway uses —
+reduces a number to its digits, but it keeps *every* digit, so `+45 12 34 56 78` becomes
+`4512345678` while `12 34 56 78` becomes `12345678`. On its own it therefore does **not**
+unify the formats actually present in the source tables, which is the entire problem this
+projection exists to solve. (shared-go offers no help: its `IsValid()` calls an 8-digit
+number valid and so calls the `+45` form invalid, and `InternationalNumber()` concatenates
+an empty country code onto it.)
+
+So search stores a **national form**: digits, minus a leading `00`, minus a leading `45`
+*only when the result is 10 digits long*. `45` is a real Danish prefix — `45123456` is
+somebody's actual number — so stripping it from an 8-digit value would silently make every
+45-prefixed subscriber in the event unfindable. Non-Danish numbers are left as dialled
+rather than mangled.
+
+The query side must apply the identical function to the operator's input (task 180), or the
+two halves will disagree and the disagreement will look like "this person is not in the
+system".
 
 ### Frontend (Vue 3 / TS)
 
