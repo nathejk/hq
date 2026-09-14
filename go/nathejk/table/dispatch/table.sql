@@ -16,9 +16,10 @@ CREATE TABLE IF NOT EXISTS dispatch_task (
     id VARCHAR(99) NOT NULL,
     year VARCHAR(99) NOT NULL,
 
-    -- pickup | transport | collection | delivery. Four kinds because they read
+    -- pickup | transport | collection | delivery | samarit. Kinds because they read
     -- differently on a board and default their places differently — not because their
-    -- lifecycles differ.
+    -- lifecycles differ. `samarit` is the one that moves nothing: samaritter sent to look
+    -- at somebody where they stand.
     kind VARCHAR(19) NOT NULL DEFAULT "",
 
     -- green | yellow | red — the SOS vocabulary, so a pickup created from a red case can

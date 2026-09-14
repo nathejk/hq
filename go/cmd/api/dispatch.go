@@ -135,7 +135,7 @@ func (app *application) showDispatchBoardHandler(w http.ResponseWriter, r *http.
 		"places": places,
 		// The vocabularies the dialog offers, sent from here for the reason the korps list
 		// is: a client that invents its own would store values nothing can filter on.
-		"kinds":      []dispatch.Kind{dispatch.KindPickup, dispatch.KindTransport, dispatch.KindCollection, dispatch.KindDelivery},
+		"kinds":      []dispatch.Kind{dispatch.KindPickup, dispatch.KindTransport, dispatch.KindCollection, dispatch.KindDelivery, dispatch.KindSamarit},
 		"priorities": []dispatch.Priority{dispatch.PriorityGreen, dispatch.PriorityYellow, dispatch.PriorityRed},
 	}
 	if err := app.WriteJSON(w, http.StatusOK, envelope, nil); err != nil {
@@ -300,7 +300,7 @@ func (o optionalUts) patch() **int64 {
 // createDispatchTaskHandler opens a task.
 //
 // @Summary     Create a dispatch task
-// @Description Writes down something that needs moving: a scout collected from a roadside, maps between two posts, materials out of a closed Start, dinner to the loks. Only the kind and a description are required — almost everything else is optional on purpose, because the board is only as good as the desk's discipline and the written path has to be the fastest path. Places are a type plus a label and may be free text ("på Slangerupvej ved skovbrynet"), which is the normal case rather than a fallback. Priority is the nødtelefon's own vocabulary (green/yellow/red), so a pickup created from a red case can arrive red. createdUts may be backdated: a patrol that rang twenty minutes ago has been waiting twenty minutes.
+// @Description Writes down something that needs moving — or somebody who needs seeing to: a scout collected from a roadside, maps between two posts, materials out of a closed Start, dinner to the loks, samaritter out to a blister or a turned ankle (kind `samarit`, which moves nothing and has only the one place). Only the kind and a description are required — almost everything else is optional on purpose, because the board is only as good as the desk's discipline and the written path has to be the fastest path. Places are a type plus a label and may be free text ("på Slangerupvej ved skovbrynet"), which is the normal case rather than a fallback. Priority is the nødtelefon's own vocabulary (green/yellow/red), so a pickup created from a red case can arrive red. createdUts may be backdated: a patrol that rang twenty minutes ago has been waiting twenty minutes.
 // @Tags        dispatch
 // @Accept      json
 // @Produce     json

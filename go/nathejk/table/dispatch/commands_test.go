@@ -277,3 +277,29 @@ func TestDutyCoversIsHalfOpen(t *testing.T) {
 		t.Error("an instant before the window is covered")
 	}
 }
+
+// Samaritter sent to look at a blister is a kind of its own, so the create form can offer it.
+func TestASamaritCalloutIsAValidKind(t *testing.T) {
+	p := &recordingPublisher{}
+	c := commander{p: p, q: stubQueries{}}
+	if _, err := c.CreateTask(context.Background(), Actor{}, "2026", CreateTaskCommand{
+		Kind:        KindSamarit,
+		Description: "vabel ved Post 2B",
+	}); err != nil {
+		t.Fatalf("a samaritter call-out was refused: %v", err)
+	}
+	if len(p.subjects) != 1 {
+		t.Errorf("expected one created event, got %v", p.subjects)
+	}
+}
+
+// Being looked at is not being collected: a call-out must not be able to claim custody of
+// anybody, because `pickedup` is the transition the shelter's log trusts.
+func TestASamaritCalloutCannotRecordPeopleAboard(t *testing.T) {
+	c := commander{p: &recordingPublisher{}, q: stubQueries{
+		task: &Task{ID: "disp-1", Kind: KindSamarit, State: TaskStateUnderway},
+	}}
+	if err := c.MarkPickedUp(context.Background(), Actor{}, "2026", "disp-1", "bil-2", 1000); err != ErrNotPickup {
+		t.Errorf("expected ErrNotPickup, got %v", err)
+	}
+}

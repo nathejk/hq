@@ -63,9 +63,10 @@ func NewDutyID() DutyID { return DutyID("dispatchduty-" + uuid.New().String()) }
 
 // Kind is what sort of job a task is.
 //
-// Four values because they read differently on a board and default their places
-// differently — a delivery leaves HQ, a collection returns to it — and not because
-// their lifecycles differ. They do not: one state machine serves all four.
+// The values exist because they read differently on a board and default their places
+// differently — a delivery leaves HQ, a collection returns to it, a samaritter call-out
+// goes somewhere and comes back with nothing — and not because their lifecycles differ.
+// They do not: one state machine serves all of them.
 type Kind string
 
 const (
@@ -78,11 +79,19 @@ const (
 	KindCollection Kind = "collection"
 	// KindDelivery is taking something out from HQ.
 	KindDelivery Kind = "delivery"
+	// KindSamarit is samaritter sent to somebody: a blister, a turned ankle, a scout who
+	// should be looked at where they stand. It is a kind rather than a delivery with a
+	// description, because it is the one job that moves nothing — the car drives out, the
+	// work happens at that one place, and there is no second end to plan or wait for. It
+	// also deliberately does not change custody: being looked at is not being collected,
+	// so a samaritter call-out is not a pickup and cannot record people aboard. If they
+	// then have to come along, that is a pickup, and a second task says so.
+	KindSamarit Kind = "samarit"
 )
 
 func (k Kind) Valid() bool {
 	switch k {
-	case KindPickup, KindTransport, KindCollection, KindDelivery:
+	case KindPickup, KindTransport, KindCollection, KindDelivery, KindSamarit:
 		return true
 	}
 	return false

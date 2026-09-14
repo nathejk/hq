@@ -57,7 +57,7 @@ const emit = defineEmits<{
 const toast = useToast()
 
 const kindOptions: { value: TaskKind; label: string }[] = (
-  ['pickup', 'transport', 'collection', 'delivery'] as TaskKind[]
+  ['pickup', 'transport', 'collection', 'delivery', 'samarit'] as TaskKind[]
 ).map((value) => ({ value, label: kindLabel(value) }))
 
 const kind = ref<TaskKind>('pickup')
@@ -72,6 +72,11 @@ const saving = ref(false)
 const fieldErrors = ref<Record<string, string>>({})
 
 const editing = computed(() => !!props.task)
+
+// A samaritter call-out is done where the scout is and nothing comes back, so the form asks for
+// one place instead of two. An empty "Afleveres" field would otherwise invite the dispatcher to
+// fill it in with HQ, and the board would then plan a second stop nobody has to drive to.
+const oneEnded = computed(() => kind.value === 'samarit')
 const hq = computed<Place>(
   () => props.places.find((p) => p.kind === 'hq') ?? { kind: 'hq', refId: '', label: 'HQ' },
 )
@@ -81,7 +86,9 @@ const hq = computed<Place>(
  *
  * The kinds exist *because* they read differently on a board and default differently (PRD 009
  * §6); this is that second half. A delivery leaves HQ, a collection returns to it, a pickup
- * brings people in — so the dispatcher types one end, not two.
+ * brings people in — so the dispatcher types one end, not two. A samaritter call-out has only
+ * one end at all: the car goes where the scout is and comes back with nothing, so the dropoff
+ * is cleared rather than guessed, and the form hides it.
  */
 function applyKindDefaults(next: TaskKind) {
   const blank: Place = { kind: 'text', label: '' }
@@ -89,6 +96,10 @@ function applyKindDefaults(next: TaskKind) {
     case 'pickup':
       pickup.value = { ...blank }
       dropoff.value = { ...hq.value }
+      break
+    case 'samarit':
+      pickup.value = { ...blank }
+      dropoff.value = { ...blank }
       break
     case 'delivery':
       pickup.value = { ...hq.value }
@@ -264,10 +275,10 @@ async function save() {
 
       <div class="flex gap-3">
         <div class="flex-1">
-          <label class="block text-sm text-gray-700">Hentes</label>
+          <label class="block text-sm text-gray-700">{{ oneEnded ? 'Hvor' : 'Hentes' }}</label>
           <DispatchPlacePicker v-model="pickup" :places="places" />
         </div>
-        <div class="flex-1">
+        <div v-if="!oneEnded" class="flex-1">
           <label class="block text-sm text-gray-700">Afleveres</label>
           <DispatchPlacePicker v-model="dropoff" :places="places" />
         </div>
@@ -285,7 +296,7 @@ async function save() {
           <DatePicker v-model="notBefore" showTime hourFormat="24" class="w-full" showButtonBar />
         </div>
         <div class="flex-1">
-          <label class="block text-sm text-gray-700">Skal leveres</label>
+          <label class="block text-sm text-gray-700">{{ oneEnded ? 'Skal nås' : 'Skal leveres' }}</label>
           <DatePicker v-model="deadline" showTime hourFormat="24" class="w-full" showButtonBar />
           <small v-if="fieldErrors.deadlineUts" class="text-red-600">
             {{ fieldErrors.deadlineUts }}

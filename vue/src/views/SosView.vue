@@ -10,6 +10,7 @@ import SosTeamCard from '@/components/SosTeamCard.vue'
 import DispatchTaskDialog, { type PlaceOption } from '@/components/DispatchTaskDialog.vue'
 import {
   type Task as DispatchTask,
+  type TaskKind as DispatchTaskKind,
   formatUtsTime,
   kindLabel as dispatchKindLabel,
   stateLabel as dispatchStateLabel,
@@ -152,7 +153,7 @@ const { data: boardData } = useLiveResource(
 const dispatchTasks = computed<DispatchTask[]>(() => dispatchData.value?.tasks ?? [])
 const transportDialog = ref(false)
 const transportPrefill = ref<{
-  kind: 'pickup'
+  kind: DispatchTaskKind
   priority?: string
   description: string
   sosId: string
@@ -182,6 +183,32 @@ function requestTransport(payload?: { teamId: string; memberIds: string[]; label
     sosId: caseId.value,
     teamId: team?.teamId,
     memberIds: team?.memberIds,
+  }
+  transportDialog.value = true
+}
+
+/**
+ * Call samaritter out to the case: a blister, a turned ankle, somebody who should be looked at
+ * where they stand.
+ *
+ * Its own button rather than the type dropdown in the dialog, because this is the whole reason a
+ * nødtelefon operator reaches for kørsel on a green case, and one press is the difference between
+ * a written-down job and a shout across the room.
+ *
+ * No `memberIds`: being looked at is not being collected. Carrying them would suggest a custody
+ * change the domain refuses on this kind anyway — if they then have to come along, that is a
+ * second task, and "Bestil kørsel" makes it.
+ */
+function requestSamaritter() {
+  const team = firstWaitingTeam()
+  transportPrefill.value = {
+    kind: 'samarit',
+    priority: sosCase.value?.severity || undefined,
+    description: team
+      ? `Samaritter: ${team.label}`
+      : `Samaritter til sag: ${sosCase.value?.headline ?? ''}`,
+    sosId: caseId.value,
+    teamId: team?.teamId,
   }
   transportDialog.value = true
 }
@@ -621,10 +648,10 @@ watch(error, (err) => {
       </div>
 
       <!--
-        Kørsel (PRD 009). One button and one number: the operator's whole involvement with the
-        dispatch desk. "Bestil kørsel" is deliberately the *fastest* path to a written-down job,
-        because the board is only as good as the desk's discipline — and the expected time is here
-        so it can be read out without leaving the case.
+        Kørsel (PRD 009). Two buttons and one number: the operator's whole involvement with the
+        dispatch desk — a car for somebody, or samaritter to somebody. Both are deliberately the
+        *fastest* path to a written-down job, because the board is only as good as the desk's
+        discipline — and the expected time is here so it can be read out without leaving the case.
       -->
       <div class="card !p-3">
         <h2 class="text-xs uppercase tracking-wide text-gray-500 mb-2">Kørsel</h2>
@@ -636,6 +663,17 @@ watch(error, (err) => {
           outlined
           class="w-full"
           @click="requestTransport()"
+        />
+        <!-- The other thing a car is sent for: somebody who needs looking at rather than
+             collecting. Same dialog, different type, so nothing has to be typed. -->
+        <Button
+          label="Tilkald samaritter"
+          icon="pi pi-heart-fill"
+          size="small"
+          severity="secondary"
+          outlined
+          class="w-full mt-2"
+          @click="requestSamaritter()"
         />
         <ul v-if="dispatchTasks.length" class="mt-2 space-y-1">
           <li v-for="task in dispatchTasks" :key="task.id" class="border rounded px-2 py-1">
