@@ -227,8 +227,12 @@ func (r row) result(role PhoneRole) Result {
 // query runs selectResult with a caller-supplied predicate.
 //
 // Unexported and predicate-shaped because the classification that builds those predicates is a
-// separate concern (task 180); this is the part that knows how to read the join.
-func (t *Table) query(ctx context.Context, where string, args []any, role PhoneRole, limit int) ([]Result, error) {
+// separate concern (see search.go); this is the part that knows how to read the join.
+//
+// roleOf decides, per row, whose number matched — which cannot be known from the predicate
+// alone: `phoneNormalized = ? OR phoneParentNormalized = ?` matches either way, and the
+// difference is what the operator needs told.
+func (t *Table) query(ctx context.Context, where string, args []any, roleOf func(row) PhoneRole, order string, limit int) ([]Result, error) {
 	if t.r == nil {
 		return nil, fmt.Errorf("searchperson: no Reader")
 	}
@@ -236,6 +240,9 @@ func (t *Table) query(ctx context.Context, where string, args []any, role PhoneR
 	defer cancel()
 
 	stmt := selectResult + "\n\tWHERE " + where
+	if order != "" {
+		stmt += "\n\tORDER BY " + order
+	}
 	if limit > 0 {
 		stmt += fmt.Sprintf("\n\tLIMIT %d", limit)
 	}
@@ -252,7 +259,7 @@ func (t *Table) query(ctx context.Context, where string, args []any, role PhoneR
 		if err != nil {
 			return nil, err
 		}
-		out = append(out, r.result(role))
+		out = append(out, r.result(roleOf(r)))
 	}
 	return out, rows.Err()
 }
@@ -265,7 +272,7 @@ func (t *Table) Lookup(ctx context.Context, year string, kind Kind, id string) (
 	results, err := t.query(ctx,
 		"sp.kind = ? AND sp.id = ? AND sp.year = ?",
 		[]any{string(kind), id, year},
-		PhoneRoleOwn, 1)
+		nameRole, "", 1)
 	if err != nil {
 		return nil, err
 	}

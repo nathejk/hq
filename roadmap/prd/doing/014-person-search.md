@@ -498,6 +498,7 @@ Proposed tasks for `roadmap/tasks/open/` (created 2026-09-14 on approval):
 - [ ] 184 — Opt-in previous-years search, off by default, with year-labelled rows
 - [ ] 185 — Search box and keyboard shortcut in `Navigation.vue`
 - [ ] 186 — Verify p99 phone-query latency on production-sized data
+- [ ] 187 — Find people whose number shares a field with another number (from task 180)
 
 Note the sequencing differs slightly from the numbering: 178 (wiring) lands before
 179 (status join), because the join is easier to verify against a projection that
@@ -508,8 +509,24 @@ is already live.
 - **One row per person, or a `search_person_phone` pair table?** The proposed
   schema hard-codes two phone roles in column names, which is informative but does
   not extend to a third number. A `(phoneNormalized, kind, id, role)` table would
-  make any number findable through one index. Collapse later if a third number
-  appears.
+  make any number findable through one index. ~~Collapse later if a third number
+  appears.~~ **A third number has appeared** — task 180's verification found 33 of
+  1459 guardian fields holding two numbers as free text
+  (`mor 22 79 01 52 eller Far 22110715`), which normalize to 16 digits and make
+  *neither* parent findable. Task 187 owns resolving this, and the pair table is the
+  likely answer.
+- **A data-quality report for the organisers.** The same measurement found numbers
+  that are simply damaged: `2128151q`, `5O401639` (letter O for zero), 7-digit
+  numbers, `00000000`, `112`, and one value that looks like a number pasted twice.
+  Search deliberately does **not** guess at these — in an emergency a confident
+  wrong match is worse than no match — so they stay unfindable by number. Somebody
+  should still be told they are wrong in the register, and search is now the thing
+  that can find them.
+- **Duplicate registrations are common enough to shape the UI.** Eight distinct
+  members of one 2026 patrol are all registered as "Rakel A. Koch" — the contact
+  person's own name, filled in for every seat. A name search returns eight rows that
+  differ only by id. Nothing is wrong with the query; it means result rows need
+  whatever distinguishing context exists, and it is a further argument for the cap.
 - **Is the 4-digit minimum for a phone prefix search right?** Too low and it
   returns noise; too high and a badly-heard number is unsearchable.
 - **Should name search cover team and group names too?** An operator given
