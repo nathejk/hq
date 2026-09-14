@@ -1,10 +1,10 @@
 # 183 — Status badges on search result rows
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-09-14
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session 2026-09-14
+**Started:** 2026-09-14
 **Completed:**
 
 ## Description
@@ -45,3 +45,9 @@ something defensible and log the choice rather than blocking on it.
 ## Progress Log
 
 - 2026-09-14 22:08 — Task created from PRD 014 §10.
+- 2026-09-14 23:22 — Picked up. Plan: a `statusBadge(result)` in `composables/personSearch.ts`
+  returning label + PrimeVue severity + icon, plus a separate always-independent "Udmeldt" badge for
+  `removed`, and a `Tag` per axis in `SearchView.vue`. Two vocabularies to reconcile: member
+  lifecycle statuses already have badges in HQ (`memberStatusBadge` in `composables/sos.ts`, PRD
+  006) and team signup statuses have none. Reading `composables/severity.ts` first — it may not be
+  the vocabulary this criterion assumes.
