@@ -95,6 +95,13 @@ const router = createRouter({
       component: () => import('@/views/OrganisationView.vue')
     },
     {
+      // Person search (PRD 014). The query is in the URL rather than in component state, so a
+      // search is linkable and survives reload — and so it can be the live-cache key.
+      path: '/search',
+      name: 'search',
+      component: () => import('@/views/SearchView.vue')
+    },
+    {
       path: '/login',
       name: 'login',
       component: () => import('@/views/LoginView.vue')
