@@ -12,6 +12,7 @@ import {
   queryDigits,
   resultRoute,
   statusBadge,
+  activeYearSlug,
   REMOVED_BADGE,
   teamLabel,
   toRows,
@@ -205,6 +206,60 @@ describe('status badges', () => {
     expect(statusBadge(result({ status: 'released', statusKind: 'member' })).title).toBe(
       'hentet af forældre',
     )
+  })
+})
+
+describe('other years', () => {
+  it('treats every row as current when no active year is given', () => {
+    // Which is the truth when the operator has not opted in: the server searched one year.
+    const rows = toRows([result({ year: '2026' }), result({ year: '2024', id: 'p-2' })])
+    expect(rows.every((r) => r.otherYear)).toBe(false)
+    expect(rows.some((r) => r.otherYear)).toBe(false)
+    expect(rows.map((r) => r.group)).toEqual(['Spejdere', 'Spejdere'])
+  })
+
+  it('puts every cross-year row after every current-year row, never interleaved', () => {
+    const rows = toRows(
+      [
+        result({ id: 'old-spejder', year: '2024' }),
+        result({ id: 'now-crew', year: '2026', kind: 'crew' }),
+        result({ id: 'now-spejder', year: '2026' }),
+        result({ id: 'old-crew', year: '2024', kind: 'crew' }),
+      ],
+      '2026',
+    )
+    expect(rows.map((r) => r.id)).toEqual(['now-spejder', 'now-crew', 'old-spejder', 'old-crew'])
+    // No current-year row may follow a cross-year one.
+    const firstOther = rows.findIndex((r) => r.otherYear)
+    expect(rows.slice(firstOther).every((r) => r.otherYear)).toBe(true)
+  })
+
+  it('names the year in a cross-year group heading, most recent first', () => {
+    const rows = toRows(
+      [
+        result({ id: 'a', year: '2024' }),
+        result({ id: 'b', year: '2025' }),
+        result({ id: 'c', year: '2026' }),
+      ],
+      '2026',
+    )
+    expect(rows.map((r) => r.group)).toEqual(['Spejdere', '2025 · Spejdere', '2024 · Spejdere'])
+  })
+
+  it('handles a year later than the active one, which is why the flag is not “previous”', () => {
+    // The dev stream carries fixture rows under 9999, and a future edition may exist before the
+    // current one closes.
+    const rows = toRows([result({ id: 'a', year: '9999' }), result({ id: 'b', year: '2026' })], '2026')
+    expect(rows.map((r) => r.id)).toEqual(['b', 'a'])
+    expect(rows[1].group).toBe('9999 · Spejdere')
+    expect(rows[1].otherYear).toBe(true)
+  })
+
+  it('reconstructs the year the server will have used', () => {
+    // globalstate blanks the slug for the current calendar year, because that is when axios omits
+    // the header and the API falls back to time.Now().Year().
+    expect(activeYearSlug('2024')).toBe('2024')
+    expect(activeYearSlug('')).toBe(String(new Date().getFullYear()))
   })
 })
 

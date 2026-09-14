@@ -344,6 +344,21 @@ export const REMOVED_BADGE: StatusBadge = {
   title: 'Meldt ud af holdet — ikke det samme som hentet under løbet',
 }
 
+/**
+ * The year the request is scoped to — reconstructed, not read.
+ *
+ * `globalstate.yearSlug` is deliberately '' when the selected year *is* the current calendar year,
+ * because that is the condition under which the axios interceptor omits `X-YearSlug` entirely. The
+ * server then falls back to `time.Now().Year()` (`app.YearSlug` in `cmd/api/routes.go`), so this
+ * expression reproduces the server's own choice rather than guessing at it.
+ *
+ * It is needed only to tell a cross-year row from a current-year one, and only when the operator has
+ * opted into other years — so the cost of it being wrong is a mislabelled group, not a wrong search.
+ */
+export function activeYearSlug(yearSlug: string): string {
+  return yearSlug || String(new Date().getFullYear())
+}
+
 /** A row as the table renders it: the payload plus what grouping and ordering need. */
 export interface PersonRow extends PersonResult {
   /** Stable key; `(kind, id, year)` is the projection's own key and a person can match twice. */
@@ -352,26 +367,60 @@ export interface PersonRow extends PersonResult {
   group: string
   /** Sort field, so PrimeVue's subheader grouping and the heading order agree. */
   order: number
+  /** From a year other than the active one, and rendered as such. */
+  otherYear: boolean
 }
+
+/**
+ * Cross-year rows sort after every current-year row, with room to spare.
+ *
+ * A hit from 2024 sitting among this year's is exactly the stale-data-that-looks-current failure the
+ * whole live-updates design exists to avoid, so this is a hard tier and not a sort preference.
+ */
+const OTHER_YEAR_TIER = 1_000_000
 
 /**
  * Flatten results into one ordered list of rows.
  *
- * One list with subheaders rather than a table per group: it gives the view a single `:loading`
- * to wire `pending` to, and keeps the whole result set in one keyboard tab order.
+ * One list with subheaders rather than a table per group: it gives the view a single `:loading` to
+ * wire `pending` to, and keeps the whole result set in one keyboard tab order.
+ *
+ * `activeYear` is what the request was scoped to. Passing '' means "treat everything as current",
+ * which is correct when the operator has not opted into other years — every row is this year's by
+ * definition then, and inventing a year label would be noise.
  */
-export function toRows(results: PersonResult[]): PersonRow[] {
+export function toRows(results: PersonResult[], activeYear = ''): PersonRow[] {
+  // Most recent first among the other years, so 2025 precedes 2024. String compare is safe: these
+  // are four-digit slugs.
+  const otherYears = [...new Set(results.map((r) => r.year))]
+    .filter((year) => activeYear && year !== activeYear)
+    .sort()
+    .reverse()
+
   return results
     .map((result, index) => {
-      const group = kindGroup(result.kind)
-      const groupIndex = GROUP_ORDER.indexOf(group)
+      const otherYear = Boolean(activeYear) && result.year !== activeYear
+      const kind = kindGroup(result.kind)
+      const kindIndex = GROUP_ORDER.indexOf(kind)
+      const rank = kindIndex === -1 ? GROUP_ORDER.length : kindIndex
+
+      // The year leads the heading for a cross-year group, because the year is the thing that
+      // changes how the row should be read — the kind is secondary there.
+      const group = otherYear ? `${result.year} · ${kind}` : kind
+
+      // Index within the group order, times a stride that leaves room for the server's own ordering
+      // to break ties, so rows stay in the order the query returned them.
+      const withinTier = rank * 10_000 + index
+      const order = otherYear
+        ? OTHER_YEAR_TIER + otherYears.indexOf(result.year) * 100_000 + withinTier
+        : withinTier
+
       return {
         ...result,
         rowKey: `${result.kind}:${result.id}:${result.year}:${index}`,
         group,
-        // Index within the group order, times a stride that leaves room for the server's own
-        // ordering to break ties, so rows stay in the order the query returned them.
-        order: (groupIndex === -1 ? GROUP_ORDER.length : groupIndex) * 10_000 + index,
+        order,
+        otherYear,
       }
     })
     .sort((a, b) => a.order - b.order)

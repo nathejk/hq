@@ -315,6 +315,104 @@ describe('status badges', () => {
   })
 })
 
+describe('other years are opt-in', () => {
+  const findCheckbox = () => wrapper.find('input[type="checkbox"]')
+  const isChecked = () => (findCheckbox().element as HTMLInputElement).checked
+
+  it('is off by default, and does not send the parameter at all', async () => {
+    await openSearch({ q: 'Koch' })
+
+    expect(isChecked()).toBe(false)
+    expect(wrapper.text()).toContain('Søg også i andre år')
+    expect(wrapper.text()).toContain('Der søges kun i indeværende år')
+    expect(get).toHaveBeenCalledWith('/search/person', { params: { q: 'Koch' } })
+  })
+
+  it('honours the URL, so a shared link reproduces what the sender saw', async () => {
+    await openSearch({ q: 'Koch', includeOtherYears: 'true' })
+
+    expect(isChecked()).toBe(true)
+    expect(get).toHaveBeenCalledWith('/search/person', {
+      params: { q: 'Koch', includeOtherYears: 'true' },
+    })
+  })
+
+  it('puts the toggle in the URL when the operator turns it on', async () => {
+    await openSearch({ q: 'Koch' })
+    await findCheckbox().setValue(true)
+    await flushPromises()
+
+    expect(router.currentRoute.value.query.includeOtherYears).toBe('true')
+    expect(router.currentRoute.value.query.q).toBe('Koch')
+  })
+
+  it('removes it from the URL again when turned off', async () => {
+    await openSearch({ q: 'Koch', includeOtherYears: 'true' })
+    await findCheckbox().setValue(false)
+    await flushPromises()
+
+    expect(router.currentRoute.value.query.includeOtherYears).toBeUndefined()
+  })
+
+  it('does not reuse the narrow result set for the wide search', async () => {
+    // Same text, two scopes, two cache keys — otherwise turning the toggle on would show the
+    // narrow set, which is the one thing the operator has just said they do not want.
+    await openSearch({ q: 'Koch' })
+    expect(get).toHaveBeenCalledTimes(1)
+
+    await findCheckbox().setValue(true)
+    await flushPromises()
+    expect(get).toHaveBeenCalledTimes(2)
+    expect(get).toHaveBeenLastCalledWith('/search/person', {
+      params: { q: 'Koch', includeOtherYears: 'true' },
+    })
+  })
+
+  it('labels cross-year rows and groups them after the current year’s', async () => {
+    const thisYear = String(new Date().getFullYear())
+    get.mockResolvedValue({
+      data: {
+        search: payload({
+          results: [
+            person({ id: 'old', name: 'Gammel Gitte', year: '2019' }),
+            person({ id: 'now', name: 'Nutids Nanna', year: thisYear }),
+          ],
+        }),
+      },
+    })
+    await openSearch({ q: 'Koch', includeOtherYears: 'true' })
+
+    const text = wrapper.text()
+    expect(text).toContain('2019 · Spejdere')
+    expect(text).toContain('andet år')
+    // This year's row first, and the cross-year group after it.
+    expect(text.indexOf('Nutids Nanna')).toBeLessThan(text.indexOf('Gammel Gitte'))
+
+    // Visually distinct, not merely labelled.
+    const rows = wrapper.findAll('tbody tr')
+    const otherYearRows = rows.filter((r) => r.classes().includes('search-other-year'))
+    expect(otherYearRows).toHaveLength(1)
+    expect(otherYearRows[0].text()).toContain('Gammel Gitte')
+
+    // And the year is on the row itself, not only in the heading.
+    expect(wrapper.find('thead').text()).toContain('År')
+  })
+
+  it('shows no year column while the search is scoped to one year', async () => {
+    get.mockResolvedValue({ data: { search: payload({ results: [person()] }) } })
+    await openSearch({ q: 'Koch' })
+    expect(wrapper.find('thead').text()).not.toContain('År')
+  })
+
+  it('says which scope found nothing', async () => {
+    await openSearch({ q: 'notfoundxyz' })
+    expect(wrapper.text()).toContain('indeværende år')
+
+    await openSearch({ q: 'notfoundxyz', includeOtherYears: 'true' })
+    expect(wrapper.text()).toContain('Der blev søgt i alle år')
+  })
+})
+
 describe('the cap is stated', () => {
   it('says there are more matches than shown', async () => {
     get.mockResolvedValue({
