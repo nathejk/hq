@@ -1,10 +1,10 @@
 # 177 — Retain removed members behind a deleted flag
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-14
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session 2026-09-14
+**Started:** 2026-09-14
 **Completed:**
 
 ## Description
@@ -44,3 +44,6 @@ across years where the source tables shrink. That is by design; nothing prunes i
 ## Progress Log
 
 - 2026-09-14 22:08 — Task created from PRD 014 §10.
+- 2026-09-15 00:20 — Picked up. The `deleted` column and the `deleted=0` clauses already exist
+  from task 174 (written then so a re-added member could not stay flagged); what is missing is
+  the `.deleted` subscriptions themselves and the crew case.
