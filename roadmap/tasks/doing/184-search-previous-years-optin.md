@@ -1,10 +1,10 @@
 # 184 — Opt-in previous-years search
 
-**Status:** open
+**Status:** doing
 **Priority:** medium
 **Created:** 2026-09-14
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session 2026-09-14
+**Started:** 2026-09-14
 **Completed:**
 
 ## Description
@@ -42,3 +42,10 @@ reproduce what the sender saw.
 ## Progress Log
 
 - 2026-09-14 22:08 — Task created from PRD 014 §10.
+- 2026-09-15 00:06 — Picked up. Plan: frontend only — the two backend criteria were delivered by
+  task 181, under the deliberately different name `includeOtherYears`. Add a checkbox, off by
+  default, reflected in the URL alongside `q` and folded into the live-cache key (otherwise the two
+  result sets collide on one entry). Extend `toRows` with the active year so cross-year rows form
+  their own groups *after* every current-year group, and give them a visual treatment plus a Year
+  column. First job: establish how the SPA can know the active year at all, since
+  `globalstate.yearSlug` is deliberately empty for the current calendar year.
