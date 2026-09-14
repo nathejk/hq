@@ -1,10 +1,10 @@
 # 182 — SearchView.vue and the /search route
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-14
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session 2026-09-14
+**Started:** 2026-09-14
 **Completed:**
 
 ## Description
@@ -67,3 +67,12 @@ Status badges are task 183; the previous-years control is task 184.
 ## Progress Log
 
 - 2026-09-14 22:08 — Task created from PRD 014 §10.
+- 2026-09-14 22:20 — Picked up. Plan: (1) a pure `composables/personSearch.ts` holding the
+  response types, the client-side minimum-length rule, the kind→Danish-group mapping, the
+  phone-role annotations, the link targets and the flattening/ordering of rows, with a spec —
+  so the decisions that matter are testable without mounting anything; (2) `views/SearchView.vue`
+  consuming it, with the debounced value written to the URL so the URL *is* the cache key
+  (debounce lands before the key changes, and the search stays linkable/reload-safe in one
+  mechanism rather than two); (3) lazy route `/search`. Re-keying `useLiveResource` as the query
+  changes will use a detached `effectScope` per key, disposed on change, because the composable
+  takes a static key by design.
