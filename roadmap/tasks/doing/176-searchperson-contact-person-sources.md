@@ -1,10 +1,10 @@
 # 176 — Add contact-person sources to search_person
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-14
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session 2026-09-14
+**Started:** 2026-09-14
 **Completed:**
 
 ## Description
@@ -45,3 +45,5 @@ Traps:
 ## Progress Log
 
 - 2026-09-14 22:08 — Task created from PRD 014 §10.
+- 2026-09-14 23:40 — Picked up. Read the patrulje, klan and signup consumers before writing
+  anything; three of the assumptions in this description turned out to be wrong, logged below.
