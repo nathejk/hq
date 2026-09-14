@@ -33,6 +33,21 @@ func (t *Table) Consumes() []cqrs.Subject {
 		// that way, with userId == teamId. Without it, crew are unfindable until somebody
 		// edits them.
 		cqrs.SubjectFromStr("NATHEJK.*.crew.*.signedup"),
+
+		// The contact persons. Named entity by entity rather than with the wildcard
+		// `NATHEJK:*.*.*.signedup` that the signup projection uses, which matters: a
+		// wildcard in the *entity* position is what makes live.EntitySet.Exhaustive false,
+		// so naming them keeps the advertised token set complete and lets the SPA go on
+		// warning about dependencies nothing can satisfy. We know which team types have a
+		// contact person, so there is nothing to discover at runtime.
+		cqrs.SubjectFromStr("NATHEJK.*.patrulje.*.signedup"),
+		cqrs.SubjectFromStr("NATHEJK.*.patrulje.*.updated"),
+		cqrs.SubjectFromStr("NATHEJK.*.klan.*.signedup"),
+		// klan.updated carries the klan's contact person, and *nothing* projects it today:
+		// the klan table has no contact columns and signup only keeps what the signup event
+		// carried. So a corrected klan contact currently exists nowhere in the read model,
+		// and after this it exists here.
+		cqrs.SubjectFromStr("NATHEJK.*.klan.*.updated"),
 	}
 }
 
@@ -65,6 +80,14 @@ func (t *Table) HandleMessage(msg cqrs.Message) error {
 	case msg.Subject().Match("NATHEJK.*.crewmember.*.registered"),
 		msg.Subject().Match("NATHEJK.*.crewmember.*.updated"):
 		return t.handleCrewMember(msg)
+	case msg.Subject().Match("NATHEJK.*.patrulje.*.signedup"):
+		return t.handleTeamSignedUp(msg, KindPatruljeContact)
+	case msg.Subject().Match("NATHEJK.*.klan.*.signedup"):
+		return t.handleTeamSignedUp(msg, KindKlanContact)
+	case msg.Subject().Match("NATHEJK.*.patrulje.*.updated"):
+		return t.handleTeamUpdated(msg, KindPatruljeContact)
+	case msg.Subject().Match("NATHEJK.*.klan.*.updated"):
+		return t.handleTeamUpdated(msg, KindKlanContact)
 	default:
 		// Not an error. The mux may hand over a subject this projection does not care
 		// about, and failing would dead-letter somebody else's event.
@@ -264,6 +287,86 @@ func (t *Table) handleCrewMember(msg cqrs.Message) error {
 		Email: string(body.Email),
 		Phone: string(body.Phone),
 		At:    datetime(msg.Time()),
+	})
+}
+
+// handleTeamSignedUp indexes the person who submitted a team.
+//
+// The signup event's Name/Phone/Email describe a *human*, not the team: the team's own name
+// arrives later on `updated`. That is exactly why this is its own kind rather than a field on
+// the team — and why a klan contact is findable at all, since `klan` has nowhere to put them.
+//
+// Keyed by teamId, since a contact person has no id. `kind` in the primary key is what keeps
+// that from colliding with a member who happens to share the string.
+func (t *Table) handleTeamSignedUp(msg cqrs.Message, kind Kind) error {
+	var body messages.NathejkTeamSignedUp
+	if err := msg.Body(&body); err != nil {
+		return err
+	}
+
+	teamID := firstNonEmpty(string(body.TeamID), subjectEntityID(msg.Subject()))
+	if teamID == "" {
+		return nil
+	}
+
+	// One phone, not two.
+	//
+	// `signup` holds the number in two columns, phonePending and phone, and it is tempting to
+	// read that as two numbers. It is not: verification does `SET phone = phonePending`, so
+	// they are one number in two *states*. Indexing it once therefore finds the contact
+	// whether or not they ever verified — which is the behaviour wanted, since an unverified
+	// contact still needs finding.
+	//
+	// A signup that names no human at all is not a contact person: a row with no name and no
+	// number can be found by neither, so it would only pad the table.
+	if body.Name == "" && body.Phone == "" && body.Email == "" {
+		return nil
+	}
+
+	return t.upsert(person{
+		Kind:   kind,
+		ID:     teamID,
+		Year:   subjectYear(msg.Subject()),
+		TeamID: teamID,
+		Name:   body.Name,
+		Email:  string(body.Email),
+		Phone:  string(body.Phone),
+		At:     datetime(msg.Time()),
+	})
+}
+
+// handleTeamUpdated follows a correction to a team's contact person.
+//
+// The contact fields on this event are prefixed (ContactName rather than Name) because the
+// unprefixed ones describe the team. Reading the wrong pair would file the *patrol's* name as
+// a person — a search that returned "Ørnene" as a human being.
+func (t *Table) handleTeamUpdated(msg cqrs.Message, kind Kind) error {
+	var body messages.NathejkTeamUpdated
+	if err := msg.Body(&body); err != nil {
+		return err
+	}
+
+	teamID := firstNonEmpty(string(body.TeamID), subjectEntityID(msg.Subject()))
+	if teamID == "" {
+		return nil
+	}
+
+	// A team update that names no contact person at all is not a contact person being
+	// deleted; it is an event about something else on the team. Writing it would blank a
+	// perfectly good phone number, and an operator would find nobody.
+	if body.ContactName == "" && body.ContactPhone == "" && body.ContactEmail == "" {
+		return nil
+	}
+
+	return t.upsert(person{
+		Kind:   kind,
+		ID:     teamID,
+		Year:   subjectYear(msg.Subject()),
+		TeamID: teamID,
+		Name:   body.ContactName,
+		Email:  string(body.ContactEmail),
+		Phone:  string(body.ContactPhone),
+		At:     datetime(msg.Time()),
 	})
 }
 

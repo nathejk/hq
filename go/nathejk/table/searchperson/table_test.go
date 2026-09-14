@@ -68,7 +68,17 @@ func TestConsumedSubjectsReachAHandler(t *testing.T) {
 		concrete = strings.Replace(concrete, "*", "member-1", 1)
 
 		w.Reset()
-		msg := message(t, concrete, map[string]any{"memberId": "member-1", "toTeamId": "team-1"})
+		// The probe body has to satisfy every handler's "is there anything here to index?"
+		// guard, or this test would pass by matching a handler that then declined to write.
+		msg := message(t, concrete, map[string]any{
+			"memberId":    "member-1",
+			"userId":      "member-1",
+			"teamId":      "team-1",
+			"toTeamId":    "team-1",
+			"name":        "Prober Probersen",
+			"contactName": "Prober Probersen",
+			"phone":       "12345678",
+		})
 		if err := table.HandleMessage(msg); err != nil {
 			t.Fatalf("HandleMessage(%s): %v", concrete, err)
 		}
@@ -281,7 +291,8 @@ func TestSpejderReassignedWithoutDestinationIsIgnored(t *testing.T) {
 // failing here would dead-letter another projection's event.
 func TestUnhandledSubjectIsNotAnError(t *testing.T) {
 	table, w := newTable(t)
-	msg := message(t, "NATHEJK.2026.klan.team-1.signedup", map[string]any{})
+	// A scan, which is the `qr` entity and carries no person at all.
+	msg := message(t, "NATHEJK.2026.qr.scan-1.scanned", map[string]any{})
 	if err := table.HandleMessage(msg); err != nil {
 		t.Fatalf("HandleMessage: %v", err)
 	}
@@ -481,6 +492,155 @@ func TestSignupFallsBackToTheSubjectID(t *testing.T) {
 	}
 	if !strings.Contains(w.Last(), "id='user-9'") {
 		t.Errorf("id not taken from the subject:\n%s", w.Last())
+	}
+}
+
+// The contact persons — the population with no prior art. A patrulje's contact lives in three
+// columns on the team; a klan's lives nowhere at all, which is what makes this the most
+// valuable part of the projection.
+func TestContactPersonSources(t *testing.T) {
+	cases := []struct {
+		name    string
+		subject string
+		body    map[string]any
+		want    map[string]string
+	}{{
+		name:    "patrulje signup",
+		subject: "NATHEJK.2026.patrulje.team-42.signedup",
+		body: map[string]any{
+			"teamId": "team-42",
+			"name":   "Gitte Gittesen",
+			"phone":  "11223344",
+			"email":  "gitte@example.dk",
+		},
+		want: map[string]string{
+			"kind":            "patruljekontakt",
+			"id":              "team-42",
+			"teamId":          "team-42",
+			"name":            "Gitte Gittesen",
+			"phoneNormalized": "11223344",
+		},
+	}, {
+		// The case that motivates the whole projection: a klan contact person exists in no
+		// table today, because klan has no contact columns and signup keeps only what the
+		// signup event carried.
+		name:    "klan signup",
+		subject: "NATHEJK.2026.klan.klan-9.signedup",
+		body: map[string]any{
+			"teamId": "klan-9",
+			"name":   "Henrik Henriksen",
+			"phone":  "+45 22 33 44 55",
+		},
+		want: map[string]string{
+			"kind":            "klankontakt",
+			"id":              "klan-9",
+			"name":            "Henrik Henriksen",
+			"phoneNormalized": "22334455",
+		},
+	}, {
+		// The prefixed fields. Reading the unprefixed ones would file the *patrol's* name as
+		// a human being.
+		name:    "patrulje update",
+		subject: "NATHEJK.2026.patrulje.team-42.updated",
+		body: map[string]any{
+			"teamId":       "team-42",
+			"name":         "Ørnene",
+			"contactName":  "Gitte Gittesen",
+			"contactPhone": "11223344",
+			"contactEmail": "gitte@example.dk",
+		},
+		want: map[string]string{
+			"kind": "patruljekontakt",
+			"name": "Gitte Gittesen",
+		},
+	}, {
+		// klan.updated carries a contact person that nothing else in the read model keeps.
+		name:    "klan update",
+		subject: "NATHEJK.2026.klan.klan-9.updated",
+		body: map[string]any{
+			"teamId":       "klan-9",
+			"name":         "Klan Nordvest",
+			"contactName":  "Henrik Henriksen",
+			"contactPhone": "22334455",
+		},
+		want: map[string]string{
+			"kind":            "klankontakt",
+			"name":            "Henrik Henriksen",
+			"phoneNormalized": "22334455",
+		},
+	}}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			table, w := newTable(t)
+			if err := table.HandleMessage(message(t, tc.subject, tc.body)); err != nil {
+				t.Fatalf("HandleMessage: %v", err)
+			}
+			if len(w.Statements) != 1 {
+				t.Fatalf("expected one statement, got %v", w.Statements)
+			}
+			for col, val := range tc.want {
+				if want := col + "=" + quote(val); !strings.Contains(w.Last(), want) {
+					t.Errorf("statement missing %q:\n%s", want, w.Last())
+				}
+			}
+		})
+	}
+}
+
+// A team update about something other than the contact person must not blank them. This is the
+// difference between "the contact changed" and "this event was about the team's liga", and
+// getting it wrong loses a phone number an operator needs.
+func TestTeamUpdateWithoutContactFieldsIsIgnored(t *testing.T) {
+	table, w := newTable(t)
+	msg := message(t, "NATHEJK.2026.patrulje.team-42.updated", map[string]any{
+		"teamId":    "team-42",
+		"name":      "Ørnene",
+		"groupName": "Hvidovre Gruppe",
+	})
+	if err := table.HandleMessage(msg); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	if len(w.Statements) != 0 {
+		t.Errorf("a contact-less team update must not write: %v", w.Statements)
+	}
+}
+
+// A contact person and a member may share an id string — different id spaces, no coordination
+// between them. kind in the primary key is what stops one silently overwriting the other.
+func TestContactAndMemberWithTheSameIDDoNotCollide(t *testing.T) {
+	table, w := newTable(t)
+	if err := table.HandleMessage(message(t, "NATHEJK.2026.patrulje.shared-id.signedup", map[string]any{
+		"teamId": "shared-id", "name": "Kontakt Person", "phone": "11111111",
+	})); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	contact := w.Last()
+	if err := table.HandleMessage(message(t, "NATHEJK.2026.spejder.shared-id.updated", map[string]any{
+		"memberId": "shared-id", "name": "Et Medlem", "phone": "22222222",
+	})); err != nil {
+		t.Fatalf("HandleMessage: %v", err)
+	}
+	member := w.Last()
+
+	if !strings.Contains(contact, "kind='patruljekontakt'") || !strings.Contains(member, "kind='spejder'") {
+		t.Fatalf("the two rows are not distinguished by kind:\n%s\n%s", contact, member)
+	}
+}
+
+// The advertised live token set must stay complete. A wildcard in the entity position — which
+// is how the signup projection subscribes — makes live.EntitySet.Exhaustive false, and the SPA
+// then cannot warn about a dependency nothing can satisfy.
+func TestNoWildcardInTheEntityPosition(t *testing.T) {
+	table, _ := newTable(t)
+	for _, subj := range table.Consumes() {
+		parts := subj.Parts()
+		if len(parts) < 3 {
+			t.Fatalf("unexpectedly short subject %q", subj.Subject())
+		}
+		if parts[2] == "*" {
+			t.Errorf("%q wildcards the entity, which makes the advertised token set incomplete", subj.Subject())
+		}
 	}
 }
 

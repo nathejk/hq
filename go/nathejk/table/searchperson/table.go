@@ -72,6 +72,19 @@ const (
 	KindFriend  Kind = "friend"
 
 	KindCrew Kind = "crew"
+
+	// The two contact-person kinds — the people this projection exists for as much as any.
+	//
+	// A contact person is not a row anywhere else in the platform. For a patrulje they are
+	// three columns on the team; for a klan they are nowhere at all, since the klan table has
+	// no contact columns. So the adult who submitted the team, and who is the one most likely
+	// to ring, has until now been the hardest person here to look up.
+	//
+	// Keyed by teamId, because they have no id of their own. That is what kind is doing in
+	// the primary key: a contact person and a member can share an id string without
+	// colliding.
+	KindPatruljeContact Kind = "patruljekontakt"
+	KindKlanContact     Kind = "klankontakt"
 )
 
 // There is deliberately no KindBandit.

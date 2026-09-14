@@ -321,9 +321,21 @@ Two traps in that list, both already visible in the existing consumers:
   existing handlers get away with lowercase `nathejk.*`.
 - **`signup` subscribes with a wildcard in the entity position**
   (`NATHEJK:*.*.*.signedup`), which is what makes `live.EntitySet.Exhaustive`
-  false. If the search consumer needs contact persons for klaner it must do the
-  same, and should filter on `teamType` in the handler rather than trying to
-  enumerate entity types in the subject.
+  false. `searchperson` deliberately does **not** copy that (task 176): it names
+  `patrulje` and `klan` explicitly, because we already know which team types have a
+  contact person, and an entity wildcard would cost the SPA its ability to warn
+  about a dependency nothing can satisfy.
+- **`signup.phone` and `signup.phonePending` are one number in two states**, not two
+  numbers — verification runs `SET phone = phonePending`. An earlier draft of this
+  PRD said to index both; one indexed pair finds an unverified contact and a
+  verified one alike.
+- **`klan.updated` carries a contact person that no existing table keeps.** klan has
+  no contact columns, and signup retains only what the *signup* event carried, so a
+  corrected klan contact exists nowhere in the read model today. `search_person` is
+  the first place it lands — worth knowing when reading the joins below.
+- **The contact fields on `NathejkTeamUpdated` are prefixed** (`ContactName`, not
+  `Name`). The unprefixed ones describe the team, so reading the wrong pair files
+  the patrol's name as a human being.
 
 **`spejder.deleted` and `senior.deleted` set `deleted = 1`; they do not delete the
 row.** A hard delete would make search answer "ingen match" for somebody the event
@@ -335,6 +347,11 @@ about the person rather than treated as absence. A re-added member sets it back 
 Team and section *names* are **not** denormalized into the row; the query joins
 `patrulje`/`klan`/`section` for display. Joining at read time is safe (the tables
 are consistent by then) where denormalizing at write time would not be.
+
+Join teams on `teamId` alone, not on `teamId` *and* `year`: patrulje's own projection
+writes its `year` from `msg.Time().Year()` while `search_person` takes the subject's
+year token. The two agree in practice — the publisher derives both from the same
+clock — but `teamId` is unique, so there is no reason to depend on that.
 
 **Current status is likewise a read-time join, not a projected column** — to
 `spejderstatus` for a spejder's lifecycle status, and to
