@@ -1,10 +1,10 @@
 # 174 — search_person table and projection skeleton (spejder only)
 
-**Status:** open
+**Status:** doing
 **Priority:** high
 **Created:** 2026-09-14
-**Picked up by:**
-**Started:**
+**Picked up by:** agent session 2026-09-14
+**Started:** 2026-09-14
 **Completed:**
 
 ## Description
@@ -65,3 +65,11 @@ pattern already in `patrulje/table.go` from the start rather than after being bi
 ## Progress Log
 
 - 2026-09-14 22:08 — Task created from PRD 014 §10.
+- 2026-09-14 22:20 — Corrected the subject-separator note in the description and in PRD 014
+  §8 before starting: `subject.FromStr` normalizes the first `:` to `.`, so the inconsistency
+  between consumers is cosmetic. The real trap is `Subject.Match`, which escapes `.` but not
+  `:`, so a `Match("NATHEJK:…")` pattern silently matches nothing.
+- 2026-09-14 22:22 — Picked up. Plan: model the package on `table/photo` (newest style —
+  exported `Table`, `New` returns an error, `cqrs` interfaces rather than `stream`), write
+  table.sql, consumer for `spejder.updated`/`.reassigned`, a querier stub, and tests on
+  `cqrstest.Writer`.
