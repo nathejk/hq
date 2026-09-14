@@ -28,13 +28,21 @@ Two constraints that are easy to get wrong:
 - **Normalization uses `types.PhoneNumber.Normalize()`** from shared-go — the same function
   the SMS gateway uses, so a number that can be texted is a number that can be found.
 
-Subjects for this task (copy the literals from `shared-go/tables/spejder/consumer.go`
-rather than retyping — the separator is not uniform across the codebase):
+Subjects for this task (copy the literals from `shared-go/tables/spejder/consumer.go`):
 
 ```
 NATHEJK.*.spejder.*.updated
 NATHEJK.*.spejder.*.reassigned
 ```
+
+`NATHEJK:*.patrulje.*.started` also carries member phone numbers and is how a phone first
+reaches the roster for some teams — worth handling, but it belongs with the other multi-member
+events; note it and move on if it complicates this task.
+
+**Subject separator.** `subject.FromStr` replaces the first `:` with `.`, so subscribing with
+`NATHEJK:` or `NATHEJK.` is the same subscription. But `Subject.Match` escapes `.` without
+touching `:`, so a `Match("NATHEJK:…")` pattern can never match — spell every `Match` pattern
+with dots. `Match` is case-insensitive.
 
 `spejder.deleted` retention is task 177; ignore the subject here rather than hard-deleting.
 

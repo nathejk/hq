@@ -21,10 +21,10 @@ art: **a contact person is not a row anywhere today.**
 
 Traps:
 
-- **The subject separator is the legacy `NATHEJK:` for both of these**, where the sources in
-  tasks 174–175 use `NATHEJK.`. A pattern written with the wrong one matches nothing and
-  fails silently. Copy from `go/nathejk/table/patrulje/consumer.go` and
-  `shared-go/tables/signup/consumer.go`.
+- **Spell `Match` patterns with dots.** `subject.FromStr` normalizes the first `:` to `.`, so
+  it makes no difference which form `Consumes()` uses — but `Subject.Match` escapes `.` and
+  leaves `:` alone, so `Match("NATHEJK:*.*.*.signedup")` matches nothing at all. The subject
+  holds a dot by the time the handler sees it.
 - **`signup` subscribes with a wildcard in the entity position** (`NATHEJK:*.*.*.signedup`),
   which is what makes `live.EntitySet.Exhaustive` false. Subscribe the same way and filter on
   `teamType` **in the handler** — do not try to enumerate entity types in the subject.
@@ -39,7 +39,7 @@ Traps:
 - [ ] `klankontakt` rows from signup, filtered by teamType in the handler
 - [ ] Both `phone` and `phonePending` are findable, and the row records which matched
 - [ ] Test: a klan contact who appears only in `signup` is findable by phone
-- [ ] Test: legacy `NATHEJK:` subjects actually match (guards the separator trap)
+- [ ] Test: the `signedup` subscription actually matches a real subject (guards the `Match` trap)
 - [ ] `go build ./...` and `go test ./...` pass
 
 ## Progress Log

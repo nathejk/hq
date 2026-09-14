@@ -298,10 +298,15 @@ existing six tables already consume:
 
 Two traps in that list, both already visible in the existing consumers:
 
-- **The subject separator is not uniform.** `spejder`, `senior`, `crewmember` and
-  `personnel` subscribe with `NATHEJK.`; `patrulje` and `signup` use the legacy
-  `NATHEJK:` form. A pattern written with the wrong one matches nothing and fails
-  silently. Copy the literals from the existing consumers rather than retyping them.
+- **The subject separator is normalized in subscriptions but not in `Match`.**
+  `subject.FromStr` replaces the *first* `:` with `.`, so subscribing with
+  `NATHEJK:*.patrulje.*.updated` and `NATHEJK.*.patrulje.*.updated` is the same
+  subscription — the inconsistency across the existing consumers is cosmetic.
+  `Subject.Match`, however, takes a raw pattern and escapes `.` without touching
+  `:`, so a **`Match("NATHEJK:...")` can never match anything**: by then the
+  subject holds a dot. Every handler in the codebase spells its `Match` patterns
+  with dots for this reason. `Match` is also case-insensitive, which is why the
+  existing handlers get away with lowercase `nathejk.*`.
 - **`signup` subscribes with a wildcard in the entity position**
   (`NATHEJK:*.*.*.signedup`), which is what makes `live.EntitySet.Exhaustive`
   false. If the search consumer needs contact persons for klaner it must do the
