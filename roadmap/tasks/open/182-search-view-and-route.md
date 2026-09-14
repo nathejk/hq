@@ -17,9 +17,17 @@ The query lives in the URL so a search is linkable and survives reload.
 **Live, not fetch-on-mount.** Load through
 `useLiveResource('search:' + query, fetcher, { dependsOn })`. `dependsOn` names entity
 **types** — a new match is a row whose id was never seen — and the tokens are the *event
-subject's* entity, not the projection's name. Take the list verbatim from task 178's progress
-log; do not invent it. There is no `personnel` token. A wrong token fails silently: the page
-looks live and never updates. The SPA warns in the dev console, so check it.
+subject's* entity, not the projection's name. **Task 178 verified the set; use it exactly:**
+
+```
+crew, crewmember, friend, gøgler, klan, patrulje, senior, spejder
+```
+
+There is no `personnel` token (that is the table's name) and no `bandit` (a bandit is a senior
+with an arm number). Both mistakes are documented in `go/internal/live/entities.go` because
+both have been made before, and both fail *silently*: the page looks live and never updates.
+`searchperson/entities_test.go` pins the set, so if a source is ever added, that test and this
+list change together. The SPA also warns in the dev console — check it.
 
 **Debounce before the key changes, not after.** Each distinct key is a module-level cache
 entry that survives route changes, so feeding raw keystrokes into the key would leave an entry
@@ -46,7 +54,7 @@ Status badges are task 183; the previous-years control is task 184.
 ## Acceptance Criteria
 
 - [ ] `/search?q=` route, lazy-loaded, query in the URL and reload-safe
-- [ ] Data via `useLiveResource` with `dependsOn` from task 178 — no `onMounted` + `http.get`
+- [ ] Data via `useLiveResource` with the eight `dependsOn` tokens above — no `onMounted` + `http.get`
 - [ ] No live-dependency warnings in the dev console
 - [ ] Debounce applied before the cache key changes
 - [ ] Minimum length enforced client-side

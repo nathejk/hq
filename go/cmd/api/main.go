@@ -58,6 +58,7 @@ import (
 	"nathejk.dk/nathejk/table/photo"
 	"nathejk.dk/nathejk/table/photocover"
 	"nathejk.dk/nathejk/table/scan"
+	"nathejk.dk/nathejk/table/searchperson"
 	"nathejk.dk/nathejk/table/shelter"
 	"nathejk.dk/nathejk/table/sos"
 	"nathejk.dk/nathejk/table/spejdernote"
@@ -229,6 +230,13 @@ func main() {
 	// Which of those photographs represents a patrulje. hq's own entity — see its
 	// package doc for why it is not a column on the copied photo table.
 	photocovertable := photocover.New(publisher, writer, db.DB())
+	// Person search (PRD 014): one row per findable person, so an operator with only a
+	// phone number can name whoever is ringing. No publisher — search is read-only, and
+	// the only way into the table is the event log.
+	searchpersontable, err := searchperson.New(writer, db.DB())
+	if err != nil {
+		logger.PrintFatal(err, nil)
+	}
 	// Where people were: positions reported by the hej-app (PRD 011). The only consumer in this
 	// list that reads a *second* stream — its subject's domain is TELEMETRY, and the stream library
 	// derives the stream name from that, so the stream must exist or mux.Run fails below.
@@ -352,6 +360,7 @@ func main() {
 		ordertable,
 		sostable,
 		dispatchtable,
+		searchpersontable,
 	}
 	for _, consumer := range live.NotifyAll(livehub, projections...) {
 		mux.AddConsumer(consumer)
