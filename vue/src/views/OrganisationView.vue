@@ -92,6 +92,7 @@ type TreeNode = {
     vehicleId?: string
     parentSlug?: string
     memberCount?: number
+    hasSubsections?: boolean
   }
   children?: TreeNode[]
   droppable?: boolean
@@ -192,7 +193,7 @@ const expandedKeys = ref<Record<string, boolean>>({})
 // expandedKeys when the user collapses a section, so "absence" alone can't
 // distinguish "never seen" from "explicitly collapsed by the user". This
 // set gives us that distinction: on first sight of a section we auto-expand
-// it, on subsequent rebuilds we leave it alone.
+// it (if it holds subsections), on subsequent rebuilds we leave it alone.
 const seenSectionKeys = new Set<string>()
 
 function rebuildTree() {
@@ -241,7 +242,12 @@ function rebuildTree() {
           type: 'section',
           slug: s.slug,
           parentSlug,
-          memberCount: members.length
+          // Counts roll up: a section's badge is its own people plus everyone
+          // below it, so a collapsed section still says how many it covers.
+          memberCount:
+            members.length +
+            children.reduce((sum, c) => sum + (c.data.memberCount ?? 0), 0),
+          hasSubsections: children.length > 0
         },
         children: [...children, ...members, ...cars],
         // Sections are draggable for sibling reordering. Reparent attempts
@@ -260,10 +266,14 @@ function rebuildTree() {
   // (rather than the presence-in-expandedKeys check) is deliberate:
   // PrimeVue *deletes* a collapsed key from expandedKeys, so we can't
   // tell "never seen" from "collapsed" without our own set.
+  //
+  // Only sections holding subsections open by default: expanding a leaf
+  // section just to show its people pushes the structure off screen, and
+  // the rolled-up badge already says how many are in there.
   const walk = (nodes: TreeNode[]) => {
     for (const n of nodes) {
       if (n.data.type === 'section' && !seenSectionKeys.has(n.key)) {
-        expandedKeys.value[n.key] = true
+        if (n.data.hasSubsections) expandedKeys.value[n.key] = true
         seenSectionKeys.add(n.key)
       }
       if (n.children) walk(n.children)
