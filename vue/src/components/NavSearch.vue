@@ -131,6 +131,64 @@ const hint = computed(() => 'Tryk / for at søge efter telefonnummer eller navn'
 </template>
 
 <style scoped>
+/*
+ * The field sits *inside* the dark nav, so it cannot use PrimeVue's default light input styling —
+ * a white box in a gray-800 bar reads as a hole punched through it.
+ *
+ * The three values below are Tailwind's gray-700, gray-600 and gray-500, chosen against the nav's
+ * own gray-800 background and its existing hover/active greys (see Navigation.vue, which uses
+ * gray-700 for hover and gray-600 for the active item). So the field is a step lighter than the
+ * bar at rest, and clearly lighter once it has focus — without ever going white, which would
+ * glare on a screen being read at 3am in a dark room.
+ *
+ * They are literals rather than Tailwind classes because PrimeVue's own `.p-inputtext` rules would
+ * otherwise win, and `!important` on a utility class is worse than one documented block.
+ *
+ * Note the coupling: if the nav's `bg-gray-800` changes, these want revisiting. There is no
+ * shared token for it today, so a comment is the honest mechanism.
+ */
+:deep(.p-inputtext) {
+  --nav-search-idle: #374151; /* gray-700 — a step lighter than the bar */
+  --nav-search-hover: #4b5563; /* gray-600 — matches the nav's active item */
+  --nav-search-active: #6b7280; /* gray-500 — clearly lighter, still not white */
+
+  background: var(--nav-search-idle);
+  border-color: var(--nav-search-hover);
+  color: #fff;
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease;
+}
+
+:deep(.p-inputtext:hover:not(:focus)) {
+  background: var(--nav-search-hover);
+}
+
+:deep(.p-inputtext:focus) {
+  background: var(--nav-search-active);
+  /* Light enough to read as focused on its own, so the ring is reinforcement rather than the
+     only signal — which matters for anyone who cannot see the ring's colour. */
+  border-color: #d1d5db;
+  color: #fff;
+}
+
+/*
+ * Placeholder and icon are held at gray-400/gray-300 rather than inheriting: white on gray-500
+ * makes the placeholder look like typed text, and an operator glancing down needs to know at once
+ * whether the box already holds a number.
+ */
+:deep(.p-inputtext::placeholder) {
+  color: #9ca3af;
+}
+
+:deep(.p-inputtext:focus::placeholder) {
+  color: #d1d5db;
+}
+
+:deep(.p-inputicon) {
+  color: #9ca3af;
+}
+
 /* Tailwind's own sr-only, scoped, so this component does not depend on the plugin set being enabled. */
 .sr-only {
   position: absolute;
