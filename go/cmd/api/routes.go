@@ -43,6 +43,10 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodGet, "/api/orders", app.listOrdersHandler)
 	router.HandlerFunc(http.MethodGet, "/api/order/:id", app.showOrderHandler)
 
+	// Person search (PRD 014). `/api/search/person` rather than `/api/search`, so a later
+	// search over poster or kort is a sibling rather than a breaking change to this one.
+	router.HandlerFunc(http.MethodGet, "/api/search/person", app.searchPersonHandler)
+
 	router.HandlerFunc(http.MethodGet, "/api/patrulje", app.showPatruljeListHandler)
 	router.HandlerFunc(http.MethodGet, "/api/patrulje/:id", app.showPatruljeHandler)
 	router.HandlerFunc(http.MethodPut, "/api/patrulje/:id", app.updatePatruljeHandler)

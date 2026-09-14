@@ -195,10 +195,16 @@ one shortcut, eight digits, one click.
   tables. Target: server time under 50 ms at p99 for a phone query.
 - **Privacy.** This endpoint returns contact details for minors, aggregated across
   the whole event, which no existing endpoint does. It must sit behind the same
-  authentication as every other `/api` route, and must not be reachable
-  unauthenticated. Results deliberately do **not** include address, birthday or
-  notes: those stay on the detail pages the results link to, so search is a way to
-  *find* a person, not a way to bulk-export the population.
+  authentication as every other `/api` route — **and task 181 found that this is a
+  weaker guarantee than it sounds.** `app.authenticate` does not authenticate: it
+  attaches an anonymous user and calls the next handler, because authentication lives
+  in an external service. So "the same as every other route" is true and may not be
+  enough. Pre-existing, not caused by this PRD, but this PRD raises the stake — one
+  request now returns fifty named minors with phone numbers. **Task 188 owns
+  establishing what actually guards `/api` and recording the decision here.**
+  Results deliberately do **not** include address, birthday or notes: those stay on
+  the detail pages the results link to, so search is a way to *find* a person, not a
+  way to bulk-export the population.
 - **No new PII at rest.** The projection stores name, phone and team — all already
   stored in the six source tables. It duplicates; it does not widen.
 - **i18n.** UI text in Danish, per convention. Matching must handle æ/ø/å and be
@@ -499,6 +505,7 @@ Proposed tasks for `roadmap/tasks/open/` (created 2026-09-14 on approval):
 - [ ] 185 — Search box and keyboard shortcut in `Navigation.vue`
 - [ ] 186 — Verify p99 phone-query latency on production-sized data
 - [ ] 187 — Find people whose number shares a field with another number (from task 180)
+- [ ] 188 — Confirm who can reach `/api`, now that it returns minors' contact details (from task 181)
 
 Note the sequencing differs slightly from the numbering: 178 (wiring) lands before
 179 (status join), because the join is easier to verify against a projection that
@@ -544,4 +551,6 @@ is already live.
   are taken down by ear over a phone. Revisit once we can see what operators
   actually type and fail to find.
 - **Should search be audited?** It returns minors' contact details across the
-  whole event; a log of who searched for what may be warranted.
+  whole event; a log of who searched for what may be warranted. Note this is
+  currently **unanswerable**: `requestctx.User` is always anonymous (see task 188),
+  so there is no identity to log. The two questions are one question.

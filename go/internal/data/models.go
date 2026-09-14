@@ -27,6 +27,7 @@ import (
 	"nathejk.dk/nathejk/table/photo"
 	"nathejk.dk/nathejk/table/photocover"
 	"nathejk.dk/nathejk/table/scan"
+	"nathejk.dk/nathejk/table/searchperson"
 	"nathejk.dk/nathejk/table/shelter"
 	"nathejk.dk/nathejk/table/sos"
 	"nathejk.dk/nathejk/table/spejdernote"
@@ -147,6 +148,15 @@ type Models struct {
 	// one an organizer picked to represent the team.
 	Photo      PhotoInterface
 	PhotoCover photocover.Queries
+
+	// SearchPerson finds a person by phone number or name (PRD 014).
+	//
+	// Assigned after NewModels rather than passed into it, as PhotoCover is: the parameter
+	// list is already long enough to be a hazard, and a reader-only projection with one
+	// method does not need to be threaded through it.
+	SearchPerson interface {
+		Search(context.Context, searchperson.Query) (searchperson.Results, error)
+	}
 }
 
 func NewModels(db *sql.DB, y year.Queries, klan KlanInterface, senior SeniorInterface, patrulje patrulje.Queries, personnel PersonnelInterface, payment payment.Queries, cg checkgroup.Queries, cp checkpoint.Queries, checkpersonnel checkpersonnel.Queries, scan ScanInterface, lok LokInterface, sec section.Queries, crew crewmember.Queries, veh vehicle.Queries, ord OrderInterface, sosq sos.Queries, memberq spejderstatus.Queries, shelterq shelter.Queries, noteq spejdernote.Queries, dispatchq dispatch.Queries, kortq kort.Queries, trackq track.Queries, roster spejder.RosterReader) Models {

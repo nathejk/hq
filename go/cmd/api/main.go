@@ -384,6 +384,8 @@ func main() {
 	models.PhotoCover = photocovertable
 	models.MapHandout = maphandouttable
 	models.MemberVerification = memberverificationtable
+	// Person search reads the index it projects, so the same value serves both roles.
+	models.SearchPerson = searchpersontable
 	cmds := commands.New(publisher, models)
 	cmds.Year = year
 	cmds.Checkpoint = checkpoint
