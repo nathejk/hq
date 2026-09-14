@@ -11,6 +11,8 @@ import {
   phoneRoleLabel,
   queryDigits,
   resultRoute,
+  statusBadge,
+  REMOVED_BADGE,
   teamLabel,
   toRows,
 } from './personSearch'
@@ -132,6 +134,77 @@ describe('row content', () => {
     expect(resultRoute(result({ kind: 'gøgler' }))).toEqual({ name: 'badutter' })
     expect(resultRoute(result({ kind: 'friend' }))).toEqual({ name: 'badutter' })
     expect(resultRoute(result({ kind: 'crew' }))).toEqual({ name: 'organisation' })
+  })
+})
+
+describe('status badges', () => {
+  it('shows a status on ordinary rows too, not only unusual ones', () => {
+    expect(statusBadge(result({ status: 'racing', statusKind: 'member' })).label).toBe('Aktiv')
+    expect(statusBadge(result({ status: 'PAID', statusKind: 'team' })).label).toBe('Holdet: betalt')
+  })
+
+  it('reuses the member vocabulary the rest of HQ already shows', () => {
+    // Same words and colours as the patrol page, deliberately: a scout who reads "Udgår" there must
+    // not read something else here.
+    expect(statusBadge(result({ status: 'waiting', statusKind: 'member' }))).toMatchObject({
+      label: 'Udgår',
+      severity: 'warn',
+    })
+    expect(statusBadge(result({ status: 'sheltered', statusKind: 'member' })).label).toBe('Udgået')
+  })
+
+  it('styles a departed person differently from a racing one', () => {
+    const racing = statusBadge(result({ status: 'racing', statusKind: 'member' }))
+    const released = statusBadge(result({ status: 'released', statusKind: 'member' }))
+    const sheltered = statusBadge(result({ status: 'sheltered', statusKind: 'member' }))
+
+    expect(released.severity).not.toBe(racing.severity)
+    expect(released.label).not.toBe(racing.label)
+    expect(sheltered.severity).not.toBe(racing.severity)
+  })
+
+  it('keeps “udmeldt” distinguishable from “released”, on a separate axis', () => {
+    const released = statusBadge(result({ status: 'released', statusKind: 'member' }))
+    expect(REMOVED_BADGE.label).toBe('Udmeldt')
+    expect(REMOVED_BADGE.label).not.toBe(released.label)
+    expect(REMOVED_BADGE.severity).not.toBe(released.severity)
+    expect(REMOVED_BADGE.icon).not.toBe(released.icon)
+
+    // And removal does not replace the status: both facts survive.
+    const removedAndReleased = result({ status: 'released', statusKind: 'member', removed: true })
+    expect(statusBadge(removedAndReleased).label).toBe(released.label)
+  })
+
+  it('renders an unknown status as unknown rather than as registered', () => {
+    const unknown = statusBadge(result({ status: '', statusKind: '' }))
+    expect(unknown.label).toBe('Ukendt status')
+    expect(unknown.label).not.toMatch(/tilmeldt/i)
+    // Also when the vocabulary is named but the status is not.
+    expect(statusBadge(result({ status: '', statusKind: 'member' })).label).toBe('Ukendt status')
+    expect(statusBadge(result({ status: undefined, statusKind: undefined })).label).toBe(
+      'Ukendt status',
+    )
+  })
+
+  it('names a team status as the team’s, so PAY does not read as a debt of the person’s', () => {
+    expect(statusBadge(result({ status: 'PAY', statusKind: 'team' })).label).toBe(
+      'Holdet: mangler betaling',
+    )
+    expect(statusBadge(result({ status: 'OUT', statusKind: 'team' })).label).toBe('Holdet: ude')
+    // "Udgået" belongs to `sheltered`; two states must not share a word.
+    expect(statusBadge(result({ status: 'OUT', statusKind: 'team' })).label).not.toContain('Udgået')
+  })
+
+  it('keeps an unrecognised slug visible rather than flattening it', () => {
+    expect(statusBadge(result({ status: 'WHATEVER', statusKind: 'team' })).label).toBe(
+      'Holdet: WHATEVER',
+    )
+  })
+
+  it('carries the long form for hovering, because colour cannot say it all', () => {
+    expect(statusBadge(result({ status: 'released', statusKind: 'member' })).title).toBe(
+      'hentet af forældre',
+    )
   })
 })
 

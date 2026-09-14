@@ -246,6 +246,75 @@ describe('the row', () => {
   })
 })
 
+describe('status badges', () => {
+  const twoRows = () =>
+    payload({
+      results: [
+        person({ id: 'racing-1', name: 'Aktiv Andersen', status: 'racing', statusKind: 'member' }),
+        person({
+          id: 'gone-1',
+          name: 'Hjemme Hansen',
+          status: 'released',
+          statusKind: 'member',
+        }),
+      ],
+    })
+
+  // The criterion this task exists for: a departed person must not look like a current one. Asserted
+  // on rendered markup rather than on the mapping (which `personSearch.spec.ts` covers), because the
+  // thing that can break is the wiring — a `severity` that never reaches the Tag renders every row
+  // identically while every unit test still passes.
+  it('renders a departed row differently from a racing one', async () => {
+    get.mockResolvedValue({ data: { search: twoRows() } })
+    await openSearch({ q: 'Koch' })
+
+    const tags = wrapper.findAll('.p-tag')
+    expect(tags).toHaveLength(2)
+
+    const signature = (i: number) => {
+      const el = tags[i].element as HTMLElement
+      return `${el.className}|${el.getAttribute('data-p') ?? ''}`
+    }
+
+    expect(tags[0].text()).toBe('Aktiv')
+    expect(tags[1].text()).toBe('Afhentet')
+    expect(signature(0)).not.toBe(signature(1))
+  })
+
+  it('shows a status on every row, including the ordinary one', async () => {
+    get.mockResolvedValue({ data: { search: twoRows() } })
+    await openSearch({ q: 'Koch' })
+    // Two rows, two badges: the ordinary row is badged too, so an absent badge never has to be read
+    // as meaning something.
+    expect(wrapper.findAll('.p-tag')).toHaveLength(2)
+  })
+
+  it('shows udmeldt beside the status, not instead of it', async () => {
+    get.mockResolvedValue({
+      data: {
+        search: payload({
+          results: [person({ status: 'released', statusKind: 'member', removed: true })],
+        }),
+      },
+    })
+    await openSearch({ q: 'Koch' })
+
+    const labels = wrapper.findAll('.p-tag').map((t) => t.text())
+    expect(labels).toContain('Afhentet')
+    expect(labels).toContain('Udmeldt')
+  })
+
+  it('badges an unknown status as unknown', async () => {
+    get.mockResolvedValue({
+      data: {
+        search: payload({ results: [person({ status: undefined, statusKind: undefined })] }),
+      },
+    })
+    await openSearch({ q: 'Koch' })
+    expect(wrapper.find('.p-tag').text()).toBe('Ukendt status')
+  })
+})
+
 describe('the cap is stated', () => {
   it('says there are more matches than shown', async () => {
     get.mockResolvedValue({

@@ -27,6 +27,8 @@ import {
   SEARCH_DEPENDS_ON,
   type PersonSearchResponse,
   type PersonRow,
+  REMOVED_BADGE,
+  statusBadge,
   displayName,
   emptyState,
   isSearchable,
@@ -299,12 +301,31 @@ const openRow = (row: PersonRow) => {
           </template>
         </Column>
 
-        <!-- Status badges are task 183; plain text until then. -->
+        <!--
+          Status on every row, including the ordinary ones, and `removed` as its own badge beside it
+          rather than folded into the status: "udmeldt" (never started) and "Afhentet" (went home in
+          the night) are different facts, both can be true at once, and an operator ringing a
+          guardian must not be given the wrong one.
+        -->
         <Column header="Status">
           <template #body="{ data }">
-            <span v-if="data.removed" class="mr-2">udmeldt</span>
-            <span v-if="data.status">{{ data.status }}</span>
-            <span v-else-if="!data.removed" class="text-gray-400">ukendt</span>
+            <div class="flex flex-wrap gap-1 items-center">
+              <Tag
+                :value="statusBadge(data).label"
+                :severity="statusBadge(data).severity"
+                :icon="statusBadge(data).icon"
+                v-tooltip.bottom="statusBadge(data).title"
+                :aria-label="statusBadge(data).title"
+              />
+              <Tag
+                v-if="data.removed"
+                :value="REMOVED_BADGE.label"
+                :severity="REMOVED_BADGE.severity"
+                :icon="REMOVED_BADGE.icon"
+                v-tooltip.bottom="REMOVED_BADGE.title"
+                :aria-label="REMOVED_BADGE.title"
+              />
+            </div>
           </template>
         </Column>
       </DataTable>

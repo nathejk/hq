@@ -5,6 +5,8 @@
 // under, whose number matched, and where a row links to. All pure functions over the payload.
 
 import type { RouteLocationRaw } from 'vue-router'
+import { severityTagSeverity, type Severity } from './severity'
+import { memberStatusBadge, memberStatusPhrase } from './memberStatus'
 
 /** One person as `GET /api/search/person` returns them. Mirrors searchperson.Result. */
 export interface PersonResult {
@@ -224,6 +226,122 @@ export function resultRoute(result: PersonResult): RouteLocationRaw | null {
     default:
       return null
   }
+}
+
+/**
+ * A person's standing, as one badge.
+ *
+ * # Two vocabularies, and the one that already exists wins
+ *
+ * `statusKind` says which vocabulary `status` is drawn from, and the two are not comparable:
+ * `racing` is a fact about a person, `PAID` is a fact about their team. Member statuses already have
+ * badges in HQ (PRD 006), so search reuses them verbatim from `memberStatus.ts` rather than
+ * inventing words — a scout who reads "Udgår" on the patrol page must not read something else here,
+ * or an operator will take them for two different facts. Team statuses had no vocabulary at all, so
+ * one is defined below and coloured through `severity.ts`.
+ *
+ * # Every row, not only the unusual ones
+ *
+ * A badge that appeared only when something was wrong would make its *absence* carry meaning the
+ * operator has to know how to read. Showing "Aktiv" as plainly as "Udmeldt" means a row can be taken
+ * at face value, which is the whole point: a stale hit presented as current is worse than no hit.
+ */
+export interface StatusBadge {
+  label: string
+  /** A PrimeVue Tag severity. */
+  severity: string
+  icon: string
+  /**
+   * The long form, shown on hover.
+   *
+   * Colour alone cannot carry the distinction search needs. The established member vocabulary
+   * separates *in our care* (`waiting`/`transit` warn, `sheltered` danger) from *somebody else's
+   * charge* (`released` secondary, `reunited` info), but it spreads each across two colours, because
+   * it was built for the race-night screens rather than for a phone call. Rather than fork it, the
+   * unambiguous sentence travels with the badge.
+   */
+  title: string
+}
+
+/**
+ * Team signup statuses, in Danish, prefixed with their subject.
+ *
+ * This answers PRD 014 §11's open question. `PAY` on a person's row reads as though *they* owe
+ * money, and they do not — it is a fact about the team they are on. The prefix "Holdet:" makes the
+ * subject explicit in the badge itself, which is cheaper than a second column and impossible to
+ * misread. `OUT` deliberately reads "ude" and not "udgået", because `sheltered` already owns
+ * "Udgået" in the member vocabulary and two states sharing a word is the failure this whole badge
+ * exists to prevent.
+ */
+const TEAM_STATUSES: Record<string, { label: string; severity: Severity; icon: string }> = {
+  NEW: { label: 'tilmeldt', severity: 'yellow', icon: 'pi pi-users' },
+  HOLD: { label: 'afventer', severity: 'yellow', icon: 'pi pi-pause' },
+  PAY: { label: 'mangler betaling', severity: 'yellow', icon: 'pi pi-wallet' },
+  SEMIPAID: { label: 'delvist betalt', severity: 'yellow', icon: 'pi pi-wallet' },
+  PAID: { label: 'betalt', severity: 'green', icon: 'pi pi-check' },
+  STARTED: { label: 'startet', severity: 'green', icon: 'pi pi-directions' },
+  OUT: { label: 'ude', severity: 'red', icon: 'pi pi-ban' },
+}
+
+/**
+ * Unknown is an ordinary answer before the race, and is rendered as unknown.
+ *
+ * Not dressed up as `registered`: a scout with no `spejderstatus` row has not been registered as
+ * anything, and asserting a status the read model does not hold would be the one thing search must
+ * never do.
+ */
+const UNKNOWN_STATUS: StatusBadge = {
+  label: 'Ukendt status',
+  severity: 'contrast',
+  icon: 'pi pi-question-circle',
+  title: 'Ingen status registreret — helt normalt før løbet',
+}
+
+export function statusBadge(result: PersonResult): StatusBadge {
+  const status = result.status ?? ''
+  if (!status) return UNKNOWN_STATUS
+
+  if (result.statusKind === 'member') {
+    const badge = memberStatusBadge(status)
+    return { ...badge, title: memberStatusPhrase(status) }
+  }
+
+  if (result.statusKind === 'team') {
+    const team = TEAM_STATUSES[status]
+    // An unrecognised slug keeps its own name rather than being flattened into "ukendt": that is a
+    // deploy skew, and hiding it would look like data loss to the operator reading the screen.
+    if (!team) {
+      return {
+        label: `Holdet: ${status}`,
+        severity: 'contrast',
+        icon: 'pi pi-users',
+        title: `Holdets tilmeldingsstatus: ${status}`,
+      }
+    }
+    return {
+      label: `Holdet: ${team.label}`,
+      severity: severityTagSeverity(team.severity),
+      icon: team.icon,
+      title: `Holdets tilmeldingsstatus: ${team.label}`,
+    }
+  }
+
+  return UNKNOWN_STATUS
+}
+
+/**
+ * "Udmeldt" — a separate badge, because it is a separate axis.
+ *
+ * `removed` means taken off a roster; `released` means went home during the night. Both can be true
+ * of one person, and collapsing them would have an operator tell a guardian their child never signed
+ * up when in fact they were collected at 02:00. Rendered alongside the status badge rather than
+ * instead of it, with its own word and its own glyph so it cannot be mistaken for a lifecycle state.
+ */
+export const REMOVED_BADGE: StatusBadge = {
+  label: 'Udmeldt',
+  severity: 'danger',
+  icon: 'pi pi-user-minus',
+  title: 'Meldt ud af holdet — ikke det samme som hentet under løbet',
 }
 
 /** A row as the table renders it: the payload plus what grouping and ordering need. */
