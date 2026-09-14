@@ -179,7 +179,14 @@ func (app *application) seatWarnings(r *http.Request, id dispatch.TourID) []disp
 		return nil
 	}
 	seats := 0
-	vehicles, err := app.models.Vehicle.GetAll(r.Context(), vehicle.Filter{YearSlug: year, SectionSlug: tour.SectionSlug})
+	// Cars only: seats are what a car can carry, and a trailer carries nobody. Summing a
+	// trailer's seat count — which nothing stops an operator from setting — would inflate a
+	// tour's capacity and silence the very warning this function exists to raise.
+	vehicles, err := app.models.Vehicle.GetAll(r.Context(), vehicle.Filter{
+		YearSlug:    year,
+		SectionSlug: tour.SectionSlug,
+		Kind:        types.VehicleKindCar,
+	})
 	if err != nil {
 		return nil
 	}

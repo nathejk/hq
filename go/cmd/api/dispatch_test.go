@@ -167,8 +167,26 @@ type fakeVehicleQueries struct {
 	vehicles []vehicle.Vehicle
 }
 
-func (f *fakeVehicleQueries) GetAll(context.Context, vehicle.Filter) ([]vehicle.Vehicle, error) {
-	return f.vehicles, nil
+// GetAll honours Filter.Kind, and only that.
+//
+// Not laziness in either direction. The kind filter is what keeps trailers off the
+// dispatch board (nathejk/hej PRD 010), so a fake that ignored it would let those tests
+// pass whether or not the handler asked for cars — the assertion would be measuring the
+// fake. The other fields stay ignored because the handlers do their own section matching
+// in Go and the existing tests rely on getting the whole list back.
+func (f *fakeVehicleQueries) GetAll(_ context.Context, filter vehicle.Filter) ([]vehicle.Vehicle, error) {
+	if filter.Kind == "" {
+		return f.vehicles, nil
+	}
+	out := []vehicle.Vehicle{}
+	for _, v := range f.vehicles {
+		// An unset kind on a fixture is a car, matching what the projector writes for
+		// every registration event that predates the field.
+		if v.Kind.OrCar() == filter.Kind {
+			out = append(out, v)
+		}
+	}
+	return out, nil
 }
 
 // fakeCheckpointQueries and fakeLokQueries stand in for the place vocabulary the dialog's picker
@@ -795,5 +813,88 @@ func TestPlacesGroupCheckpointsAndLoks(t *testing.T) {
 		if !strings.Contains(body, want) {
 			t.Errorf("places are missing %s: %s", want, body)
 		}
+	}
+}
+
+// —— Trailers are not dispatchable (nathejk/hej PRD 010) ——
+//
+// The vehicle inventory holds every vehicle in the race area, because that is what parking,
+// access and insurance need. Dispatch wants a strictly smaller set: cars that can carry a
+// member. These three tests are the boundary between the two, and they exist because the
+// participants' app started registering trailers — without them, the first trailer somebody
+// tows to Nathejk turns up on this board as something to send after a scout.
+
+func TestATrailerIsNotOfferedAsAUnitsVehicle(t *testing.T) {
+	app := dispatchApp(&fakeDispatchCommands{}, &fakeDispatchQueries{dispatchable: []types.Slug{"bil-2"}})
+	app.models.Section = &fakeSectionQueries{sections: []section.Section{{Slug: "bil-2", Label: "Bil 2"}}}
+	app.models.Vehicle = &fakeVehicleQueries{vehicles: []vehicle.Vehicle{
+		{VehicleID: "v-car", SectionSlug: "bil-2", LicensePlate: "DK+AB12345", SeatCount: 4, Kind: types.VehicleKindCar},
+		{VehicleID: "v-trailer", SectionSlug: "bil-2", LicensePlate: "DK+XY98765", Kind: types.VehicleKindTrailer},
+	}}
+
+	rec := httptest.NewRecorder()
+	app.showDispatchBoardHandler(rec, dispatchRequest(t, http.MethodGet, "/api/dispatch", "", nil))
+
+	var got struct {
+		Units []dispatchUnit `json:"units"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding: %v; body: %s", err, rec.Body.String())
+	}
+	if len(got.Units) != 1 {
+		t.Fatalf("got %d units, want 1", len(got.Units))
+	}
+	if len(got.Units[0].Vehicles) != 1 || got.Units[0].Vehicles[0].VehicleID != "v-car" {
+		t.Errorf("only the car belongs on the board, got %+v", got.Units[0].Vehicles)
+	}
+	// A car towing a trailer must not read as the "more than one vehicle" configuration
+	// mistake the strip flags (PRD 009 §6) — that warning is about two cars in one unit, and
+	// making it fire on a perfectly normal car-and-trailer would teach the desk to ignore it.
+	if len(got.Units[0].Vehicles) > 1 {
+		t.Error("a car with a trailer must not look like a misconfigured unit")
+	}
+}
+
+// A trailer's seat count must not add capacity. The seat count is meaningless on a trailer,
+// but nothing stops an operator from typing one, and this is the number that decides whether
+// the desk is warned about overloading a car.
+func TestATrailerAddsNoSeats(t *testing.T) {
+	app := dispatchApp(&fakeDispatchCommands{}, &fakeDispatchQueries{})
+	app.models.Dispatch = &seatQueries{
+		tour: &dispatch.Tour{ID: "tour-1", SectionSlug: "bil-2", Stops: []dispatch.TourStop{
+			{StopID: "stop-a", Tasks: []dispatch.StopTask{{TaskID: "disp-1", Role: dispatch.RoleLoad}}},
+		}},
+		task: &dispatch.Task{ID: "disp-1", Kind: dispatch.KindPickup, MemberIDs: []types.MemberID{"m-1", "m-2", "m-3", "m-4", "m-5"}},
+	}
+	// Four real seats and a trailer claiming eight. Five people: a warning is correct, and
+	// counting the trailer would suppress it.
+	app.models.Vehicle = &fakeVehicleQueries{vehicles: []vehicle.Vehicle{
+		{VehicleID: "v-car", SectionSlug: "bil-2", SeatCount: 4, Kind: types.VehicleKindCar},
+		{VehicleID: "v-trailer", SectionSlug: "bil-2", SeatCount: 8, Kind: types.VehicleKindTrailer},
+	}}
+
+	rec := httptest.NewRecorder()
+	app.setDispatchTourStopsHandler(rec, dispatchRequest(t, http.MethodPut,
+		"/api/dispatch/tour/tour-1/stops", "tour-1", map[string]any{"stops": []any{}}))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200; body: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "pladser") {
+		t.Errorf("a trailer's seats were counted as capacity, so the overrun went unwarned: %s", rec.Body.String())
+	}
+}
+
+// The vehicle projector makes the custodian the first driver of *any* vehicle, trailers
+// included, so a trailer parked in a unit carries a driverUserId. Without the kind filter it
+// would be reported as the person behind the wheel.
+func TestATrailersCustodianIsNotTheUnitsDriver(t *testing.T) {
+	app := dispatchApp(&fakeDispatchCommands{}, &fakeDispatchQueries{})
+	app.models.Vehicle = &fakeVehicleQueries{vehicles: []vehicle.Vehicle{
+		{VehicleID: "v-trailer", SectionSlug: "bil-2", DriverUserID: "u-trailer-owner", Kind: types.VehicleKindTrailer},
+	}}
+
+	if got := app.unitDriver(dispatchRequest(t, http.MethodGet, "/api/dispatch", "", nil), "2026", "bil-2"); got != "" {
+		t.Errorf("unitDriver = %q, want empty — a trailer has nobody behind the wheel", got)
 	}
 }

@@ -163,7 +163,15 @@ func (app *application) dispatchUnits(r *http.Request, year types.YearSlug) ([]d
 	for _, s := range sections {
 		labels[s.Slug] = s.Label
 	}
-	vehicles, err := app.models.Vehicle.GetAll(r.Context(), vehicle.Filter{YearSlug: year})
+	// Cars only. The vehicle inventory also holds trailers (nathejk/hej PRD 010): every
+	// vehicle in the race area is registered, for parking, access and insurance, and a
+	// trailer is a vehicle in its own right rather than a note on the car towing it. It is
+	// not something a dispatcher can send anywhere, so it must not appear in a unit's
+	// vehicles or the desk would be offered one to dispatch after a member.
+	vehicles, err := app.models.Vehicle.GetAll(r.Context(), vehicle.Filter{
+		YearSlug: year,
+		Kind:     types.VehicleKindCar,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -525,7 +533,15 @@ func (app *application) unitDriver(r *http.Request, year types.YearSlug, unit ty
 	if unit == "" {
 		return ""
 	}
-	vehicles, err := app.models.Vehicle.GetAll(r.Context(), vehicle.Filter{YearSlug: year, SectionSlug: unit})
+	// Cars only, and here it is load-bearing rather than tidy: the vehicle projector makes
+	// the custodian the first driver of *any* registered vehicle, trailers included, so a
+	// trailer parked in this unit carries a driverUserId and would otherwise be returned as
+	// the person behind the wheel.
+	vehicles, err := app.models.Vehicle.GetAll(r.Context(), vehicle.Filter{
+		YearSlug:    year,
+		SectionSlug: unit,
+		Kind:        types.VehicleKindCar,
+	})
 	if err != nil {
 		return ""
 	}

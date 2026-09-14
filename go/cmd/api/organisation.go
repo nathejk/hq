@@ -35,6 +35,11 @@ func (app *application) showOrganisationHandler(w http.ResponseWriter, r *http.R
 	// Vehicles hang off the same sections as crew members, so they travel with
 	// the organisation payload rather than through an endpoint of their own —
 	// one round trip is what lets the tree render both in a single pass.
+	//
+	// Deliberately **not** filtered to cars, unlike the dispatch board. This is the
+	// inventory, and a trailer being on site is exactly what it is for (nathejk/hej
+	// PRD 010): parking, access and insurance. It is *dispatch* that must see cars
+	// only — do not "make this consistent" with it.
 	vehicles, err := app.models.Vehicle.GetAll(r.Context(), vehicle.Filter{YearSlug: year})
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
@@ -276,7 +281,8 @@ func (app *application) deleteSectionHandler(w http.ResponseWriter, r *http.Requ
 	}
 	// Same for vehicles: deleting the section would leave them pointing at a slug
 	// nothing renders, so they would drop out of the tree without turning up in the
-	// unassigned panel either.
+	// unassigned panel either. Every kind counts here, trailers included — a trailer
+	// stranded on a dead slug is just as invisible as a car.
 	parked, err := app.models.Vehicle.GetAll(r.Context(), vehicle.Filter{YearSlug: year, SectionSlug: slug})
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
