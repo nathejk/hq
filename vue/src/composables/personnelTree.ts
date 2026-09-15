@@ -73,40 +73,41 @@ function sectionKey(person: AssignablePerson): string {
 }
 
 /**
- * The tree: a branch per section, people as leaves.
+ * The tree: prioritised people at the top level, everyone else behind a section branch.
  *
- * Sections are `selectable: false` — a section cannot staff a post, and offering one as a
- * choice would produce a confusing no-op (or worse, a saved row with a section's slug as its
- * userId). The count in the branch label is what makes a collapsed branch worth collapsing:
- * "Hønsegård (8)" says whether it is worth opening.
+ * The postmandskab are *not* wrapped in a branch, and that is the whole trick. They normally staff
+ * the posts, so their names must be on screen the moment the picker opens — and TreeSelect keeps
+ * `expandedKeys` as internal state rather than a prop, resetting it whenever its options or value
+ * change, so "open this branch by default" is not something a caller can ask for. Reaching into the
+ * instance to force it was tried and is what broke the dropdown: the write throws on the public
+ * proxy, from inside `before-show`, before the overlay is ever shown. Flattening the prioritised
+ * section says the same thing using only the component's own API.
+ *
+ * Other sections stay branches, collapsed by TreeSelect's default, which is what we want: one
+ * click rather than one long scroll. Sections are `selectable: false` — a section cannot staff a
+ * post, and offering one would save a shift whose userId is a section slug.
  */
 export function buildPersonnelTree(groups: PersonnelGroup[]): PersonnelNode[] {
-  return groups.map((group) => ({
-    key: group.key,
-    label: `${group.label} (${group.items.length})`,
-    selectable: false,
-    children: group.items.map((person) => ({
-      key: person.id,
-      label: person.name,
-      leaf: true,
-    })),
-  }))
+  const nodes: PersonnelNode[] = []
+  for (const group of groups) {
+    if (group.priority) {
+      nodes.push(...group.items.map(personNode))
+      continue
+    }
+    nodes.push({
+      key: group.key,
+      // The count is what makes a shut branch worth shutting: "Hønsegård (8)" says whether it is
+      // worth opening.
+      label: `${group.label} (${group.items.length})`,
+      selectable: false,
+      children: group.items.map(personNode),
+    })
+  }
+  return nodes
 }
 
-/**
- * Which branches start open: the prioritised ones, and nothing else.
- *
- * The postmandskab normally staff the posts, so their names should be there to click without a
- * second gesture, while everyone else stays one click rather than one scroll away. Derived from
- * the data rather than from a hardcoded slug, so the day a section is renamed the expansion
- * follows the priority instead of quietly opening nothing.
- */
-export function expandedPriorityKeys(groups: PersonnelGroup[]): Record<string, boolean> {
-  const keys: Record<string, boolean> = {}
-  for (const group of groups) {
-    if (group.priority) keys[group.key] = true
-  }
-  return keys
+function personNode(person: AssignablePerson): PersonnelNode {
+  return { key: person.id, label: person.name, leaf: true }
 }
 
 /**

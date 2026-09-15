@@ -7,10 +7,10 @@ import DayTimePicker from '@/components/DayTimePicker.vue'
 import { dddhhmm, hhmm } from '@/composables/datefilters'
 import {
   buildPersonnelTree,
-  expandedPriorityKeys,
   groupPersonnel,
   selectionKeysFor,
-  userIdFromSelection
+  userIdFromSelection,
+  type PersonnelNode
 } from '@/composables/personnelTree'
 
 const props = withDefaults(
@@ -100,22 +100,55 @@ const unassignedPersonnel = (currentRowKey: number | null = null) => {
 }
 
 /**
- * The picker's people, grouped, built and opened.
+ * The picker's people, grouped and built.
  *
  * The logic lives in `composables/personnelTree.ts` and is tested there: TreeSelect speaks
- * selection *keys* rather than values, branches and people share one key namespace, and
- * "postmandskab open, the rest shut" is derived from the data — all three fail in silent ways,
- * and none can be tested inside a single-file component.
+ * selection *keys* rather than values, branches and people share one key namespace, and the
+ * postmandskab are shown open by being flattened rather than by asking TreeSelect to expand a
+ * branch (it has no such prop) — all three fail in silent ways.
  *
  * Any crew member is selectable, which is the point: an unstaffed post gets whoever is standing
  * there, and refusing to record that does not prevent the arrangement, only the record of it.
- * The postmandskab are merely first, and already expanded.
+ * The postmandskab are merely first, and already visible.
  */
 const personnelTree = (currentRowKey: number | null = null) =>
   buildPersonnelTree(groupPersonnel(unassignedPersonnel(currentRowKey)))
 
-/** Which branches stand open. Reset on every open (see `load`), not remembered. */
-const personnelExpandedKeys = ref<Record<string, boolean>>({})
+/** Shared so an unknown row yields the same array every render — see `personnelTreeFor`. */
+const NO_PEOPLE: PersonnelNode[] = []
+
+/**
+ * The tree and the selection per pending row, memoised.
+ *
+ * These MUST NOT be built inside the template. TreeSelect watches `options` and `modelValue` by
+ * identity and resets its own `expandedKeys` when either changes; that state is read while
+ * rendering, so a fresh array (or a fresh `{ userId: true }`) per render made every render cause
+ * the next one — the modal locked up the moment a selection re-rendered the row. Computeds keep
+ * the identity stable until the underlying data actually changes, which bounds it to one pass.
+ */
+const personnelTreeByRow = computed(() => {
+  const byRow = new Map<number, PersonnelNode[]>()
+  for (const list of newRows.value.values()) {
+    for (const pending of list) {
+      byRow.set(pending.key, personnelTree(pending.key))
+    }
+  }
+  return byRow
+})
+
+const personnelTreeFor = (rowKey: number) => personnelTreeByRow.value.get(rowKey) || NO_PEOPLE
+
+const selectionByRow = computed(() => {
+  const byRow = new Map<number, Record<string, boolean> | null>()
+  for (const list of newRows.value.values()) {
+    for (const pending of list) {
+      byRow.set(pending.key, selectionKeysFor(pending.userId))
+    }
+  }
+  return byRow
+})
+
+const selectionFor = (rowKey: number) => selectionByRow.value.get(rowKey) || null
 
 // Whether there are any unsaved changes
 const hasChanges = computed(() => {
@@ -272,9 +305,6 @@ const load = async () => {
       availablePersonnel.value = rsp.data.availablePersonnel || []
       assignedPersonnel.value = rsp.data.assignedPersonnel || []
       year.value = rsp.data.year || {}
-      // After the people are in place, not before: the branches to open are derived
-      // from them.
-      personnelExpandedKeys.value = expandedPriorityKeys(groupPersonnel(unassignedPersonnel()))
     }
   } catch (error: any) {
     console.log('error happened', error)
@@ -564,10 +594,9 @@ const cancel = () => emit('canceled')
               hunt through — filtering searches every branch, open or not.
             -->
             <TreeSelect
-              :modelValue="selectionKeysFor(newRows.get(data.checkpointId)?.find((r: any) => r.key === data.newRowKey)?.userId)"
+              :modelValue="selectionFor(data.newRowKey)"
               @update:modelValue="(val: any) => setNewRowUser(data.checkpointId, data.newRowKey, userIdFromSelection(val))"
-              v-model:expandedKeys="personnelExpandedKeys"
-              :options="personnelTree(data.newRowKey)"
+              :options="personnelTreeFor(data.newRowKey)"
               selectionMode="single"
               placeholder="Vælg person"
               class="w-full"

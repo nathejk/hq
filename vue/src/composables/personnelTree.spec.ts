@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
   LABEL_NO_SECTION,
   buildPersonnelTree,
-  expandedPriorityKeys,
   groupPersonnel,
   selectionKeysFor,
   userIdFromSelection,
@@ -67,43 +66,51 @@ describe('groupPersonnel', () => {
 describe('buildPersonnelTree', () => {
   const tree = buildPersonnelTree(groupPersonnel(offered))
 
-  it('puts people under their section', () => {
-    expect(tree[0].label).toBe('Postmandskab (2)')
-    expect(tree[0].children?.map((c) => c.label)).toEqual(['Alma', 'Bo'])
+  // Flat, not behind a branch: TreeSelect cannot be told to open a branch (its `expandedKeys` is
+  // private state it resets whenever options or value change), so the only way the postmandskab
+  // are on screen at first click is to not nest them.
+  it('puts the prioritised people at the top level', () => {
+    expect(tree.slice(0, 2).map((n) => n.label)).toEqual(['Alma', 'Bo'])
+    expect(tree.slice(0, 2).every((n) => n.leaf)).toBe(true)
+  })
+
+  it('puts everyone else under their section, with a count', () => {
+    expect(tree.slice(2).map((n) => n.label)).toEqual([
+      'Gøglerledelse (1)',
+      'HQ (1)',
+      'Tilmeldte hjælpere (1)',
+    ])
+    expect(tree[2].children?.map((c) => c.label)).toEqual(['Cecilie'])
   })
 
   // A section cannot staff a post. If it were selectable, picking one would save a shift
   // assigned to a section slug — a row belonging to nobody.
   it('makes sections unselectable and people selectable', () => {
-    expect(tree[0].selectable).toBe(false)
-    expect(tree[0].children?.[0].leaf).toBe(true)
+    expect(tree[2].selectable).toBe(false)
+    expect(tree[2].children?.[0].leaf).toBe(true)
   })
 
   it('keys people by userId, which is what gets saved', () => {
-    expect(tree[0].children?.map((c) => c.key)).toEqual(['u1', 'u2'])
+    expect(tree.slice(0, 2).map((n) => n.key)).toEqual(['u1', 'u2'])
+    expect(tree[2].children?.map((c) => c.key)).toEqual(['u3'])
   })
 
   // Branch keys and person keys share one namespace in a TreeSelect, so they must not be able
   // to collide.
   it('namespaces section keys away from userIds', () => {
-    expect(tree.every((node) => node.key.startsWith('sec:'))).toBe(true)
+    expect(tree.slice(2).every((node) => node.key.startsWith('sec:'))).toBe(true)
+    expect(tree.slice(0, 2).some((node) => node.key.startsWith('sec:'))).toBe(false)
   })
 
-  it('keys a section by slug so expansion survives a rename', () => {
-    expect(tree[0].key).toBe('sec:postmandskab')
-  })
-})
-
-describe('expandedPriorityKeys', () => {
-  it('opens the postmandskab and nothing else', () => {
-    expect(expandedPriorityKeys(groupPersonnel(offered))).toEqual({ 'sec:postmandskab': true })
+  it('keys a section by slug so it survives a label rename', () => {
+    expect(tree[2].key).toBe('sec:goeglerledelse')
   })
 
   // The year in this database has nobody in postmandskab; the picker must still work, just
-  // fully collapsed.
-  it('opens nothing when no section is prioritised', () => {
-    const groups = groupPersonnel([{ id: 'a', name: 'A', sectionLabel: 'HQ' }])
-    expect(expandedPriorityKeys(groups)).toEqual({})
+  // entirely sectioned.
+  it('is all branches when nobody is prioritised', () => {
+    const tree = buildPersonnelTree(groupPersonnel([{ id: 'a', name: 'A', sectionLabel: 'HQ' }]))
+    expect(tree.map((n) => n.label)).toEqual(['HQ (1)'])
   })
 })
 
