@@ -37,6 +37,27 @@ interface TeamRow {
   activeMemberCount: number
   status: TeamStatus
   scannedAtUts?: number
+  /**
+   * When this team was due here. Per team, not per line: on a relative postlinje the clock
+   * starts when that team left the previous line, so two patrols an hour apart have deadlines
+   * an hour apart. Absent when the line keeps no time, or when a relative line's reference
+   * scan has not happened yet — there is no deadline to state, and inventing one from the
+   * line's own opening hours is exactly the mistake this replaced.
+   */
+  deadlineUts?: number
+  /**
+   * How far this team is from the line, for a team that has not arrived. Absent when it has, and
+   * absent when HQ does not know where it is — which is the majority case, not an error.
+   *
+   * `ts` is epoch milliseconds and is not decoration: HQ's knowledge of a patrol's position goes
+   * stale by hours between posts, so the distance is only ever shown together with its age.
+   */
+  distance?: {
+    meters: number
+    checkpointName: string
+    ts: number
+    source: 'track' | 'scan'
+  }
 }
 
 interface Payload {
@@ -55,6 +76,8 @@ interface Payload {
 //   checkpersonnel   the rota — a scan is attributed to a post through the scanner's shift,
 //                    so a shift being corrected moves these numbers
 //   qr               the scans themselves. NOTE the token is `qr`, not `scan`
+//   track            telemetry positions, which the distance column rests on. From
+//                    TELEMETRY.{year}.track.{personId}.reported — not `telemetry`, not `position`
 //   patrulje         who started
 //   spejder          activeMemberCount, which is what makes a team retired rather than
 //                    missing. Maintained by the spejderstatus projection, whose subjects are
@@ -71,6 +94,7 @@ const { data, pending, error, refresh } = useLiveResource(
       'checkpoint',
       'checkpersonnel',
       'qr',
+      'track',
       'patrulje',
       'spejder',
     ],
@@ -152,6 +176,27 @@ const minutesToClose = computed(() => {
   return Math.round((uts * 1000 - now.value) / 60000)
 })
 
+/** Minutes late, negative for time still left. Null when the team has no deadline. */
+const overrun = (row: TeamRow): number | null => {
+  if (!row.deadlineUts) return null
+  const against = row.scannedAtUts ? row.scannedAtUts * 1000 : now.value
+  return Math.round((against - row.deadlineUts * 1000) / 60000)
+}
+
+/**
+ * Patrols past their own deadline and still not through.
+ *
+ * The relative line's equivalent of "the line is closing": there is no single closing time to
+ * warn about, so what is left to say is how many teams are individually overdue right now.
+ * Recomputed off the ticking clock, so a patrol joins this the minute its own time runs out.
+ */
+const overdue = computed(() =>
+  teams.value.filter((t) => {
+    if (t.status !== 'missing' || !t.deadlineUts) return false
+    return t.deadlineUts * 1000 <= now.value
+  }),
+)
+
 /**
  * The line is closing and somebody is still out.
  *
@@ -171,6 +216,38 @@ const closed = computed(() => {
 })
 
 const showOnlyMissing = () => (selected.value = ['missing'])
+
+/**
+ * Distance, in the units the number deserves.
+ *
+ * Kilometres with one decimal above a kilometre, whole tens of metres below it: a patrol reported
+ * as "1.83 km" invites arithmetic the underlying position does not support — it is a straight line
+ * from a phone fix that may be minutes old — while "350 m" reads as "basically here", which is the
+ * decision being made.
+ */
+const formatDistance = (meters: number) => {
+  if (meters >= 1000) return `${(meters / 1000).toLocaleString('da-DK', { maximumFractionDigits: 1, minimumFractionDigits: 1 })} km`
+  return `${Math.round(meters / 10) * 10} m`
+}
+
+/** Compact age of a position: "14 min siden". Ticks, so a distance visibly ages on screen. */
+const formatAge = (ts: number) => {
+  const minutes = Math.floor(Math.max(now.value - ts, 0) / 60000)
+  if (minutes < 1) return 'lige nu'
+  if (minutes < 60) return `${minutes} min siden`
+  const hours = Math.floor(minutes / 60)
+  return `${hours} t ${minutes % 60} min siden`
+}
+
+/**
+ * A position old enough that the distance beside it should not be trusted.
+ *
+ * Half an hour on foot is well over a kilometre, so past that the number says where the patrol
+ * *was*, not where it is. Greyed rather than hidden: knowing they were 2 km out at midnight is
+ * still worth more than a dash.
+ */
+const STALE_POSITION_MS = 30 * 60 * 1000
+const positionIsStale = (ts: number) => now.value - ts > STALE_POSITION_MS
 </script>
 
 <template>
@@ -218,6 +295,27 @@ const showOnlyMissing = () => (selected.value = ['missing'])
         {{ stats.missing === 1 ? 'patrulje' : 'patruljer' }} kom aldrig igennem.
       </Message>
       <p v-else-if="closesAt" class="text-sm text-gray-500 pb-3">Postlinjen lukker {{ closesAt }}.</p>
+      <!--
+        A relative line has no closing time to warn about — each patrol has its own — so the
+        warning is about the patrols themselves. Same shortcut, same reason as above.
+      -->
+      <Message
+        v-else-if="!closesAt && overdue.length > 0"
+        severity="warn"
+        :closable="false"
+        class="mb-3"
+      >
+        <strong>{{ overdue.length }}</strong>
+        {{ overdue.length === 1 ? 'patrulje har' : 'patruljer har' }} overskredet sin frist og er
+        ikke kommet igennem.
+        <Button
+          v-if="!(selected.length === 1 && selected[0] === 'missing')"
+          label="Vis kun dem der mangler"
+          text
+          size="small"
+          @click="showOnlyMissing"
+        />
+      </Message>
 
       <!--
         The filter above the list, as a row of counts. Doubles as the summary: the four numbers
@@ -279,6 +377,25 @@ const showOnlyMissing = () => (selected.value = ['missing'])
             <span v-else class="text-gray-400">—</span>
           </template>
         </Column>
+        <!--
+          The team's own deadline, next to its own scan, so "for sent" can be read rather than
+          taken on trust — and so a patrol still out can be seen running out of time.
+        -->
+        <Column header="Frist" style="width: 7rem">
+          <template #body="{ data: row }">
+            <template v-if="row.deadlineUts">
+              <span>{{ clock(row.deadlineUts) }}</span>
+              <div
+                v-if="overrun(row) !== null && overrun(row)! > 0"
+                class="text-xs"
+                :class="row.scannedAtUts ? 'text-amber-600' : 'text-red-600'"
+              >
+                +{{ overrun(row) }} min
+              </div>
+            </template>
+            <span v-else class="text-gray-400">—</span>
+          </template>
+        </Column>
         <!-- Strength on the route: zero is why a team reads as udgået rather than missing. -->
         <Column header="I løbet" style="width: 5rem">
           <template #body="{ data: row }">
@@ -288,16 +405,22 @@ const showOnlyMissing = () => (selected.value = ['missing'])
           </template>
         </Column>
         <!--
-          The contact, as a tel: link. This is what turns the missing list from a report into
-          something an operator can act on without looking the patrol up somewhere else.
+          How far the ones still out are, and from which post. This is what separates a patrol
+          walking in from one that will not make it — same red tag, opposite response — and it is
+          why the contact column gave up its space: the phone number is one click away on the
+          patrol page, the distance is nowhere else.
         -->
-        <Column header="Kontakt">
+        <Column header="Afstand">
           <template #body="{ data: row }">
-            <a v-if="row.contactPhone" :href="`tel:${row.contactPhone}`" class="underline">
-              {{ row.contactPhone }}
-            </a>
+            <template v-if="row.distance">
+              <span :class="positionIsStale(row.distance.ts) ? 'text-gray-400' : ''">
+                {{ formatDistance(row.distance.meters) }} fra {{ row.distance.checkpointName }}
+              </span>
+              <div class="text-xs text-gray-500">
+                ({{ formatAge(row.distance.ts) }}<template v-if="row.distance.source === 'scan'">, sidste scan</template>)
+              </div>
+            </template>
             <span v-else class="text-gray-400">—</span>
-            <div v-if="row.contactName" class="text-xs text-gray-500">{{ row.contactName }}</div>
           </template>
         </Column>
         <template #empty>
