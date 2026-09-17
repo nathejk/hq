@@ -22,17 +22,23 @@ import (
 // order_line has no year of its own, so each list is scoped by its member table's
 // year instead — which also is what keeps a memberId that recurs across years from
 // matching the wrong edition.
+//
+// Only lines belonging to a *paid* order are counted: a shirt is bagged when it has
+// been paid for, so open (still-payable) and cancelled orders are excluded. This is
+// what keeps the picking list's totals in step with the order summary, which likewise
+// disregards unpaid lines.
 
 // tshirtLines is the shared per-member t-shirt tally: one row per (member, size) with
 // the summed quantity. Joined to each member table below.
 const tshirtLines = `
-	SELECT memberId,
-	       JSON_UNQUOTE(JSON_EXTRACT(attributes, '$.size')) AS size,
-	       SUM(quantity) AS quantity
-	FROM order_line
-	WHERE productSku = 'tshirt.adult'
-	GROUP BY memberId, size
-	HAVING SUM(quantity) > 0`
+	SELECT ol.memberId,
+	       JSON_UNQUOTE(JSON_EXTRACT(ol.attributes, '$.size')) AS size,
+	       SUM(ol.quantity) AS quantity
+	FROM order_line ol
+	JOIN orders o ON o.orderId = ol.orderId AND o.status = 'paid'
+	WHERE ol.productSku = 'tshirt.adult'
+	GROUP BY ol.memberId, size
+	HAVING SUM(ol.quantity) > 0`
 
 func (app *application) excelPluklisteHandler(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
