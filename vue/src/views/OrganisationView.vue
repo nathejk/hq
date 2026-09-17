@@ -115,6 +115,26 @@ const selectedCopyYear = ref<string | null>(null)
 
 const busy = ref(false)
 
+// Download the organisation Excel export (crew members + vehicles). Fetched via
+// axios rather than a plain <a href> so the X-YearSlug header rides along and the
+// export matches the year the operator is looking at, not the server's default.
+async function exportExcel() {
+  try {
+    const res = await http.get('/excel/organisation', { responseType: 'blob' })
+    const url = URL.createObjectURL(res.data)
+    const link = document.createElement('a')
+    link.href = url
+    // The server sets a dated filename via Content-Disposition, but a blob URL
+    // cannot read it, so name it here.
+    link.download = `organisation-${year.value || 'aktuel'}.xlsx`
+    link.click()
+    URL.revokeObjectURL(url)
+  } catch (e) {
+    console.log('organisation excel export failed', e)
+    toast.add({ severity: 'error', summary: 'Kunne ikke hente Excel-eksport', life: 5000 })
+  }
+}
+
 /**
  * A drag gesture is in progress.
  *
@@ -1168,6 +1188,7 @@ function quickAssignVehicleFromDropdown(vehicleId: string, slug: string) {
         <span v-if="updatesWaiting && !busy" class="text-sm text-gray-500 mr-2" v-tooltip.bottom="'Ændringer fra andre anvendes, når du er færdig'">
           <i class="pi pi-pause-circle" /> Opdateringer sat på pause
         </span>
+        <Button icon="pi pi-file-excel" label="Excel" size="small" severity="secondary" @click="exportExcel" />
         <Button icon="pi pi-user-plus" label="Nyt crew-medlem" size="small" severity="secondary" @click="newCrewDialogOpen = true" />
         <Button icon="pi pi-car" label="Nyt køretøj" size="small" severity="secondary" :disabled="crewMembers.length === 0" v-tooltip.bottom="crewMembers.length === 0 ? 'Opret først et crew-medlem, der kan være ansvarlig' : undefined" @click="openNewVehicle" />
         <Button icon="pi pi-plus" label="Ny sektion" size="small" :disabled="sections.length === 0 && availableYearsForCopy.length > 0" @click="addDialogOpen = true" />

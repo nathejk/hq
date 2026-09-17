@@ -250,6 +250,7 @@ func (app *application) routes() http.Handler {
 	router.HandlerFunc(http.MethodGet, "/api/excel/patrulje", app.excelPatruljeHandler)
 	router.HandlerFunc(http.MethodGet, "/api/excel/personnel", app.excelPersonnelHandler)
 	router.HandlerFunc(http.MethodGet, "/api/excel/plukliste", app.excelPluklisteHandler)
+	router.HandlerFunc(http.MethodGet, "/api/excel/organisation", app.excelOrganisationHandler)
 	/*
 		router.HandlerFunc(http.MethodPut, "/api/*filepath", app.cleo.ProxyHandler)
 		router.HandlerFunc(http.MethodGet, "/api/*filepath", app.cleo.ProxyHandler)
