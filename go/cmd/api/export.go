@@ -123,6 +123,11 @@ func (app *application) excelKlanHandler(w http.ResponseWriter, r *http.Request)
 		app.ServerErrorResponse(w, r, err)
 		return
 	}
+	// The klan projection soft-deletes, and the entity's GetAll only excludes the
+	// empty status, so a withdrawn klan comes back here. Dropped for the same reason
+	// the bandit page drops it — and because the members sheet is filled from inside
+	// the loop below, skipping the klan also keeps its banditter out of that sheet.
+	teams = withoutDeleted(teams)
 
 	xlsx := excelize.NewFile()
 	styleTitle, _ := xlsx.NewStyle(&excelize.Style{
