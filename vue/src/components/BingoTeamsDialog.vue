@@ -18,7 +18,7 @@ import { dddhhmm } from '@/composables/datefilters'
 
 const emit = defineEmits<{ close: [] }>()
 
-type CellStatus = 'onTime' | 'late' | 'retired' | 'missing'
+type CellStatus = 'onTime' | 'late' | 'retired' | 'missing' | 'pending'
 
 interface Cell {
   status: CellStatus
@@ -75,19 +75,28 @@ const lines = computed(() => detail.value?.lines ?? [])
 const teams = computed(() => detail.value?.teams ?? [])
 
 /**
- * What a cell shows. Only `onTime` is a tick; everything else is a cross.
+ * What a cell shows. Only `onTime` is a tick, and only a *real* failure is a cross.
  *
- * Three ways of not being on time, drawn as one cross but hovered as three different
- * sentences — the distinction already exists in resolveTeamStatus and the table would be
- * lying to flatten it. The fallback keeps a status this build has never heard of rendering
- * as itself instead of crashing the table: DataTable types its row slot as `any`, so the
- * template cannot narrow the key.
+ * `pending` is a post whose time has not come, and it is drawn as a quiet grey middot rather
+ * than a red cross on purpose: during the early hours most of the table is posts nobody has
+ * reached yet, and a wall of red for teams doing nothing wrong trains the operator to ignore
+ * the colour — at which point the genuine crosses stop being visible too.
+ *
+ * The three ways of failing share a cross but hover as three different sentences; the
+ * distinction already exists in resolveTeamStatus and the table would be lying to flatten it.
+ * `text` wins over `icon` where both could apply, because PrimeIcons has no middot and a dash
+ * would read as the same thing as udgået.
+ *
+ * The fallback keeps a status this build has never heard of rendering as itself instead of
+ * crashing the table: DataTable types its row slot as `any`, so the template cannot narrow the
+ * key.
  */
-const CELL_META: Record<CellStatus, { icon: string; klass: string; label: string }> = {
+const CELL_META: Record<CellStatus, { icon?: string; text?: string; klass: string; label: string }> = {
   onTime: { icon: 'pi pi-check', klass: 'text-green-600', label: 'Til tiden' },
   late: { icon: 'pi pi-times', klass: 'text-red-600', label: 'For sent' },
   missing: { icon: 'pi pi-times', klass: 'text-red-600', label: 'Ikke set' },
-  retired: { icon: 'pi pi-minus', klass: 'text-gray-400', label: 'Udgået' }
+  retired: { icon: 'pi pi-minus', klass: 'text-gray-400', label: 'Udgået' },
+  pending: { text: '·', klass: 'text-gray-400', label: 'Ikke lukket endnu' }
 }
 
 const cellMeta = (status: string) => CELL_META[status as CellStatus] ?? { icon: 'pi pi-question', klass: 'text-gray-400', label: status }
@@ -98,8 +107,11 @@ const cellMeta = (status: string) => CELL_META[status as CellStatus] ?? { icon: 
  * The server builds `cells` exactly as long as `lines`, so this never fires — but the two
  * arrive in one payload and are indexed positionally, and a template that dereferences
  * `undefined.status` takes the whole dialog down rather than showing one odd cell.
+ *
+ * Falls back to the quiet state rather than to a red cross: if this ever does fire it is a bug
+ * here, and a column of false alarms about patrols is the worse way to report it.
  */
-const cellAt = (row: TeamRow, index: number): Cell => row.cells?.[index] ?? { status: 'missing' as CellStatus }
+const cellAt = (row: TeamRow, index: number): Cell => row.cells?.[index] ?? { status: 'pending' as CellStatus }
 
 /**
  * The hover text: the verdict, then the times that justify it.
@@ -141,6 +153,18 @@ const bingoCount = computed(() => detail.value?.bingoCount ?? 0)
         <strong>{{ bingoCount }}</strong> af {{ teams.length }} startede patruljer har bingo: igennem alle {{ lines.length }} obligatoriske postlinjer til tiden og aldrig fanget af banditter. De står øverst med grøn baggrund. Hold musen over et felt for tider.
       </p>
 
+      <!--
+        A legend, because the middot is the one glyph that is not self-explanatory: a cross means
+        something went wrong, a dot means nothing has happened yet, and telling those apart is the
+        difference between a table to act on and a table to ignore.
+      -->
+      <p class="text-xs text-gray-500 pb-3 flex flex-wrap gap-x-4 gap-y-1">
+        <span><i class="pi pi-check text-green-600"></i> til tiden</span>
+        <span><i class="pi pi-times text-red-600"></i> for sent eller ikke set</span>
+        <span><span class="text-gray-400">·</span> posten er ikke lukket endnu</span>
+        <span><i class="pi pi-minus text-gray-400"></i> udgået</span>
+      </p>
+
       <DataTable :value="teams" :rowClass="rowClass" dataKey="teamId" size="small" scrollable scrollHeight="flex" stripedRows sortMode="single">
         <Column field="teamNumber" header="Nr." style="width: 4rem" frozen>
           <template #body="{ data: row }">
@@ -164,7 +188,9 @@ const bingoCount = computed(() => detail.value?.bingoCount ?? 0)
         <Column v-for="(line, index) in lines" :key="line.checkgroupId" :header="line.name" style="width: 4.5rem">
           <template #body="{ data: row }">
             <span class="inline-flex justify-center w-full" :class="cellMeta(cellAt(row, index).status).klass" v-tooltip.top="cellTitle(cellAt(row, index))" :aria-label="`${line.name}: ${cellTitle(cellAt(row, index))}`">
-              <i :class="cellMeta(cellAt(row, index).status).icon"></i>
+              <!-- Text where there is no icon for it: PrimeIcons has no middot, and a dash would read as udgået. -->
+              <span v-if="cellMeta(cellAt(row, index).status).text">{{ cellMeta(cellAt(row, index).status).text }}</span>
+              <i v-else :class="cellMeta(cellAt(row, index).status).icon"></i>
             </span>
           </template>
         </Column>

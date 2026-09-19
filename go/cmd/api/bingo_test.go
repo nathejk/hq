@@ -203,6 +203,10 @@ func patrol(number string, active int) patrulje.Patrulje {
 	return patrulje.Patrulje{TeamID: types.TeamID("t" + number), TeamNumber: number, ActiveMemberCount: active}
 }
 
+// A moment after every deadline in these fixtures, so a cell with no scan reads as a real
+// failure rather than as "not yet". The pending case has its own tests below.
+const afterTheRace int64 = 1_000_000
+
 // The green row: every cell a tick, nobody caught.
 func TestBingoRowAllOnTimeAndUncaughtIsBingo(t *testing.T) {
 	p := patrol("7", 4)
@@ -212,7 +216,7 @@ func TestBingoRowAllOnTimeAndUncaughtIsBingo(t *testing.T) {
 			"a": {p.TeamID: onTimeAt(1500)},
 			"b": {p.TeamID: onTimeAt(3500)},
 		})
-	row := bingoRow(p, []types.CheckgroupID{"a", "b"}, timing, teamCatches{})
+	row := bingoRow(p, []types.CheckgroupID{"a", "b"}, timing, teamCatches{}, afterTheRace)
 	if !row.Bingo {
 		t.Error("row is not bingo; want bingo for a full card and no catches")
 	}
@@ -239,7 +243,7 @@ func TestBingoRowACatchDeniesBingo(t *testing.T) {
 	timing := fixedTiming(
 		map[types.CheckgroupID]int64{"a": 2000},
 		map[types.CheckgroupID]map[types.TeamID]checkgroupScan{"a": {p.TeamID: onTimeAt(1500)}})
-	row := bingoRow(p, []types.CheckgroupID{"a"}, timing, teamCatches{Count: 1, FirstUts: 6000})
+	row := bingoRow(p, []types.CheckgroupID{"a"}, timing, teamCatches{Count: 1, FirstUts: 6000}, afterTheRace)
 	if row.Bingo {
 		t.Error("row is bingo; want not bingo for a team that was caught")
 	}
@@ -257,7 +261,7 @@ func TestBingoRowOneMissedLineDeniesBingo(t *testing.T) {
 			"a": {p.TeamID: onTimeAt(1500)},
 			"b": {p.TeamID: {OnTime: false, FirstUts: 4400}},
 		})
-	row := bingoRow(p, []types.CheckgroupID{"a", "b"}, timing, teamCatches{})
+	row := bingoRow(p, []types.CheckgroupID{"a", "b"}, timing, teamCatches{}, afterTheRace)
 	if row.Bingo {
 		t.Error("row is bingo; want not bingo with a late line")
 	}
@@ -273,7 +277,7 @@ func TestBingoRowOneMissedLineDeniesBingo(t *testing.T) {
 // distinction is already made once, in resolveTeamStatus, and the table shows it.
 func TestBingoRowWithdrawnTeamReadsAsRetired(t *testing.T) {
 	p := patrol("7", 0)
-	row := bingoRow(p, []types.CheckgroupID{"a"}, fixedTiming(map[types.CheckgroupID]int64{"a": 2000}, nil), teamCatches{})
+	row := bingoRow(p, []types.CheckgroupID{"a"}, fixedTiming(map[types.CheckgroupID]int64{"a": 2000}, nil), teamCatches{}, afterTheRace)
 	if row.Cells[0].Status != TeamAtCheckgroupRetired {
 		t.Errorf("cell status = %q, want %q", row.Cells[0].Status, TeamAtCheckgroupRetired)
 	}
@@ -285,9 +289,64 @@ func TestBingoRowWithdrawnTeamReadsAsRetired(t *testing.T) {
 // The trap in "every cell is a tick": over no cells that is vacuously true, and the whole
 // table would go green on a route with nothing flagged obligatorisk.
 func TestBingoRowNoMandatoryLinesIsNotBingo(t *testing.T) {
-	row := bingoRow(patrol("7", 4), nil, fixedTiming(nil, nil), teamCatches{})
+	row := bingoRow(patrol("7", 4), nil, fixedTiming(nil, nil), teamCatches{}, afterTheRace)
 	if row.Bingo {
 		t.Error("row is bingo over zero lines; want not bingo — there is no card to complete")
+	}
+}
+
+// The case this exists for: at 23.00, a patrol that has not reached a post closing at 03.00 has
+// done nothing wrong. A red cross there is a lie the operator has to undo on every row, and in
+// the early hours that is most of the table.
+func TestBingoRowUnclosedLineIsPendingNotMissing(t *testing.T) {
+	p := patrol("7", 4)
+	timing := fixedTiming(map[types.CheckgroupID]int64{"a": 9000}, nil)
+	row := bingoRow(p, []types.CheckgroupID{"a"}, timing, teamCatches{}, 5000)
+	if row.Cells[0].Status != TeamAtCheckgroupPending {
+		t.Errorf("cell status = %q, want %q for a post that has not closed", row.Cells[0].Status, TeamAtCheckgroupPending)
+	}
+	// The deadline still travels, because "not yet — due at 03.00" is the useful hover.
+	if row.Cells[0].DeadlineUts != 9000 {
+		t.Errorf("deadline %d, want 9000", row.Cells[0].DeadlineUts)
+	}
+	// Pending is not a tick: the card is not full until the last post is behind them.
+	if row.Bingo {
+		t.Error("row is bingo; want not bingo while a post is still ahead of the team")
+	}
+}
+
+// Once the post has shut, the same absence is a real miss.
+func TestBingoRowClosedLineWithNoScanIsMissing(t *testing.T) {
+	timing := fixedTiming(map[types.CheckgroupID]int64{"a": 4000}, nil)
+	row := bingoRow(patrol("7", 4), []types.CheckgroupID{"a"}, timing, teamCatches{}, 5000)
+	if row.Cells[0].Status != TeamAtCheckgroupMissing {
+		t.Errorf("cell status = %q, want %q once the post has closed", row.Cells[0].Status, TeamAtCheckgroupMissing)
+	}
+}
+
+// A line with no deadline reads as pending rather than missed: 0 means there is nothing to have
+// missed, and printing a cross for a rule that was never stated is the worse error.
+func TestBingoCellStatusNoDeadlineIsPending(t *testing.T) {
+	if got := bingoCellStatus(TeamAtCheckgroupMissing, 0, 5000); got != TeamAtCheckgroupPending {
+		t.Errorf("status = %q, want %q", got, TeamAtCheckgroupPending)
+	}
+}
+
+// The clock only ever reconsiders `missing`. A scan is a fact about the past whatever the time
+// is, and a patrol that went home will not arrive at a post that is still open — so calling
+// that cell "not yet" would promise an arrival that cannot happen.
+func TestBingoCellStatusLeavesEveryOtherVerdictAlone(t *testing.T) {
+	for _, status := range []string{TeamAtCheckgroupOnTime, TeamAtCheckgroupLate, TeamAtCheckgroupRetired} {
+		if got := bingoCellStatus(status, 9000, 5000); got != status {
+			t.Errorf("status %q became %q; want it unchanged", status, got)
+		}
+	}
+}
+
+// The boundary: at the deadline the post has shut, so the cell is a miss rather than pending.
+func TestBingoCellStatusAtTheDeadlineIsMissing(t *testing.T) {
+	if got := bingoCellStatus(TeamAtCheckgroupMissing, 5000, 5000); got != TeamAtCheckgroupMissing {
+		t.Errorf("status = %q, want %q at the deadline itself", got, TeamAtCheckgroupMissing)
 	}
 }
 

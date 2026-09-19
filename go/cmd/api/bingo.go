@@ -373,19 +373,36 @@ func (app *application) bingoHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// TeamAtCheckgroupPending — no scan, and the post has not closed yet.
+//
+// A fifth token, and deliberately only in the bingo table: it is not a different fact from
+// `missing` but a different *moment*, and at 23.00 the two read completely differently. A
+// patrol that has not reached a post closing at 03.00 has done nothing wrong, and a red cross
+// against it is a lie the operator has to mentally undo on every row — during the early hours
+// that is most of the table.
+//
+// Kept out of resolveTeamStatus on purpose. The post list's four numbers are defined to sum to
+// the number of started teams, and splitting `missing` there would change what every count on
+// that page means — where it is also the wrong call, since "who to chase" is exactly the teams
+// that have not arrived yet.
+//
+// This also puts the table in step with the curve, which already declines to count a future
+// deadline as a loss (see bingoLoss).
+const TeamAtCheckgroupPending = "pending"
+
 // BingoLine names one column of the bingo table.
 type BingoLine struct {
 	CheckgroupID types.CheckgroupID `json:"checkgroupId"`
 	Name         string             `json:"name"`
 }
 
-// BingoCell is one team's standing at one obligatorisk postlinje: the tick or the cross,
-// and the two times that explain it.
+// BingoCell is one team's standing at one obligatorisk postlinje: the tick, the cross, or the
+// dot for a post whose time has not come — and the two times that explain it.
 type BingoCell struct {
-	// Status is the same four-token vocabulary as the post list (TeamAtCheckgroup*), not a
-	// bare boolean. The table draws a tick for onTime and a cross for the rest, but *why*
-	// it is a cross — late, udgået, or never seen — is what the hover says, and inventing
-	// a second vocabulary for the same fact is how two screens come to disagree.
+	// Status is the post list's four-token vocabulary (TeamAtCheckgroup*) plus `pending`, not
+	// a bare boolean. The table draws a tick for onTime and a cross for a real failure, but
+	// *why* it is a cross — late, udgået, or never seen — is what the hover says, and
+	// inventing a second vocabulary for the same fact is how two screens come to disagree.
 	Status string `json:"status"`
 	// ScannedAtUts is when the team came through, 0 if never. Omitted rather than sent as
 	// the epoch, so the client cannot render 1970 as a time.
@@ -425,10 +442,11 @@ type BingoTeamRow struct {
 
 // bingoRow assembles one patrol's row.
 //
-// Bingo is all ticks and no catches. The `status` per cell comes from resolveTeamStatus, so
-// a cross here and a team in the post list's late/missing/retired columns are the same
-// judgement made once.
-func bingoRow(p patrulje.Patrulje, lines []types.CheckgroupID, timing *checkgroupTiming, catches teamCatches) BingoTeamRow {
+// Bingo is all ticks and no catches. The `status` per cell comes from resolveTeamStatus, so a
+// cross here and a team in the post list's late/missing/retired columns are the same judgement
+// made once — with the one refinement that a post whose time has not come reads as `pending`
+// rather than as a failure. See bingoCellStatus.
+func bingoRow(p patrulje.Patrulje, lines []types.CheckgroupID, timing *checkgroupTiming, catches teamCatches, nowUts int64) BingoTeamRow {
 	row := BingoTeamRow{
 		TeamID:            p.TeamID,
 		TeamNumber:        p.TeamNumber,
@@ -448,19 +466,44 @@ func bingoRow(p patrulje.Patrulje, lines []types.CheckgroupID, timing *checkgrou
 			scan = &s
 		}
 		status, uts := resolveTeamStatus(team, scan)
+		deadline := timing.Deadline(cgID, p.TeamID)
+		status = bingoCellStatus(status, deadline, nowUts)
 		if status != TeamAtCheckgroupOnTime {
 			allOnTime = false
 		}
 		row.Cells = append(row.Cells, BingoCell{
 			Status:       status,
 			ScannedAtUts: uts,
-			DeadlineUts:  timing.Deadline(cgID, p.TeamID),
+			DeadlineUts:  deadline,
 		})
 	}
 	// No obligatoriske postlinjer means no card, so nobody has a full one. Without this,
 	// `allOnTime` over an empty list is vacuously true and every row would go green.
+	//
+	// A pending cell is not a tick, so a team mid-race is not bingo yet. That is the intended
+	// reading: the card is not full until the last post is behind them.
 	row.Bingo = len(lines) > 0 && allOnTime && catches.Count == 0
 	return row
+}
+
+// bingoCellStatus softens `missing` to `pending` for a post that has not closed yet.
+//
+// Only `missing` is reconsidered. A scan is a fact about the past whatever the clock says, and
+// `retired` outranks the clock too: a patrol that went home will not be coming to a post that
+// is still open, so calling that cell "not yet" would promise an arrival that cannot happen.
+//
+// A deadline of 0 also reads as pending, which is the conservative direction: 0 means there is
+// no deadline to have missed — a line that keeps no time, or a relative line whose reference
+// scan has not happened — and the same lenience is what scanWasOnTime applies to a scan. The
+// alternative would print a red cross for a rule that was never stated.
+func bingoCellStatus(status string, deadlineUts, nowUts int64) string {
+	if status != TeamAtCheckgroupMissing {
+		return status
+	}
+	if deadlineUts == 0 || deadlineUts > nowUts {
+		return TeamAtCheckgroupPending
+	}
+	return status
 }
 
 // sortBingoRows orders the table: bingo first, then by team number.
@@ -531,8 +574,9 @@ func (app *application) bingoTeamsHandler(w http.ResponseWriter, r *http.Request
 
 	rows := make([]BingoTeamRow, 0, len(started))
 	bingoCount := 0
+	nowUts := time.Now().Unix()
 	for _, p := range started {
-		row := bingoRow(p, cgIDs, timing, caught[p.TeamID])
+		row := bingoRow(p, cgIDs, timing, caught[p.TeamID], nowUts)
 		if row.Bingo {
 			bingoCount++
 		}
