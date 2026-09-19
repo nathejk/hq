@@ -33,16 +33,22 @@ type Identity struct {
 	Name       string
 }
 
-// StartedTeam is a patrol on the route and its strength there.
+// StartedTeam is a patrol on the route: who it is, and its strength there.
 //
-// Deliberately two columns. The post list's four numbers per line need exactly this
-// and are recomputed on every scan during the race — peak 17 a minute — while GetAll
-// aggregates over three further tables (member count, t-shirt count and a payment sum
-// unioned across orders) and measures hundreds of milliseconds against this season's
-// data, against 0.3ms for the query below. Reaching for the fat row to read two fields is how a page that
-// answered in milliseconds comes to take a quarter of a second per scan.
+// Deliberately one table and no aggregates. Every caller is a screen about the race, and they
+// are recomputed on every scan — peak 17 a minute — while GetAll joins three derived tables to
+// compute member counts, t-shirt counts and a payment sum unioned across orders, and measures
+// hundreds of milliseconds against this season's data against 0.3ms for the query below.
+// Reaching for the fat row to read a name is how a page that answered in milliseconds comes to
+// take a quarter of a second per scan.
+//
+// The labels (number, name, group) cost nothing to carry because they are columns of the row
+// already being read; it is the joins that are expensive, not the width.
 type StartedTeam struct {
-	TeamID types.TeamID
+	TeamID     types.TeamID
+	TeamNumber string
+	Name       string
+	Group      string
 	// ActiveMemberCount is zero for a patrol nobody is left racing on: the canonical
 	// test for udgået. Maintained by the spejderstatus projection.
 	ActiveMemberCount int
@@ -219,7 +225,7 @@ func (q *querier) GetStartedTeams(ctx context.Context, f Filter) ([]StartedTeam,
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	query := `SELECT teamId, activeMemberCount, startedUts FROM patrulje WHERE signupStatus = ?`
+	query := `SELECT teamId, teamNumber, name, groupName, activeMemberCount, startedUts FROM patrulje WHERE signupStatus = ?`
 	args := []any{string(types.SignupStatusStarted)}
 	if f.YearSlug != "" {
 		query += ` AND year = ?`
@@ -235,7 +241,7 @@ func (q *querier) GetStartedTeams(ctx context.Context, f Filter) ([]StartedTeam,
 	teams := []StartedTeam{}
 	for rows.Next() {
 		var t StartedTeam
-		if err := rows.Scan(&t.TeamID, &t.ActiveMemberCount, &t.StartedUts); err != nil {
+		if err := rows.Scan(&t.TeamID, &t.TeamNumber, &t.Name, &t.Group, &t.ActiveMemberCount, &t.StartedUts); err != nil {
 			return nil, err
 		}
 		teams = append(teams, t)

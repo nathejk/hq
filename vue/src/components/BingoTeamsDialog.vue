@@ -127,6 +127,53 @@ const cellTitle = (cell: Cell) => {
   return parts.join(' · ')
 }
 
+/** One cell, with everything the template needs already resolved. */
+type RenderedCell = {
+  klass: string
+  icon?: string
+  text?: string
+  /** The hover sentence, also used as the aria-label prefixed with the line's name. */
+  title: string
+  ariaLabel: string
+}
+
+type RenderedRow = TeamRow & {
+  renderedCells: RenderedCell[]
+  /** Preformatted, because the template would otherwise format it twice per row. */
+  firstCatchLabel: string
+}
+
+/**
+ * The table's rows with every derived string precomputed, once per payload.
+ *
+ * This is a performance fix, not tidiness. Calling cellMeta()/cellTitle() from the template
+ * looked harmless and was not: the class, the tooltip, the aria-label and the glyph each
+ * called them, so a 169-row × 8-column table evaluated them some 5400 times *per render* —
+ * and each cellTitle formats up to two timestamps. Against a date formatter that was being
+ * reconstructed per call (now memoized in datefilters) that came to ~580ms of blocked main
+ * thread, repeated on every live signal, which during the race means every scan.
+ *
+ * A computed evaluates once per data change instead, and re-renders become property reads.
+ */
+const rows = computed<RenderedRow[]>(() =>
+  teams.value.map((team) => ({
+    ...team,
+    firstCatchLabel: team.firstCatchUts ? dddhhmm(new Date(team.firstCatchUts * 1000)) : '',
+    renderedCells: lines.value.map((line, index) => {
+      const cell = cellAt(team, index)
+      const meta = cellMeta(cell.status)
+      const title = cellTitle(cell)
+      return {
+        klass: meta.klass,
+        icon: meta.icon,
+        text: meta.text,
+        title,
+        ariaLabel: `${line.name}: ${title}`
+      }
+    })
+  }))
+)
+
 /** The green background. Computed by the API so the highlight cannot drift from the graph. */
 const rowClass = (row: TeamRow) => (row.bingo ? 'bg-green-50' : '')
 
@@ -165,7 +212,7 @@ const bingoCount = computed(() => detail.value?.bingoCount ?? 0)
         <span><i class="pi pi-minus text-gray-400"></i> udgået</span>
       </p>
 
-      <DataTable :value="teams" :rowClass="rowClass" dataKey="teamId" size="small" scrollable scrollHeight="flex" stripedRows sortMode="single">
+      <DataTable :value="rows" :rowClass="rowClass" dataKey="teamId" size="small" scrollable scrollHeight="flex" stripedRows sortMode="single">
         <Column field="teamNumber" header="Nr." style="width: 4rem" frozen>
           <template #body="{ data: row }">
             <span class="font-bold">{{ row.teamNumber || '—' }}</span>
@@ -184,13 +231,17 @@ const bingoCount = computed(() => detail.value?.bingoCount ?? 0)
           One column per obligatorisk postlinje, in the route's own order. Narrow and centred:
           the whole point is that a row can be read across at a glance, and eight columns of
           text would not fit beside the names.
+
+          Every value here is a property read. The derived strings are built once per payload in
+          `rows` — calling the helpers from the template instead cost ~580ms of blocked main
+          thread per render on a full table. See the comment on `rows`.
         -->
         <Column v-for="(line, index) in lines" :key="line.checkgroupId" :header="line.name" style="width: 4.5rem">
           <template #body="{ data: row }">
-            <span class="inline-flex justify-center w-full" :class="cellMeta(cellAt(row, index).status).klass" v-tooltip.top="cellTitle(cellAt(row, index))" :aria-label="`${line.name}: ${cellTitle(cellAt(row, index))}`">
+            <span class="inline-flex justify-center w-full" :class="row.renderedCells[index].klass" v-tooltip.top="row.renderedCells[index].title" :aria-label="row.renderedCells[index].ariaLabel">
               <!-- Text where there is no icon for it: PrimeIcons has no middot, and a dash would read as udgået. -->
-              <span v-if="cellMeta(cellAt(row, index).status).text">{{ cellMeta(cellAt(row, index).status).text }}</span>
-              <i v-else :class="cellMeta(cellAt(row, index).status).icon"></i>
+              <span v-if="row.renderedCells[index].text">{{ row.renderedCells[index].text }}</span>
+              <i v-else :class="row.renderedCells[index].icon"></i>
             </span>
           </template>
         </Column>
@@ -204,9 +255,8 @@ const bingoCount = computed(() => detail.value?.bingoCount ?? 0)
         </Column>
         <Column field="firstCatchUts" header="Først fanget" sortable style="width: 9rem">
           <template #body="{ data: row }">
-            <span v-if="row.firstCatchUts" v-tooltip.top="dddhhmm(new Date(row.firstCatchUts * 1000))">
-              {{ dddhhmm(new Date(row.firstCatchUts * 1000)) }}
-            </span>
+            <!-- Sorted on the raw uts, shown from the preformatted label: formatting here would run twice per row. -->
+            <span v-if="row.firstCatchLabel">{{ row.firstCatchLabel }}</span>
             <span v-else class="text-gray-400">—</span>
           </template>
         </Column>

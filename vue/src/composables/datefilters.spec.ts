@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { daymonthhhmm, hhmm, parseApiDate } from './datefilters'
+import { describe, expect, it, vi } from 'vitest'
+import { daymonthhhmm, dddhhmm, hhmm, parseApiDate } from './datefilters'
 
 // These tests run on V8, which parses Go's time.Time text form out of leniency —
 // so a test that merely says "the prod string renders" would pass even with the
@@ -26,46 +26,30 @@ describe('parseApiDate', () => {
   })
 
   it('applies a non-zero offset', () => {
-    expect(parseApiDate('2026-07-12 23:25:07 +0200 CEST')?.toISOString()).toBe(
-      '2026-07-12T21:25:07.000Z',
-    )
-    expect(parseApiDate('2026-07-12 17:25:07 -0400 EDT')?.toISOString()).toBe(
-      '2026-07-12T21:25:07.000Z',
-    )
-    expect(parseApiDate('2026-07-12T23:25:07+02:00')?.toISOString()).toBe(
-      '2026-07-12T21:25:07.000Z',
-    )
+    expect(parseApiDate('2026-07-12 23:25:07 +0200 CEST')?.toISOString()).toBe('2026-07-12T21:25:07.000Z')
+    expect(parseApiDate('2026-07-12 17:25:07 -0400 EDT')?.toISOString()).toBe('2026-07-12T21:25:07.000Z')
+    expect(parseApiDate('2026-07-12T23:25:07+02:00')?.toISOString()).toBe('2026-07-12T21:25:07.000Z')
   })
 
   it('reads a zone name with no offset as UTC', () => {
-    expect(parseApiDate('2026-07-12 21:25:07.299012709 UTC')?.toISOString()).toBe(
-      '2026-07-12T21:25:07.299Z',
-    )
+    expect(parseApiDate('2026-07-12 21:25:07.299012709 UTC')?.toISOString()).toBe('2026-07-12T21:25:07.299Z')
   })
 
   it('reads a timestamp with no zone at all as local, like the native parser', () => {
     // Asserted as an equivalence rather than a fixed instant, so the test holds
     // whatever timezone it runs in.
-    expect(parseApiDate('2026-07-12 21:25:07')?.getTime()).toBe(
-      new Date('2026-07-12T21:25:07').getTime(),
-    )
+    expect(parseApiDate('2026-07-12 21:25:07')?.getTime()).toBe(new Date('2026-07-12T21:25:07').getTime())
   })
 
   it('still handles ISO 8601, which most of the API serves', () => {
     expect(parseApiDate('2026-07-12T21:25:07Z')?.toISOString()).toBe('2026-07-12T21:25:07.000Z')
-    expect(parseApiDate('2026-07-12T21:25:07.299Z')?.toISOString()).toBe(
-      '2026-07-12T21:25:07.299Z',
-    )
+    expect(parseApiDate('2026-07-12T21:25:07.299Z')?.toISOString()).toBe('2026-07-12T21:25:07.299Z')
   })
 
   it('truncates rather than rounds sub-millisecond precision', () => {
     // 999999999ns is 999ms and change; rounding up would roll into the next second.
-    expect(parseApiDate('2026-07-12 21:25:07.999999999 +0000 UTC')?.toISOString()).toBe(
-      '2026-07-12T21:25:07.999Z',
-    )
-    expect(parseApiDate('2026-07-12 21:25:07.5 +0000 UTC')?.toISOString()).toBe(
-      '2026-07-12T21:25:07.500Z',
-    )
+    expect(parseApiDate('2026-07-12 21:25:07.999999999 +0000 UTC')?.toISOString()).toBe('2026-07-12T21:25:07.999Z')
+    expect(parseApiDate('2026-07-12 21:25:07.5 +0000 UTC')?.toISOString()).toBe('2026-07-12T21:25:07.500Z')
   })
 
   it('treats an unset Go timestamp as absent', () => {
@@ -108,5 +92,33 @@ describe('hhmm', () => {
   it('accepts the Go text form too, not just ISO', () => {
     expect(hhmm('2026-07-12 21:25:07.299012709 +0000 UTC')).toMatch(/^\d{2}[.:]\d{2}$/)
     expect(hhmm('nonsense')).toBe('')
+  })
+})
+
+// Constructing an Intl.DateTimeFormat is ~100× the cost of formatting with one that exists, and
+// these helpers are called per table cell — so the call count scales with rows × columns. The
+// bingo table built 5408 formatters per render and spent 580ms per render doing it.
+//
+// Asserted by counting constructions rather than by timing, which would be flaky. The guard
+// matters because the memoization looks like needless indirection: the one-liner it replaced is
+// exactly what someone tidying up would write back.
+describe('formatter reuse', () => {
+  it('constructs one formatter per distinct option set, however often it is called', () => {
+    const real = Intl.DateTimeFormat
+    const spy = vi.fn((locale?: string | string[], opts?: Intl.DateTimeFormatOptions) => new real(locale, opts))
+    // @ts-expect-error swapping the constructor for the duration of the test
+    Intl.DateTimeFormat = spy
+    try {
+      const at = '2026-07-12T21:25:07Z'
+      for (let i = 0; i < 50; i++) {
+        hhmm(at)
+        dddhhmm(at)
+      }
+      // Two distinct option sets were asked for, so at most two formatters may be built. Zero is
+      // also a pass: both were already memoized by an earlier test in this file.
+      expect(spy.mock.calls.length).toBeLessThanOrEqual(2)
+    } finally {
+      Intl.DateTimeFormat = real
+    }
   })
 })

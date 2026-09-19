@@ -442,11 +442,16 @@ type BingoTeamRow struct {
 
 // bingoRow assembles one patrol's row.
 //
+// Takes the narrow StartedTeam rather than the fat patrulje.Patrulje: this table shows labels,
+// ticks and catches, none of which need the member counts and payment sums GetAll joins three
+// tables to compute. That read was 90% of this endpoint's time and would have been far worse in
+// production — see StartedTeam.
+//
 // Bingo is all ticks and no catches. The `status` per cell comes from resolveTeamStatus, so a
 // cross here and a team in the post list's late/missing/retired columns are the same judgement
 // made once — with the one refinement that a post whose time has not come reads as `pending`
 // rather than as a failure. See bingoCellStatus.
-func bingoRow(p patrulje.Patrulje, lines []types.CheckgroupID, timing *checkgroupTiming, catches teamCatches, nowUts int64) BingoTeamRow {
+func bingoRow(p patrulje.StartedTeam, lines []types.CheckgroupID, timing *checkgroupTiming, catches teamCatches, nowUts int64) BingoTeamRow {
 	row := BingoTeamRow{
 		TeamID:            p.TeamID,
 		TeamNumber:        p.TeamNumber,
@@ -551,7 +556,8 @@ func (app *application) bingoTeamsHandler(w http.ResponseWriter, r *http.Request
 	}
 	cgIDs := checkgroupIDs(lines)
 
-	started, err := app.startedPatruljer(ctx, year)
+	// The narrow read, not startedPatruljer: see bingoRow.
+	started, err := app.models.Patrulje.GetStartedTeams(ctx, patrulje.Filter{YearSlug: year})
 	if err != nil {
 		app.ServerErrorResponse(w, r, err)
 		return

@@ -199,8 +199,8 @@ func TestBingoSeriesAlwaysHasAtLeastOnePoint(t *testing.T) {
 	}
 }
 
-func patrol(number string, active int) patrulje.Patrulje {
-	return patrulje.Patrulje{TeamID: types.TeamID("t" + number), TeamNumber: number, ActiveMemberCount: active}
+func patrol(number string, active int) patrulje.StartedTeam {
+	return patrulje.StartedTeam{TeamID: types.TeamID("t" + number), TeamNumber: number, ActiveMemberCount: active}
 }
 
 // A moment after every deadline in these fixtures, so a cell with no scan reads as a real
