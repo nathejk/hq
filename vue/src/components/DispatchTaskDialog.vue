@@ -73,6 +73,24 @@ const fieldErrors = ref<Record<string, string>>({})
 
 const editing = computed(() => !!props.task)
 
+/**
+ * A done or cancelled task is history, and the server says so (`ErrTaskFinished`). The dialog is
+ * still how you read one — a task on a completed tour has no row in the queue any more, and its
+ * description, places and times are otherwise unreachable — so it opens read-only rather than
+ * refusing to open, and rather than offering a Gem that can only 422.
+ */
+const finished = computed(() => props.task?.state === 'done' || props.task?.state === 'cancelled')
+
+// Refusals that belong to no field on this form — `state` is the one the server actually sends.
+// Without this they land in `fieldErrors` and are rendered nowhere, which reads as Gem doing
+// nothing at all.
+const INLINE_ERROR_FIELDS = ['kind', 'description', 'deadlineUts']
+const generalErrors = computed(() =>
+  Object.entries(fieldErrors.value)
+    .filter(([field]) => !INLINE_ERROR_FIELDS.includes(field))
+    .map(([, message]) => message),
+)
+
 // A samaritter call-out is done where the scout is and nothing comes back, so the form asks for
 // one place instead of two. An empty "Afleveres" field would otherwise invite the dispatcher to
 // fill it in with HQ, and the board would then plan a second stop nobody has to drive to.
@@ -232,11 +250,19 @@ async function save() {
   <Dialog
     :visible="visible"
     modal
-    :header="editing ? 'Rediger opgave' : 'Ny opgave'"
+    :header="finished ? 'Opgave' : editing ? 'Rediger opgave' : 'Ny opgave'"
     :style="{ width: '34rem' }"
     @update:visible="emit('update:visible', $event)"
   >
     <div class="space-y-3">
+      <Message v-if="finished" severity="secondary" :closable="false">
+        {{ task?.state === 'cancelled' ? 'Opgaven er aflyst' : 'Opgaven er afsluttet' }} og kan ikke
+        ændres.
+      </Message>
+      <Message v-for="message in generalErrors" :key="message" severity="error" :closable="false">
+        {{ message }}
+      </Message>
+
       <div class="flex gap-3">
         <div class="flex-1">
           <label class="block text-sm text-gray-700">Type</label>
@@ -245,6 +271,7 @@ async function save() {
             :options="kindOptions"
             optionLabel="label"
             optionValue="value"
+            :disabled="finished"
             class="w-full"
           />
           <small v-if="fieldErrors.kind" class="text-red-600">{{ fieldErrors.kind }}</small>
@@ -260,6 +287,7 @@ async function save() {
             optionValue="value"
             placeholder="Ingen"
             showClear
+            :disabled="finished"
             class="w-full"
           />
         </div>
@@ -267,7 +295,7 @@ async function save() {
 
       <div>
         <label class="block text-sm text-gray-700">Hvad skal der ske?</label>
-        <Textarea v-model="description" rows="2" class="w-full" autoResize autofocus />
+        <Textarea v-model="description" rows="2" class="w-full" autoResize autofocus :disabled="finished" />
         <small v-if="fieldErrors.description" class="text-red-600">
           {{ fieldErrors.description }}
         </small>
@@ -276,28 +304,28 @@ async function save() {
       <div class="flex gap-3">
         <div class="flex-1">
           <label class="block text-sm text-gray-700">{{ oneEnded ? 'Hvor' : 'Hentes' }}</label>
-          <DispatchPlacePicker v-model="pickup" :places="places" />
+          <DispatchPlacePicker v-model="pickup" :places="places" :disabled="finished" />
         </div>
         <div v-if="!oneEnded" class="flex-1">
           <label class="block text-sm text-gray-700">Afleveres</label>
-          <DispatchPlacePicker v-model="dropoff" :places="places" />
+          <DispatchPlacePicker v-model="dropoff" :places="places" :disabled="finished" />
         </div>
       </div>
 
       <div>
         <label class="block text-sm text-gray-700">Pladsbehov</label>
         <!-- Words, not an inventory: PRD 009 §4 refuses to track how many maps exist. -->
-        <InputText v-model="spaceNeeds" class="w-full" placeholder="fx “fylder næsten hele bagagerummet”" />
+        <InputText v-model="spaceNeeds" class="w-full" :disabled="finished" placeholder="fx “fylder næsten hele bagagerummet”" />
       </div>
 
       <div class="flex gap-3">
         <div class="flex-1">
           <label class="block text-sm text-gray-700">Tidligst</label>
-          <DatePicker v-model="notBefore" showTime hourFormat="24" class="w-full" showButtonBar />
+          <DatePicker v-model="notBefore" showTime hourFormat="24" class="w-full" showButtonBar :disabled="finished" />
         </div>
         <div class="flex-1">
           <label class="block text-sm text-gray-700">{{ oneEnded ? 'Skal nås' : 'Skal leveres' }}</label>
-          <DatePicker v-model="deadline" showTime hourFormat="24" class="w-full" showButtonBar />
+          <DatePicker v-model="deadline" showTime hourFormat="24" class="w-full" showButtonBar :disabled="finished" />
           <small v-if="fieldErrors.deadlineUts" class="text-red-600">
             {{ fieldErrors.deadlineUts }}
           </small>
@@ -306,8 +334,14 @@ async function save() {
     </div>
 
     <template #footer>
-      <Button label="Annuller" severity="secondary" text @click="emit('update:visible', false)" />
       <Button
+        :label="finished ? 'Luk' : 'Annuller'"
+        severity="secondary"
+        text
+        @click="emit('update:visible', false)"
+      />
+      <Button
+        v-if="!finished"
         :label="editing ? 'Gem' : 'Opret'"
         icon="pi pi-check"
         :loading="saving"

@@ -22,6 +22,8 @@ const props = defineProps<{
   modelValue: Place
   places: PlaceOption[]
   placeholder?: string
+  /** Read-only, for a task that is already history. */
+  disabled?: boolean
 }>()
 
 const emit = defineEmits<{ (e: 'update:modelValue', value: Place): void }>()
@@ -86,6 +88,7 @@ function onInput(value: string | PlaceOption) {
     optionLabel="label"
     dropdown
     completeOnFocus
+    :disabled="disabled"
     :forceSelection="false"
     class="w-full"
     :placeholder="placeholder ?? 'Post, lok, HQ eller fri tekst'"

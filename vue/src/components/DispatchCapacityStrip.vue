@@ -9,24 +9,44 @@
 // It is also where a unit that is not capacity says so. A dispatchable subsection with no car or
 // nobody in it would otherwise sit in the tour picker looking available.
 
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import {
   type Duty,
+  type Tour,
   type Unit,
   formatUtsTime,
   nextDutyStart,
   unitReadiness,
+  unitsEngaged,
   unitsOnDuty,
 } from '@/composables/dispatch'
 
 const props = defineProps<{
   units: Unit[]
   duty: Duty[]
+  tours: Tour[]
   nowMs: number
 }>()
 
 const onDuty = computed(() => unitsOnDuty(props.duty, props.nowMs))
+const engaged = computed(() => unitsEngaged(props.tours))
 const next = computed(() => nextDutyStart(props.duty, props.nowMs))
+
+/**
+ * Off-duty units are noise most of the night: the strip is about who can drive now, and a list of
+ * subsections that cannot is what pushes the ones that can off the first line. Off by default, and
+ * a checkbox rather than a setting because which of the two you want changes minute to minute.
+ */
+const showAll = ref(false)
+const visibleUnits = computed(() =>
+  showAll.value ? props.units : props.units.filter((u) => onDuty.value.has(u.sectionSlug)),
+)
+
+/** On duty and unengaged: the one state the desk is looking for. */
+const isFree = (unit: Unit) =>
+  onDuty.value.has(unit.sectionSlug) && !engaged.value.has(unit.sectionSlug)
+
+const hiddenCount = computed(() => props.units.length - visibleUnits.value.length)
 
 /** This unit's window covering now, so the strip can show when it ends. */
 const currentWindow = (unit: Unit) => {
@@ -61,22 +81,40 @@ const nextWindow = (unit: Unit) => {
         <template v-if="next">Næste enhed på vagt {{ formatUtsTime(next) }}</template>
         <template v-else>Ingen enheder på vagt, og ingen vagter aftalt</template>
       </span>
+
+      <div v-if="units.length" class="flex items-center gap-1 text-sm text-gray-700 ml-auto">
+        <Checkbox v-model="showAll" binary inputId="dispatch-show-all-units" />
+        <label for="dispatch-show-all-units" class="cursor-pointer">Vis alle</label>
+        <span v-if="!showAll && hiddenCount" class="text-gray-500">({{ hiddenCount }} skjult)</span>
+      </div>
     </div>
 
-    <div v-if="units.length" class="flex flex-wrap gap-2 pt-2">
+    <div v-if="visibleUnits.length" class="flex flex-wrap gap-2 pt-2">
       <div
-        v-for="unit in units"
+        v-for="unit in visibleUnits"
         :key="unit.sectionSlug"
         class="border rounded px-2 py-1 text-sm min-w-48"
-        :class="onDuty.has(unit.sectionSlug) ? 'border-green-400 bg-green-50' : 'bg-gray-50'"
+        :class="
+          isFree(unit)
+            ? 'border-green-600 border-l-4 bg-green-100'
+            : onDuty.has(unit.sectionSlug)
+              ? 'border-green-400 bg-green-50'
+              : 'bg-gray-50'
+        "
       >
         <div class="flex items-center gap-2">
           <i class="pi pi-truck" :class="onDuty.has(unit.sectionSlug) ? 'text-green-700' : 'text-gray-400'" />
           <span class="font-medium flex-1 truncate">{{ unit.label }}</span>
+          <!--
+            On duty splits in two, because "på vagt" answered the wrong question: the desk is
+            picking somebody to send, so it needs to see who is idle, not who is rostered.
+          -->
           <Tag
-            :value="onDuty.has(unit.sectionSlug) ? 'på vagt' : 'ikke på vagt'"
-            :severity="onDuty.has(unit.sectionSlug) ? 'success' : 'secondary'"
+            v-if="onDuty.has(unit.sectionSlug)"
+            :value="isFree(unit) ? 'ledig' : 'på tur'"
+            :severity="isFree(unit) ? 'success' : 'info'"
           />
+          <Tag v-else value="ikke på vagt" severity="secondary" />
         </div>
 
         <div class="text-xs text-gray-600">

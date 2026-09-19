@@ -47,6 +47,8 @@ import {
   priorityTagSeverity,
   stateLabel,
   untilUts,
+  unitsEngaged,
+  unitsOnDuty,
   waitedFor,
 } from '@/composables/dispatch'
 
@@ -197,6 +199,12 @@ function newTask() {
 function editTask(task: Task) {
   editingTask.value = task
   taskDialogOpen.value = true
+}
+
+/** From a tour's stop, where the line names the task by id. */
+function editTaskById(taskId: string) {
+  const task = tasksById.value[taskId]
+  if (task) editTask(task)
 }
 
 async function onTaskSaved() {
@@ -471,9 +479,20 @@ async function confirmBoarding() {
   )
 }
 
-const unitOptions = computed(() =>
-  units.value.map((u) => ({ value: u.sectionSlug, label: u.label })),
-)
+// A unit's dropdown entry carries the same ledig / på tur / ikke på vagt distinction the capacity
+// strip makes, so picking a unit does not mean glancing back up at the strip to see who is idle.
+// Subtle on purpose: the desk may legitimately pick a busy or off-duty unit, so this informs
+// rather than warns.
+const unitOptions = computed(() => {
+  const onDuty = unitsOnDuty(duty.value, now.value)
+  const engaged = unitsEngaged(tours.value)
+  return units.value.map((u) => ({
+    value: u.sectionSlug,
+    label: u.label,
+    note: !onDuty.has(u.sectionSlug) ? 'ikke på vagt' : engaged.has(u.sectionSlug) ? 'på tur' : 'ledig',
+    free: onDuty.has(u.sectionSlug) && !engaged.has(u.sectionSlug),
+  }))
+})
 
 function errorDetail(err: any) {
   const payload = err?.response?.data?.error
@@ -556,7 +575,7 @@ function errorDetail(err: any) {
       </div>
     </Message>
 
-    <DispatchCapacityStrip :units="units" :duty="duty" :nowMs="now" />
+    <DispatchCapacityStrip :units="units" :duty="duty" :tours="tours" :nowMs="now" />
 
     <div class="grid gap-4 md:grid-cols-2">
       <!-- Ikke planlagt -->
@@ -589,7 +608,14 @@ function errorDetail(err: any) {
               >
                 <div class="flex items-center gap-2">
                   <i :class="kindIcon(task.kind)" v-tooltip.top="kindLabel(task.kind)" />
-                  <span class="font-medium truncate">{{ task.description }}</span>
+                  <button
+                    type="button"
+                    class="font-medium truncate text-left hover:underline hover:text-primary-600"
+                    v-tooltip.top="'Åbn opgaven'"
+                    @click="editTask(task)"
+                  >
+                    {{ task.description }}
+                  </button>
                   <Tag
                     v-if="task.priority"
                     :value="priorityLabel(task.priority)"
@@ -665,7 +691,16 @@ function errorDetail(err: any) {
               class="border rounded px-2 py-1 text-sm flex items-center gap-2 bg-white"
             >
               <i :class="kindIcon(task.kind)" />
-              <span class="flex-1 truncate">{{ task.description }}</span>
+              <!-- Openable too: a task in a car is still the only place its deadline and
+                   passengers are written down, and an underway task remains patchable. -->
+              <button
+                type="button"
+                class="flex-1 text-left truncate hover:underline hover:text-primary-600"
+                v-tooltip.top="'Åbn opgaven'"
+                @click="editTask(task)"
+              >
+                {{ task.description }}
+              </button>
               <span v-if="task.pickedUpUts" class="text-xs text-green-700">
                 hentet {{ formatUtsTime(task.pickedUpUts) }}
               </span>
@@ -700,7 +735,16 @@ function errorDetail(err: any) {
               placeholder="Vælg enhed…"
               size="small"
               class="w-44"
-            />
+            >
+              <template #option="slot">
+                <span class="flex items-center gap-2 w-full">
+                  <span class="flex-1 truncate">{{ slot.option.label }}</span>
+                  <small :class="slot.option.free ? 'text-green-700' : 'text-gray-400'">
+                    {{ slot.option.note }}
+                  </small>
+                </span>
+              </template>
+            </Select>
           </div>
           <div>
             <label class="block text-xs text-gray-600">Afgang</label>
@@ -738,6 +782,7 @@ function errorDetail(err: any) {
           @complete="completeTour(tour)"
           @cancel="askToCancelTour(tour)"
           @edit="newTourUnit = tour.sectionSlug"
+          @edit-task="editTaskById($event)"
         />
 
         <template v-if="closedTours.length">
@@ -749,6 +794,7 @@ function errorDetail(err: any) {
             :unit="unitsBySlug[tour.sectionSlug]"
             :tasksById="tasksById"
             :nowMs="now"
+            @edit-task="editTaskById($event)"
           />
         </template>
       </section>
@@ -832,7 +878,16 @@ function errorDetail(err: any) {
         optionValue="value"
         placeholder="Hvilken enhed?"
         class="w-full"
-      />
+      >
+        <template #option="slot">
+          <span class="flex items-center gap-2 w-full">
+            <span class="flex-1 truncate">{{ slot.option.label }}</span>
+            <small :class="slot.option.free ? 'text-green-700' : 'text-gray-400'">
+              {{ slot.option.note }}
+            </small>
+          </span>
+        </template>
+      </Select>
       <template #footer>
         <Button label="Annuller" severity="secondary" text @click="boarding = null" />
         <Button label="Hentet" :disabled="!boardingUnit" @click="confirmBoarding()" />

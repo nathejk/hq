@@ -458,6 +458,21 @@ export const unitsOnDuty = (duty: Duty[], nowMs: number) => {
   return slugs
 }
 
+/**
+ * Units that are spoken for: they have a tour planned or underway.
+ *
+ * A unit on duty is capacity; a unit on duty *without* a tour is capacity somebody can hand the
+ * next task to right now, and that is the distinction the desk actually acts on. A planned tour
+ * counts as engaged even before it departs — the run has been built for that unit.
+ */
+export const unitsEngaged = (tours: Tour[]) => {
+  const slugs = new Set<string>()
+  for (const tour of tours ?? []) {
+    if (tour.state === 'planned' || tour.state === 'underway') slugs.add(tour.sectionSlug)
+  }
+  return slugs
+}
+
 /** When the next unit comes on duty, or null if none is rostered ahead. */
 export const nextDutyStart = (duty: Duty[], nowMs: number): number | null => {
   const uts = nowMs / 1000

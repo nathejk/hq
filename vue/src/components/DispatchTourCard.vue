@@ -37,6 +37,7 @@ const emit = defineEmits<{
   (e: 'complete'): void
   (e: 'cancel'): void
   (e: 'edit'): void
+  (e: 'edit-task', taskId: string): void
 }>()
 
 const stateSeverity = computed(() => {
@@ -185,11 +186,25 @@ function onDrop(event: DragEvent, afterStopId?: string) {
           </span>
         </div>
 
+        <!--
+          A task on a stop is shown on one truncated line, which is all a stop can spare — so the
+          line is the way back into the task itself. Once a task is on a tour it has no row in the
+          queue any more, and without this the desc, the deadline and the passengers are
+          unreachable. Editing an assigned task is allowed: the drive is planned, the facts of it
+          can still change.
+        -->
         <ul v-if="stop.tasks.length" class="pl-6 text-xs text-gray-600">
-          <li v-for="st in stop.tasks" :key="st.taskId + st.role" class="truncate">
-            <i :class="kindIcon(tasksById[st.taskId]?.kind ?? '')" />
-            {{ tasksById[st.taskId]?.description ?? st.taskId }}
-            <span class="text-gray-400">({{ roleLabel(st.role) }})</span>
+          <li v-for="st in stop.tasks" :key="st.taskId + st.role">
+            <button
+              type="button"
+              class="w-full text-left truncate hover:underline hover:text-primary-600"
+              v-tooltip.top="'Åbn opgaven'"
+              @click.stop="emit('edit-task', st.taskId)"
+            >
+              <i :class="kindIcon(tasksById[st.taskId]?.kind ?? '')" />
+              {{ tasksById[st.taskId]?.description ?? st.taskId }}
+              <span class="text-gray-400">({{ roleLabel(st.role) }})</span>
+            </button>
           </li>
         </ul>
       </li>

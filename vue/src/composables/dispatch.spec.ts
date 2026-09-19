@@ -4,6 +4,7 @@ import {
   DEADLINE_WARNING_MINUTES,
   type Duty,
   type Task,
+  type Tour,
   type TourStop,
   deadlineRisk,
   estimateFor,
@@ -11,6 +12,7 @@ import {
   nextDutyStart,
   planTaskOntoStops,
   unitReadiness,
+  unitsEngaged,
   unitsOnDuty,
   untilUts,
   taskRoute,
@@ -157,6 +159,33 @@ describe('deadline risk', () => {
       const t = task({ state, deadlineUts: nowUts - 120 * minute })
       expect(deadlineRisk(t, null, nowMs)).toBe('none')
     }
+  })
+})
+
+describe('engaged units', () => {
+  const tour_ = (over: Partial<Tour> = {}): Tour => ({
+    id: 'r-1',
+    year: '2026',
+    sectionSlug: 'bil-2',
+    departureUts: null,
+    state: 'planned',
+    createdUts: nowUts - 10 * minute,
+    underwayUts: null,
+    completedUts: null,
+    cancelledUts: null,
+    stops: [],
+    ...over,
+  })
+
+  it('counts a planned or underway tour as engaging its unit', () => {
+    const tours = [tour_(), tour_({ id: 'r-2', sectionSlug: 'bil-3', state: 'underway' })]
+    expect([...unitsEngaged(tours)].sort()).toEqual(['bil-2', 'bil-3'])
+  })
+
+  // A finished or abandoned run leaves the unit free again, which is the whole point of the split.
+  it('leaves a unit free once its tour is completed or cancelled', () => {
+    expect(unitsEngaged([tour_({ state: 'completed' })]).size).toBe(0)
+    expect(unitsEngaged([tour_({ state: 'cancelled' })]).size).toBe(0)
   })
 })
 
