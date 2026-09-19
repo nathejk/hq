@@ -46,6 +46,10 @@ type StartedTeam struct {
 	// ActiveMemberCount is zero for a patrol nobody is left racing on: the canonical
 	// test for udgået. Maintained by the spejderstatus projection.
 	ActiveMemberCount int
+	// StartedUts is when the patrol went on the route, or 0 for a row projected before
+	// the column existed. Read here because anything plotting the race against time
+	// needs to know when each team entered it — see bingoSeries in cmd/api/bingo.go.
+	StartedUts int64
 }
 
 type querier struct {
@@ -215,7 +219,7 @@ func (q *querier) GetStartedTeams(ctx context.Context, f Filter) ([]StartedTeam,
 	ctx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 
-	query := `SELECT teamId, activeMemberCount FROM patrulje WHERE signupStatus = ?`
+	query := `SELECT teamId, activeMemberCount, startedUts FROM patrulje WHERE signupStatus = ?`
 	args := []any{string(types.SignupStatusStarted)}
 	if f.YearSlug != "" {
 		query += ` AND year = ?`
@@ -231,7 +235,7 @@ func (q *querier) GetStartedTeams(ctx context.Context, f Filter) ([]StartedTeam,
 	teams := []StartedTeam{}
 	for rows.Next() {
 		var t StartedTeam
-		if err := rows.Scan(&t.TeamID, &t.ActiveMemberCount); err != nil {
+		if err := rows.Scan(&t.TeamID, &t.ActiveMemberCount, &t.StartedUts); err != nil {
 			return nil, err
 		}
 		teams = append(teams, t)

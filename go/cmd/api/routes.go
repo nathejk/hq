@@ -19,6 +19,11 @@ func (app *application) routes() http.Handler {
 	router.MethodNotAllowed = http.HandlerFunc(app.MethodNotAllowedResponse)
 
 	router.HandlerFunc(http.MethodGet, "/api/home", app.homeHandler)
+	// The bingo curve under the dashboard's figures: how many patrols still hold a full
+	// card, from the first post's opening hour to the last post's closing hour.
+	router.HandlerFunc(http.MethodGet, "/api/bingo", app.bingoHandler)
+	// The table behind the curve: every patrol against every obligatorisk postlinje.
+	router.HandlerFunc(http.MethodGet, "/api/bingo/teams", app.bingoTeamsHandler)
 
 	router.HandlerFunc(http.MethodGet, "/api/years", app.listYearHandler)
 	router.HandlerFunc(http.MethodPost, "/api/year/:slug", app.createYearHandler)

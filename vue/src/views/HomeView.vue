@@ -1,8 +1,11 @@
 <script setup lang="ts">
-import { computed, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useToast } from 'primevue/usetoast';
 import { http } from '@/plugins/axios';
 import { useLiveResource } from '@/composables/useLiveResource';
+import BingoChart from '@/components/BingoChart.vue';
+import BingoTeamsDialog from '@/components/BingoTeamsDialog.vue';
+import { emptyBingoSeries, type BingoSeries } from '@/composables/bingo';
 
 const toast = useToast();
 
@@ -31,6 +34,36 @@ const { data, error } = useLiveResource<HomeConfig>(
 );
 
 const config = computed<HomeConfig>(() => data.value ?? emptyConfig);
+
+// The bingo curve. Its own resource, not a field on /api/home: the four figures above move
+// when somebody signs up, while this moves on every scan during the race, and one key for
+// both would make the whole dashboard recompute the night's history to learn that a gøgler
+// paid.
+//
+// The tokens are the event subjects', not the projections': a scan is `qr`, and a bandit's
+// identity comes off the `senior` stream. `checkpoint` and `checkpersonnel` are in there
+// because they decide the deadlines and the attribution of scans to posts respectively —
+// an unstaffed shift means no scan can be credited, so editing the rota moves the curve.
+const { data: bingoData, pending: bingoPending, error: bingoError } = useLiveResource<BingoSeries>(
+  'home:bingo',
+  async () => {
+    const response = await http.get('/bingo');
+    return (response.data.bingo ?? emptyBingoSeries) as BingoSeries;
+  },
+  { dependsOn: ['patrulje', 'qr', 'senior', 'checkgroup', 'checkpoint', 'checkpersonnel', 'spejder'] },
+);
+
+const bingo = computed<BingoSeries>(() => bingoData.value ?? emptyBingoSeries);
+
+watch(bingoError, (err) => {
+  if (!err) return;
+  console.log('bingo load failed', err);
+  toast.add({ severity: 'error', summary: 'Kunne ikke hente bingo-grafen', life: 5000 });
+});
+
+// Mounted only while open, so the table's resource is not fetched by every visit to the
+// dashboard — it is eight columns of per-team judgement and is wanted a few times a night.
+const teamsOpen = ref(false);
 
 watch(error, (err) => {
   if (!err) return;
@@ -98,7 +131,13 @@ watch(error, (err) => {
       <!--
       <div class="col-span-12 xl:col-span-6"><div class="card"><div class="font-semibold text-xl mb-4">Monthly Recurring Revenue Growth</div><div class="p-chart" id="nasdaq-chart" data-pc-name="chart" pc73="" data-pc-section="root" style="position: relative;"><canvas width="1232" height="740" data-pc-section="canvas" style="display: block; box-sizing: border-box; height: 370px; width: 616px;"></canvas></div></div></div>
       -->
+
+      <div class="col-span-12">
+        <BingoChart :series="bingo" :loading="bingoPending" @open-teams="teamsOpen = true" />
       </div>
+      </div>
+
+    <BingoTeamsDialog v-if="teamsOpen" @close="teamsOpen = false" />
     <!--TheWelcome /-->
   </main>
 </template>

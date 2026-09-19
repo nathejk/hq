@@ -14,6 +14,8 @@ declare module 'vue' {
     AutoComplete: typeof import('primevue/autocomplete')['default']
     Avatar: typeof import('primevue/avatar')['default']
     Badge: typeof import('primevue/badge')['default']
+    BingoChart: typeof import('./src/components/BingoChart.vue')['default']
+    BingoTeamsDialog: typeof import('./src/components/BingoTeamsDialog.vue')['default']
     Button: typeof import('primevue/button')['default']
     Card: typeof import('primevue/card')['default']
     Checkbox: typeof import('primevue/checkbox')['default']
