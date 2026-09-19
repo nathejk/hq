@@ -141,6 +141,9 @@ export interface Board {
   duty: Duty[]
   kinds: TaskKind[]
   priorities: string[]
+  /** The event's span, midnight to midnight in local time, as the roster grid's time axis.
+   * Both 0 when the year has no dates set. */
+  event?: { startUts: number; endUts: number }
 }
 
 const kindLabels: Record<string, string> = {

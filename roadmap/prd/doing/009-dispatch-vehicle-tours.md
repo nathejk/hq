@@ -357,6 +357,46 @@ hold unsaved arrangements and both defer live updates while dirty; this must do 
 window, and whether it is on duty now; when none are, *"Næste enhed på vagt 22:00"*. This is
 what makes an estimate legible instead of magic, and what makes a not-ready unit visible.
 
+**The vagter editor** is a **timeline, not a form**: the unit's name, one multi-range slider spanning
+the whole race, and `+ Vagt`. The question the roster is read for is never "when is Bil 1 on?" but
+*"who covers 02:00?"*, so every unit's shifts have to sit on the same axis; a list of times per unit
+forces the operator to hold four sets of times in their head to see the hole in the night, and a
+column per day puts a seam through every night shift — exactly where the race is hardest to staff.
+
+It is **condensed to one line per unit**, because the value is seeing many units at once: a shift's
+times are written inside its own bar (clipped when the shift is too short, with the full times on
+hover, which is also where removal lives), the day scale is drawn once above all rows rather than
+per row, and `+ Vagt` sits beside the timeline. An **orange vertical line marks now**, under the bars
+so it cannot obscure them, and absent entirely outside the race rather than pinned to an edge — a
+line at the left edge in the week before would read as "the race has started".
+
+A period is **two knots with the bar between them marked**, and new pairs are appended: at the end of
+the list and at the end of the timeline, so the visual order cannot disagree with the stored order and
+it is never unclear which bar was just created. Dragging a knot resizes; dragging the bar moves the
+whole shift, because "they start two hours later" is not "they work two hours more". Arrow keys move a
+knot a quarter-hour, Shift an hour. Overlaps are allowed, as §6 allows them, so pairs are never
+reordered — a knot carries the id of the window it edits, and a slider that re-sorted its handles
+would move a different unit's shift, silently.
+
+**Zoomable, and horizontally scrollable.** 72 hours fits on HQ's big screen and is sub-pixel per
+quarter-hour on a laptop in a tent, so the axis zooms in powers of two — as a multiple of the
+container's width, so 1× means "the whole race fits" on either machine with no breakpoints. The
+timeline is **one** scroll container for every row: a scroller per row would let two units drift to
+different hours, which is the one comparison this screen exists to make. The name column and the add
+button stay outside it, so neither can scroll away from its row. Zoom anchors on the middle of the
+view, and a `Nu` button scrolls the marker into it.
+
+The row says how many hours a unit is rostered, and the editor says how many hours of the race **no**
+unit covers — the number it exists to drive to zero. The axis comes from the year's dates; with none
+set the editor says so rather than drawing a guessed one.
+
+Built rather than taken from a library: `vue-slider-component` is the obvious candidate and does
+have N handles with a `process` callback, but its Vue 3 support exists only on a 2022 `next` beta
+that still depends on `vue-property-decorator`, and its one flat ordered array of handles needs
+`order: false` to stop a drag reordering it — which switches off crossing prevention wholesale, so
+the per-pair constraints would have to be written anyway. They are the only hard part, and none of
+the rest of the above comes out of a generic slider either.
+
 **A task card** carries: kind icon, pick-up → drop-off, what is being moved, the waiting clock
 or the planned time, priority, and its tour. A pickup card also shows the scout's name and
 links to `MemberDetailDialog` (PRD 008), so the guardian's number is one click away.

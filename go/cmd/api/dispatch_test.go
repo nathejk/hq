@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/julienschmidt/httprouter"
 	"github.com/nathejk/shared-go/tables"
@@ -20,6 +21,7 @@ import (
 	"nathejk.dk/nathejk/table/checkpoint"
 	"nathejk.dk/nathejk/table/dispatch"
 	"nathejk.dk/nathejk/table/lok"
+	"nathejk.dk/nathejk/table/year"
 )
 
 // The dispatch endpoints at the HTTP boundary: what the board gets, what the SPA may send, and
@@ -210,6 +212,30 @@ func (f *fakeLokQueries) GetByID(context.Context, types.LokID) (*lok.Lok, error)
 	return nil, tables.ErrRecordNotFound
 }
 
+// fakeYearQueries supplies the event's dates, which the board carries as the vagter grid's
+// time axis.
+//
+// Dateless by default, and that is the interesting default: a year being prepared has no
+// dates, the span then has to come back as zero rather than as some epoch-adjacent day, and
+// the roster editor says so instead of drawing a grid on the wrong dates.
+type fakeYearQueries struct {
+	year *year.Year
+	err  error
+}
+
+func (f *fakeYearQueries) GetByID(context.Context, types.YearSlug) (*year.Year, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	if f.year == nil {
+		return &year.Year{}, nil
+	}
+	return f.year, nil
+}
+func (f *fakeYearQueries) GetAll(context.Context, year.Filter) ([]year.Year, error) {
+	return nil, nil
+}
+
 func dispatchApp(cmd *fakeDispatchCommands, q *fakeDispatchQueries) *application {
 	return &application{
 		models: data.Models{
@@ -219,6 +245,7 @@ func dispatchApp(cmd *fakeDispatchCommands, q *fakeDispatchQueries) *application
 			CrewMember: &fakeCrewQueries{},
 			Checkpoint: &fakeCheckpointQueries{},
 			Lok:        &fakeLokQueries{},
+			Year:       &fakeYearQueries{},
 		},
 		commands: commands.Commands{Dispatch: cmd},
 	}
@@ -294,6 +321,77 @@ func TestBoardCollectionsAreArraysWhenEmpty(t *testing.T) {
 		if strings.Contains(rec.Body.String(), `"`+key+`": null`) {
 			t.Errorf("%s serialised as null: %s", key, rec.Body.String())
 		}
+	}
+}
+
+// --- the roster's time axis ---
+//
+// The vagter editor is a grid of one column per day of the event, so the board has to say what
+// the event's days are. Nothing else on the screen uses this, which is exactly why it needs
+// tests: a wrong span here silently rosters the wrong dates, and no other assertion would fail.
+
+func boardEvent(t *testing.T, app *application) dispatchEvent {
+	t.Helper()
+	rec := httptest.NewRecorder()
+	app.showDispatchBoardHandler(rec, dispatchRequest(t, http.MethodGet, "/api/dispatch", "", nil))
+	var got struct {
+		Event dispatchEvent `json:"event"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
+		t.Fatalf("decoding: %v; body: %s", err, rec.Body.String())
+	}
+	return got.Event
+}
+
+func TestBoardCarriesTheEventSpanAsWholeLocalDays(t *testing.T) {
+	app := dispatchApp(&fakeDispatchCommands{}, &fakeDispatchQueries{})
+	app.models.Year = &fakeYearQueries{year: &year.Year{DateStart: "2026-09-18", DateEnd: "2026-09-20"}}
+
+	event := boardEvent(t, app)
+	wantStart := time.Date(2026, 9, 18, 0, 0, 0, 0, time.Local).Unix()
+	// Midnight *after* the last day, so the days tile and Sunday gets a full column rather
+	// than a zero-width one.
+	wantEnd := time.Date(2026, 9, 21, 0, 0, 0, 0, time.Local).Unix()
+	if event.StartUts != wantStart || event.EndUts != wantEnd {
+		t.Errorf("span = %d..%d, want %d..%d", event.StartUts, event.EndUts, wantStart, wantEnd)
+	}
+}
+
+func TestBoardReportsNoEventSpanWhenTheYearHasNoDates(t *testing.T) {
+	// A year being prepared. Zero, not a guess: the editor then says the dates are missing,
+	// which is actionable, where a grid on epoch-adjacent days would just be wrong.
+	if event := boardEvent(t, dispatchApp(&fakeDispatchCommands{}, &fakeDispatchQueries{})); event.StartUts != 0 || event.EndUts != 0 {
+		t.Errorf("span = %d..%d, want 0..0", event.StartUts, event.EndUts)
+	}
+}
+
+func TestBoardTreatsAStartWithoutAnEndAsOneDay(t *testing.T) {
+	// Mid-setup, and rosterable anyway: one day is a usable axis, where an empty one reads as
+	// "there is no event".
+	app := dispatchApp(&fakeDispatchCommands{}, &fakeDispatchQueries{})
+	app.models.Year = &fakeYearQueries{year: &year.Year{DateStart: "2026-09-18"}}
+
+	event := boardEvent(t, app)
+	if want := time.Date(2026, 9, 19, 0, 0, 0, 0, time.Local).Unix(); event.EndUts != want {
+		t.Errorf("end = %d, want %d", event.EndUts, want)
+	}
+}
+
+func TestBoardStillServesWhenTheYearCannotBeRead(t *testing.T) {
+	// The roster's axis is the least important thing on this screen. Losing it must not take
+	// the queue and the tours with it at 3am.
+	app := dispatchApp(&fakeDispatchCommands{}, &fakeDispatchQueries{
+		tasks: []*dispatch.Task{{ID: "disp-1"}},
+	})
+	app.models.Year = &fakeYearQueries{err: tables.ErrRecordNotFound}
+
+	rec := httptest.NewRecorder()
+	app.showDispatchBoardHandler(rec, dispatchRequest(t, http.MethodGet, "/api/dispatch", "", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d; body: %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "disp-1") {
+		t.Errorf("board lost its tasks: %s", rec.Body.String())
 	}
 }
 

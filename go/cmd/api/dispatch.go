@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/nathejk/shared-go/tables"
 	"github.com/nathejk/shared-go/tables/crewmember"
@@ -67,6 +69,49 @@ type dispatchUnit struct {
 	// People are the crew members in the subsection. The vehicle's own driverUserId names
 	// the driver; anybody else here is a co-driver.
 	People []crewmember.CrewMember `json:"people"`
+}
+
+// dispatchEvent is the event's own span, as the roster's time axis.
+//
+// Sent with the board because the vagter grid draws a column per day of it: without a
+// span the editor has no axis to place a window on, and asking the client to guess one
+// from the windows that already exist would leave an empty roster with nowhere to put
+// the first one.
+//
+// Day granularity is all the year record keeps (dateStart/dateEnd are dates), so the
+// span runs from midnight on the first day to midnight after the last. Both are 0 when
+// the year has no dates set, which is a normal state for a year being prepared; the
+// client says so rather than drawing a grid of one arbitrary day.
+type dispatchEvent struct {
+	StartUts int64 `json:"startUts"`
+	EndUts   int64 `json:"endUts"`
+}
+
+// dispatchEventWindow converts the year's dates into that span.
+//
+// Local time, not UTC: the days it delimits are the days an operator means by "lørdag",
+// and the container runs in Europe/Copenhagen for exactly this reason.
+func (app *application) dispatchEventWindow(ctx context.Context, year types.YearSlug) dispatchEvent {
+	y, err := app.models.Year.GetByID(ctx, year)
+	if err != nil {
+		return dispatchEvent{}
+	}
+	start, err := time.ParseInLocation("2006-01-02", string(y.DateStart), time.Local)
+	if err != nil {
+		return dispatchEvent{}
+	}
+	end, err := time.ParseInLocation("2006-01-02", string(y.DateEnd), time.Local)
+	if err != nil {
+		// A start with no end is one day, rather than nothing: a year mid-setup can still
+		// be rostered, and an empty axis would read as "no event".
+		end = start
+	}
+	if end.Before(start) {
+		end = start
+	}
+	// AddDate, not +24h: a day is a calendar day, and across a DST change it is not 24
+	// hours long. Getting this wrong would put the last day's midnight an hour out.
+	return dispatchEvent{StartUts: start.Unix(), EndUts: end.AddDate(0, 0, 1).Unix()}
 }
 
 // showDispatchBoardHandler serves the whole board.
@@ -137,6 +182,8 @@ func (app *application) showDispatchBoardHandler(w http.ResponseWriter, r *http.
 		// is: a client that invents its own would store values nothing can filter on.
 		"kinds":      []dispatch.Kind{dispatch.KindPickup, dispatch.KindTransport, dispatch.KindCollection, dispatch.KindDelivery, dispatch.KindSamarit},
 		"priorities": []dispatch.Priority{dispatch.PriorityGreen, dispatch.PriorityYellow, dispatch.PriorityRed},
+		// The roster editor's time axis. See dispatchEvent.
+		"event": app.dispatchEventWindow(r.Context(), year),
 	}
 	if err := app.WriteJSON(w, http.StatusOK, envelope, nil); err != nil {
 		app.ServerErrorResponse(w, r, err)

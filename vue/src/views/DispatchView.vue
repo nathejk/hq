@@ -28,6 +28,7 @@ import { useNow } from '@/composables/shelter'
 import DispatchTourCard from '@/components/DispatchTourCard.vue'
 import DispatchCapacityStrip from '@/components/DispatchCapacityStrip.vue'
 import DispatchTaskDialog, { type PlaceOption } from '@/components/DispatchTaskDialog.vue'
+import DispatchDutyRoster from '@/components/DispatchDutyRoster.vue'
 import {
   type Board,
   type Duty,
@@ -35,7 +36,6 @@ import {
   type Tour,
   type TourStop,
   type Unit,
-  formatUts,
   formatUtsTime,
   deadlineRisk,
   estimateFor,
@@ -76,7 +76,7 @@ const { data, pending, error, refresh } = useLiveResource(
     const response = await http.get('/dispatch')
     return response.data as Board
   },
-  { dependsOn: ['dispatch', 'tour', 'dispatchduty', 'section', 'crewmember', 'crew', 'vehicle', 'spejder', 'sos'] },
+  { dependsOn: ['dispatch', 'tour', 'dispatchduty', 'section', 'crewmember', 'crew', 'vehicle', 'spejder', 'sos', 'year'] },
 )
 
 // --- what the view renders ---
@@ -86,6 +86,9 @@ const tours = ref<Tour[]>([])
 const units = ref<Unit[]>([])
 const places = ref<PlaceOption[]>([])
 const duty = ref<Duty[]>([])
+// The roster grid's time axis, from the board. `year` is in dependsOn for this: the dates are
+// edited on another page, and a grid drawn against last week's dates is worse than none.
+const eventWindow = ref<{ startUts: number; endUts: number } | undefined>(undefined)
 
 // True while the board must not be redrawn underneath the operator: a write in flight, a local
 // arrangement not yet saved, or a dialog holding a half-typed form. A drag is short, but the round
@@ -101,15 +104,28 @@ const editingTask = ref<Task | undefined>(undefined)
 const cancelling = ref<{ kind: 'task' | 'tour'; id: string; label: string } | null>(null)
 const boarding = ref<Task | null>(null)
 const dutyDialog = ref(false)
+// A knot or a bar is being held in the roster. This, and *not* `dutyDialog`, is the roster's pause
+// reason — see the note below.
+const dutyDragging = ref(false)
 const paused = computed(
   () =>
     saving.value ||
     dragging.value ||
     taskDialogOpen.value ||
-    dutyDialog.value ||
+    dutyDragging.value ||
     !!cancelling.value ||
     !!boarding.value,
 )
+
+// `dutyDialog` is deliberately **not** in that list, though it was at first, and the bug it caused is
+// worth recording: pausing on an editor being *open* means the editor can never see its own writes.
+// A dragged vagt saved correctly, the board refetched, the payload was held back because the dialog
+// was still open, and the bar snapped back to where it had been — correct on the server, wrong on
+// screen, and only visibly correct after a reload. The pause rule is about *unsaved* state, and the
+// roster holds none: every gesture commits on release. So the reason to pause is the gesture
+// (`dutyDragging`) and the write (`saving`), both of which end on their own.
+//
+// The task dialog stays in the list, because it genuinely does hold a half-typed form.
 
 const { updatesWaiting } = useDeferredApply(data, paused, (board: Board) => {
   tasks.value = board.tasks ?? []
@@ -117,6 +133,7 @@ const { updatesWaiting } = useDeferredApply(data, paused, (board: Board) => {
   units.value = board.units ?? []
   places.value = (board as Board & { places?: PlaceOption[] }).places ?? []
   duty.value = board.duty ?? []
+  eventWindow.value = board.event
 })
 
 // --- duty windows (task 115) ---
@@ -125,31 +142,20 @@ const { updatesWaiting } = useDeferredApply(data, paused, (board: Board) => {
 // rather than a panel on the board: it is set up once an evening and then read all night, and a
 // permanent form would take space from the two things that are read constantly. (`dutyDialog`
 // itself is declared with the other pause flags above, because `paused` reads it.)
-const dutyDraft = ref<{ unit: string; from: Date | null; to: Date | null }>({
-  unit: '',
-  from: null,
-  to: null,
-})
+//
+// The editor is a timeline per unit — see DispatchDutyRoster — and this view keeps only the writes, so a drag in
+// flight cannot have its own row replaced by an incoming payload.
 
-const dutyByUnit = computed<Record<string, Duty[]>>(() => {
-  const map: Record<string, Duty[]> = {}
-  for (const window of [...duty.value].sort((a, b) => a.startUts - b.startUts)) {
-    ;(map[window.sectionSlug] ??= []).push(window)
-  }
-  return map
-})
-
-async function saveDuty() {
-  const draft = dutyDraft.value
-  if (!draft.unit || !draft.from || !draft.to) return
+async function saveDuty(window: {
+  dutyId?: string
+  sectionSlug: string
+  startUts: number
+  endUts: number
+}) {
   saving.value = true
   try {
-    await http.put('/dispatchduty', {
-      sectionSlug: draft.unit,
-      startUts: Math.floor(draft.from.getTime() / 1000),
-      endUts: Math.floor(draft.to.getTime() / 1000),
-    })
-    dutyDraft.value = { unit: draft.unit, from: null, to: null }
+    // One endpoint for both: an id edits that window, and without one a window is created.
+    await http.put('/dispatchduty', window)
     await refresh()
   } catch (err: any) {
     toast.add({
@@ -158,6 +164,9 @@ async function saveDuty() {
       detail: errorDetail(err),
       life: 6000,
     })
+    // Back to what the server holds: a rejected drag must not leave the bar sitting where the
+    // operator dropped it, looking saved.
+    await refresh()
   } finally {
     saving.value = false
   }
@@ -749,72 +758,32 @@ function errorDetail(err: any) {
       The roster (PRD 009 §6). Per unit, and per unit only: the unit is what is available or
       asleep, and a window per person would have to be intersected with the co-driver's to answer
       the one question the board asks of it.
+
+      Wide, because the axis is the whole race: the value of it is seeing every unit's night on one
+      timeline, which is the only way the gap between two units' shifts is visible at all.
     -->
     <Dialog
       v-model:visible="dutyDialog"
       modal
       header="Vagter"
-      :style="{ width: '34rem' }"
+      :style="{ width: '80rem', maxWidth: '95vw' }"
     >
-      <div class="flex flex-wrap items-end gap-2 pb-3">
-        <div>
-          <label class="block text-xs text-gray-600">Enhed</label>
-          <Select
-            v-model="dutyDraft.unit"
-            :options="unitOptions"
-            optionLabel="label"
-            optionValue="value"
-            placeholder="Vælg enhed…"
-            size="small"
-            class="w-40"
-          />
-        </div>
-        <div>
-          <label class="block text-xs text-gray-600">Fra</label>
-          <DatePicker v-model="dutyDraft.from" showTime hourFormat="24" size="small" class="w-40" />
-        </div>
-        <div>
-          <label class="block text-xs text-gray-600">Til</label>
-          <DatePicker v-model="dutyDraft.to" showTime hourFormat="24" size="small" class="w-40" />
-        </div>
-        <Button
-          label="Tilføj"
-          icon="pi pi-plus"
-          size="small"
-          :disabled="!dutyDraft.unit || !dutyDraft.from || !dutyDraft.to || saving"
-          @click="saveDuty()"
-        />
-      </div>
-
-      <div v-for="unit in units" :key="unit.sectionSlug" class="border-t py-2">
-        <div class="font-medium">{{ unit.label }}</div>
-        <ul v-if="dutyByUnit[unit.sectionSlug]?.length" class="text-sm">
-          <li
-            v-for="window in dutyByUnit[unit.sectionSlug]"
-            :key="window.id"
-            class="flex items-center gap-2"
-          >
-            <!-- Weekday-bearing, because the race runs through a night and "21.40 til 02.00"
-                 alone does not say which evening. -->
-            <span class="flex-1 tabular-nums">
-              {{ formatUts(window.startUts) }} – {{ formatUts(window.endUts) }}
-            </span>
-            <Button
-              icon="pi pi-trash"
-              size="small"
-              text
-              rounded
-              severity="danger"
-              :disabled="saving"
-              @click="removeDuty(window.id)"
-            />
-          </li>
-        </ul>
-        <small v-else class="text-gray-500">Ingen vagter aftalt.</small>
-      </div>
-      <small v-if="units.length === 0" class="text-gray-600">
-        Ingen kørsels-enheder endnu. Marker en underafdeling som kørsels-enhed på Organisation.
-      </small>
+      <p class="pb-2 text-sm text-gray-600">
+        Tidslinjen er hele løbet, og den <span class="text-orange-600">orange streg</span> er nu.
+        <strong>Vagt</strong> lægger en ny vagt i slutningen af tidslinjen — træk den derefter på
+        plads: i enderne for at ændre tidspunkt, i bjælken for at flytte hele vagten. Piletasterne
+        flytter et kvarter, med Shift en time. Hold musen over en vagt for at se tider og fjerne den.
+      </p>
+      <DispatchDutyRoster
+        :units="units"
+        :duty="duty"
+        :event="eventWindow"
+        :busy="saving"
+        :nowMs="now"
+        @dragging="dutyDragging = $event"
+        @save="saveDuty($event)"
+        @remove="removeDuty($event)"
+      />
     </Dialog>
 
     <DispatchTaskDialog
