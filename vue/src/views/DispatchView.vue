@@ -398,6 +398,20 @@ const startTour = (tour: Tour) =>
 const completeTour = (tour: Tour) =>
   post(`/dispatch/tour/${tour.id}/completed`, {}, 'Kunne ikke afslutte turen')
 
+// Finishing a task without ticking off a stop. The stop is the normal path and stays the one the
+// board pushes you down — but a task can be left underway with no live plan to finish it (its tour
+// cancelled, its stops edited away), and Undervejs was then a row with no way out.
+const completeTask = (task: Task) =>
+  post(`/dispatch/task/${task.id}/completed`, {}, 'Kunne ikke afslutte opgaven')
+
+/** The open tour carrying this task, if any: what would eventually finish it by itself. */
+const openTourOf = (taskId: string) =>
+  tours.value.find(
+    (t) =>
+      (t.state === 'planned' || t.state === 'underway') &&
+      t.stops.some((s) => s.tasks.some((st) => st.taskId === taskId)),
+  )
+
 // --- the new-tour form ---
 
 const newTourUnit = ref<string>('')
@@ -689,6 +703,7 @@ function errorDetail(err: any) {
               v-for="task in underway"
               :key="task.id"
               class="border rounded px-2 py-1 text-sm flex items-center gap-2 bg-white"
+              :class="{ 'border-amber-300': !openTourOf(task.id) }"
             >
               <i :class="kindIcon(task.kind)" />
               <!-- Openable too: a task in a car is still the only place its deadline and
@@ -700,6 +715,14 @@ function errorDetail(err: any) {
                 @click="editTask(task)"
               >
                 {{ task.description }}
+                <!--
+                  Said out loud, because it is the state that used to look like a stuck board: the
+                  tour that would have finished this task is gone, so nothing will finish it but
+                  the desk.
+                -->
+                <span v-if="!openTourOf(task.id)" class="text-xs text-amber-700">
+                  · ingen aktiv tur
+                </span>
               </button>
               <span v-if="task.pickedUpUts" class="text-xs text-green-700">
                 hentet {{ formatUtsTime(task.pickedUpUts) }}
@@ -715,6 +738,31 @@ function errorDetail(err: any) {
                 @click="askWhoCollected(task)"
               />
               <Tag :value="stateLabel(task.state)" severity="secondary" />
+              <!--
+                The two ways out, here rather than only on a stop: ticking the stop is the normal
+                path and remains the one the tour card offers, but a task whose plan has gone needs
+                an ending somebody can give it.
+              -->
+              <Button
+                icon="pi pi-check"
+                size="small"
+                text
+                rounded
+                severity="success"
+                :disabled="saving"
+                v-tooltip.top="'Opgaven er udført'"
+                @click="completeTask(task)"
+              />
+              <Button
+                icon="pi pi-ban"
+                size="small"
+                text
+                rounded
+                severity="danger"
+                :disabled="saving"
+                v-tooltip.top="'Aflys opgaven'"
+                @click="askToCancelTask(task)"
+              />
             </li>
           </ul>
         </template>

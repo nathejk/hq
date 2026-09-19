@@ -279,6 +279,36 @@ func TestDutyCoversIsHalfOpen(t *testing.T) {
 }
 
 // Samaritter sent to look at a blister is a kind of its own, so the create form can offer it.
+// CompleteTask is the escape hatch for a task whose plan is gone. It has to be idempotent and it
+// has to refuse a cancelled task, or it becomes a way to un-cancel one.
+func TestCompletingATaskDirectly(t *testing.T) {
+	p := &recordingPublisher{}
+	c := commander{p: p, q: stubQueries{task: &Task{ID: "disp-1", State: TaskStateUnderway}}}
+	if err := c.CompleteTask(context.Background(), Actor{}, "2026", "disp-1", 4200); err != nil {
+		t.Fatalf("CompleteTask: %v", err)
+	}
+	if len(p.subjects) != 1 || !strings.Contains(p.subjects[0], "dispatch.disp-1.completed") {
+		t.Fatalf("published %v", p.subjects)
+	}
+	if body, ok := p.bodies[0].(*TaskCompleted); !ok || body.AtUts != 4200 {
+		t.Errorf("the given time was not kept: %+v", p.bodies[0])
+	}
+
+	done := &recordingPublisher{}
+	c = commander{p: done, q: stubQueries{task: &Task{ID: "disp-1", State: TaskStateDone}}}
+	if err := c.CompleteTask(context.Background(), Actor{}, "2026", "disp-1", 0); err != nil {
+		t.Errorf("completing an already completed task should be a no-op: %v", err)
+	}
+	if len(done.subjects) != 0 {
+		t.Errorf("a second completion was published: %v", done.subjects)
+	}
+
+	c = commander{p: &recordingPublisher{}, q: stubQueries{task: &Task{ID: "disp-1", State: TaskStateCancelled}}}
+	if err := c.CompleteTask(context.Background(), Actor{}, "2026", "disp-1", 0); err != ErrTaskFinished {
+		t.Errorf("err = %v, want ErrTaskFinished", err)
+	}
+}
+
 func TestASamaritCalloutIsAValidKind(t *testing.T) {
 	p := &recordingPublisher{}
 	c := commander{p: p, q: stubQueries{}}

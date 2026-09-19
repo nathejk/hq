@@ -16,6 +16,16 @@ import (
 type tourQueries struct {
 	stubQueries
 	stops map[TaskID][]TaskStop
+	// toursByID, when set, answers GetTour per id — needed wherever a task's *other* tour
+	// matters and is not the one being operated on.
+	toursByID map[TourID]*Tour
+}
+
+func (q tourQueries) GetTour(ctx context.Context, year types.YearSlug, id TourID) (*Tour, error) {
+	if q.toursByID != nil {
+		return q.toursByID[id], nil
+	}
+	return q.stubQueries.GetTour(ctx, year, id)
 }
 
 func (q tourQueries) StopsByTask(_ context.Context, _ types.YearSlug, ids []TaskID) (map[TaskID][]TaskStop, error) {
@@ -373,6 +383,57 @@ func TestCancellingATourRequiresAReason(t *testing.T) {
 	}
 	if len(p.subjects) != 0 {
 		t.Errorf("published %v without a reason", p.subjects)
+	}
+}
+
+// A task planned onto two tours, both of which get cancelled, must still end up back in the
+// queue. It did not: each cancellation saw the *other* tour's stops, decided the work lived on
+// elsewhere, and left the task in Undervejs with no plan that could ever finish it.
+func TestCancellingTheLastOpenTourReturnsWorkEvenWhenAnotherCancelledTourHasIt(t *testing.T) {
+	p := &recordingPublisher{}
+	c := commander{p: p, q: tourQueries{
+		stubQueries: stubQueries{task: &Task{ID: "disp-1", State: TaskStateUnderway}},
+		toursByID: map[TourID]*Tour{
+			"tour-1": {ID: "tour-1", State: TourStateUnderway, Stops: []TourStop{
+				{StopID: "stop-1", Tasks: []StopTask{{TaskID: "disp-1", Role: RoleUnload}}},
+			}},
+			"tour-old": {ID: "tour-old", State: TourStateCancelled},
+		},
+		stops: map[TaskID][]TaskStop{
+			"disp-1": {{TourID: "tour-1"}, {TourID: "tour-old"}},
+		},
+	}}
+
+	if err := c.CancelTour(context.Background(), Actor{}, "2026", "tour-1", "bilen brød sammen"); err != nil {
+		t.Fatalf("CancelTour: %v", err)
+	}
+	if !strings.Contains(strings.Join(p.subjects, " "), "dispatch.disp-1.unplanned") {
+		t.Errorf("task stranded — its only open tour is gone and it was not re-queued: %v", p.subjects)
+	}
+}
+
+// The converse, which is the reason the check exists at all: work that genuinely lives on
+// another *open* tour must not be dragged back to the queue.
+func TestCancellingOneOfTwoOpenToursLeavesTheWorkOnTheOther(t *testing.T) {
+	p := &recordingPublisher{}
+	c := commander{p: p, q: tourQueries{
+		stubQueries: stubQueries{task: &Task{ID: "disp-1", State: TaskStatePlanned}},
+		toursByID: map[TourID]*Tour{
+			"tour-1": {ID: "tour-1", State: TourStatePlanned, Stops: []TourStop{
+				{StopID: "stop-1", Tasks: []StopTask{{TaskID: "disp-1", Role: RoleUnload}}},
+			}},
+			"tour-2": {ID: "tour-2", State: TourStatePlanned},
+		},
+		stops: map[TaskID][]TaskStop{
+			"disp-1": {{TourID: "tour-1"}, {TourID: "tour-2"}},
+		},
+	}}
+
+	if err := c.CancelTour(context.Background(), Actor{}, "2026", "tour-1", "skiftet bil"); err != nil {
+		t.Fatalf("CancelTour: %v", err)
+	}
+	if strings.Contains(strings.Join(p.subjects, " "), "unplanned") {
+		t.Errorf("work still planned on an open tour was re-queued: %v", p.subjects)
 	}
 }
 

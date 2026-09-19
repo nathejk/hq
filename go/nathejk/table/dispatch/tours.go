@@ -492,13 +492,36 @@ func (c commander) publishTour(actor Actor, year types.YearSlug, id TourID, even
 	return c.publish(actor, fmt.Sprintf("NATHEJK.%s.tour.%s.%s", year, id, event), body)
 }
 
+// onAnotherTour: is this task still planned somewhere the excluded tour is not?
+//
+// **Only an open tour counts.** A task may have stops on several tours over a night — replanned,
+// or on two runs at once — and a cancelled or completed tour is not a plan, it is history. Counting
+// one stranded the task: cancel both of a task's tours and each cancellation saw the *other* one,
+// declined to return the work to the queue, and left the task sitting in Undervejs with nothing
+// left that could ever finish it.
 func (c commander) onAnotherTour(ctx context.Context, year types.YearSlug, taskID TaskID, exclude TourID) (bool, error) {
 	stops, err := c.q.StopsByTask(ctx, year, []TaskID{taskID})
 	if err != nil {
 		return false, err
 	}
+	seen := map[TourID]bool{}
 	for _, s := range stops[taskID] {
-		if s.TourID != exclude {
+		if s.TourID == exclude || seen[s.TourID] {
+			continue
+		}
+		seen[s.TourID] = true
+		tour, err := c.q.GetTour(ctx, year, s.TourID)
+		if err != nil {
+			if errors.Is(err, tables.ErrRecordNotFound) {
+				continue
+			}
+			return false, err
+		}
+		// A stop on a tour the projection has never heard of is not a plan either.
+		if tour == nil {
+			continue
+		}
+		if tour.State == TourStatePlanned || tour.State == TourStateUnderway {
 			return true, nil
 		}
 	}

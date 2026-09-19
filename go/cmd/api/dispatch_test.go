@@ -65,11 +65,13 @@ func (f *fakeDispatchQueries) StopsByTask(context.Context, types.YearSlug, []dis
 }
 
 type fakeDispatchCommands struct {
-	created   *dispatch.CreateTaskCommand
-	patched   *dispatch.PatchTaskCommand
-	pickedUp  int
-	cancelled string
-	unit      types.Slug
+	created         *dispatch.CreateTaskCommand
+	patched         *dispatch.PatchTaskCommand
+	pickedUp        int
+	cancelled       string
+	taskCompleted   int
+	taskCompletedAt int64
+	unit            types.Slug
 
 	tour        *dispatch.CreateTourCommand
 	tourPatched *dispatch.PatchTourCommand
@@ -108,6 +110,12 @@ func (f *fakeDispatchCommands) MarkPickedUp(_ context.Context, _ dispatch.Actor,
 }
 func (f *fakeDispatchCommands) CancelTask(_ context.Context, _ dispatch.Actor, _ types.YearSlug, _ dispatch.TaskID, reason string) error {
 	f.cancelled = reason
+	return f.err
+}
+
+func (f *fakeDispatchCommands) CompleteTask(_ context.Context, _ dispatch.Actor, _ types.YearSlug, _ dispatch.TaskID, atUts int64) error {
+	f.taskCompleted++
+	f.taskCompletedAt = atUts
 	return f.err
 }
 

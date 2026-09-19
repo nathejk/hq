@@ -637,6 +637,46 @@ func (app *application) cancelDispatchTaskHandler(w http.ResponseWriter, r *http
 	}
 }
 
+// completeDispatchTaskHandler marks a task done.
+//
+// @Summary     Complete a dispatch task
+// @Description Says the job happened, without ticking off a stop. The normal path to done is visiting the stop that unloads the task, and the board pushes you down it — this exists because a task can be left `underway` with no live plan to finish it (its tour cancelled, or its stops edited away), and a desk with no way to record what happened keeps a row in Undervejs forever. Completing an already completed task answers 200; completing a cancelled one is refused. `atUts` may be backdated to when it actually happened.
+// @Tags        dispatch
+// @Accept      json
+// @Produce     json
+// @Param       id path string true "Task id"
+// @Param       body body object{atUts=int} false "When, if not now"
+// @Success     200 {object} map[string]interface{} "envelope with \"taskId\""
+// @Failure     400 {object} map[string]interface{}
+// @Failure     404 {object} map[string]interface{}
+// @Failure     422 {object} map[string]interface{}
+// @Failure     500 {object} map[string]interface{}
+// @Router      /api/dispatch/task/{id}/completed [post]
+func (app *application) completeDispatchTaskHandler(w http.ResponseWriter, r *http.Request) {
+	id := dispatch.TaskID(app.ReadNamedParam(r, "id"))
+	if id == "" {
+		app.NotFoundResponse(w, r)
+		return
+	}
+	var input struct {
+		AtUts int64 `json:"atUts"`
+	}
+	// A body is optional here: "done, now" is the whole of the common case.
+	if r.ContentLength > 0 {
+		if err := app.ReadJSON(w, r, &input); err != nil {
+			app.BadRequestResponse(w, r, err)
+			return
+		}
+	}
+	if err := app.commands.Dispatch.CompleteTask(r.Context(), app.dispatchActor(r), app.YearSlug(r), id, input.AtUts); err != nil {
+		app.dispatchCommandError(w, r, err)
+		return
+	}
+	if err := app.WriteJSON(w, http.StatusOK, jsonapi.Envelope{"taskId": id}, nil); err != nil {
+		app.ServerErrorResponse(w, r, err)
+	}
+}
+
 // --- duty windows (task 115) ---
 
 // setDispatchDutyHandler records or edits a unit's duty window.

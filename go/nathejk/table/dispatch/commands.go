@@ -42,6 +42,9 @@ type Commands interface {
 
 	CancelTask(ctx context.Context, actor Actor, year types.YearSlug, id TaskID, reason string) error
 
+	// CompleteTask is the way to finish a task that has no live plan left to finish it.
+	CompleteTask(ctx context.Context, actor Actor, year types.YearSlug, id TaskID, atUts int64) error
+
 	// Duty windows (task 115). SetDuty both creates and edits: an id given is an edit, an empty
 	// one is a new window, because the editor's two gestures are the same gesture to the roster.
 	SetDuty(ctx context.Context, actor Actor, year types.YearSlug, id DutyID, unit types.Slug, startUts, endUts int64) (DutyID, error)
@@ -300,6 +303,36 @@ func (c commander) CancelTask(ctx context.Context, actor Actor, year types.YearS
 	return c.publishTask(actor, year, id, "cancelled", &TaskCancelled{
 		TaskID: id, Reason: reason, AtUts: nowUts(),
 	})
+}
+
+// CompleteTask marks a task done without going through a stop.
+//
+// Normally a task completes because the stop that unloads it was ticked off (`VisitStop`), and
+// that remains the path the board pushes you down. This is the escape hatch: a task can end up
+// `underway` with no live plan left — its tour cancelled, or its stops edited out from under it —
+// and a desk with no way to say "this happened" would be left with a row in Undervejs forever,
+// which is how a board stops being trusted.
+//
+// Idempotent, for the same reason MarkPickedUp is. Cancelling and completing remain each other's
+// opposites: a cancelled task is refused, because completing one means somebody misread the board.
+func (c commander) CompleteTask(ctx context.Context, actor Actor, year types.YearSlug, id TaskID, atUts int64) error {
+	current, err := c.q.GetTask(ctx, year, id)
+	if err != nil {
+		return err
+	}
+	if current == nil {
+		return tables.ErrRecordNotFound
+	}
+	if current.State == TaskStateDone {
+		return nil
+	}
+	if current.State == TaskStateCancelled {
+		return ErrTaskFinished
+	}
+	if atUts == 0 {
+		atUts = nowUts()
+	}
+	return c.publishTask(actor, year, id, "completed", &TaskCompleted{TaskID: id, AtUts: atUts})
 }
 
 // SetSectionDispatchable marks an organisation section as being (or no longer being) a
