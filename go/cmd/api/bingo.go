@@ -428,14 +428,19 @@ type BingoTeamRow struct {
 	CatchCount    int   `json:"catchCount"`
 	FirstCatchUts int64 `json:"firstCatchUts,omitempty"`
 
-	// Bingo is the verdict the green row is drawn from.
+	// Bingo is the verdict the green row is drawn from: this patrol has not forfeited its card.
 	//
-	// Computed here and not in the client so the highlight cannot drift from the number on
-	// the dashboard. Note it is deliberately *not* bingoLoss() == 0: that answers "is this
-	// team still in the running at this moment", which keeps a team whose next post has not
-	// closed yet, while this answers "does this row show a full card" — every cell a tick
-	// and no catches, which is exactly what the operator is reading. A team mid-race is in
-	// the running without being bingo, and the table must not claim otherwise.
+	// "Not forfeited", not "has completed every post". A patrol with six ticks, no catches and two
+	// posts that have not opened yet still holds a full card, and calling that 0 while the graph
+	// above it counted the same patrol was simply two definitions of one word on one screen.
+	//
+	// So it is bingoLoss clamped to now — literally the curve's own function — rather than "every
+	// cell is a tick". Besides disagreeing with the graph, the cell-based test was wrong in its own
+	// terms: a cell reads `retired` rather than `missing` when the patrol has withdrawn, whatever
+	// the clock says, so a team that went home before a post that has since closed would have
+	// passed a check for "no crosses" while the curve had long since dropped it.
+	//
+	// Computed here rather than in the client so the highlight cannot drift from either number.
 	Bingo bool `json:"bingo"`
 }
 
@@ -446,10 +451,11 @@ type BingoTeamRow struct {
 // tables to compute. That read was 90% of this endpoint's time and would have been far worse in
 // production — see StartedTeam.
 //
-// Bingo is all ticks and no catches. The `status` per cell comes from resolveTeamStatus, so a
-// cross here and a team in the post list's late/missing/retired columns are the same judgement
-// made once — with the one refinement that a post whose time has not come reads as `pending`
-// rather than as a failure. See bingoCellStatus.
+// The cell statuses come from resolveTeamStatus, so a cross here and a team in the post list's
+// late/missing/retired columns are the same judgement made once — with the one refinement that a
+// post whose time has not come reads as `pending` rather than as a failure. See bingoCellStatus.
+//
+// The row's verdict, though, comes from bingoLoss: see BingoTeamRow.Bingo.
 func bingoRow(p patrulje.StartedTeam, lines []types.CheckgroupID, timing *checkgroupTiming, catches teamCatches, nowUts int64) BingoTeamRow {
 	row := BingoTeamRow{
 		TeamID:            p.TeamID,
@@ -463,7 +469,6 @@ func bingoRow(p patrulje.StartedTeam, lines []types.CheckgroupID, timing *checkg
 	}
 
 	team := startedTeam{TeamID: p.TeamID, ActiveMemberCount: p.ActiveMemberCount}
-	allOnTime := true
 	for _, cgID := range lines {
 		var scan *checkgroupScan
 		if s, ok := timing.Scans(cgID)[p.TeamID]; ok {
@@ -471,23 +476,25 @@ func bingoRow(p patrulje.StartedTeam, lines []types.CheckgroupID, timing *checkg
 		}
 		status, uts := resolveTeamStatus(team, scan)
 		deadline := timing.Deadline(cgID, p.TeamID)
-		status = bingoCellStatus(status, deadline, nowUts)
-		if status != TeamAtCheckgroupOnTime {
-			allOnTime = false
-		}
 		row.Cells = append(row.Cells, BingoCell{
-			Status:       status,
+			Status:       bingoCellStatus(status, deadline, nowUts),
 			ScannedAtUts: uts,
 			DeadlineUts:  deadline,
 		})
 	}
-	// No obligatoriske postlinjer means no card, so nobody has a full one. Without this,
-	// `allOnTime` over an empty list is vacuously true and every row would go green.
-	//
-	// A pending cell is not a tick, so a team mid-race is not bingo yet. That is the intended
-	// reading: the card is not full until the last post is behind them.
-	row.Bingo = len(lines) > 0 && allOnTime && catches.Count == 0
+	// No obligatoriske postlinjer means no card, so nobody can hold one. Without this guard the
+	// condition below is vacuously true over an empty list and every row goes green.
+	row.Bingo = len(lines) > 0 && stillHoldingBingo(bingoLoss(p.TeamID, lines, timing, catches.FirstUts), nowUts)
 	return row
+}
+
+// stillHoldingBingo says whether a team's forfeit has actually arrived yet.
+//
+// Zero is "never forfeited"; a moment still in the future has not happened. The same clamp
+// bingoSeries applies when it plots the curve, so the green rows here and the height of the
+// graph are the same statement.
+func stillHoldingBingo(lostUts, nowUts int64) bool {
+	return lostUts == 0 || lostUts > nowUts
 }
 
 // bingoCellStatus softens `missing` to `pending` for a post that has not closed yet.

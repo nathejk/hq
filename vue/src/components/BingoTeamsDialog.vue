@@ -197,7 +197,7 @@ const bingoCount = computed(() => detail.value?.bingoCount ?? 0)
 
     <template v-if="detail">
       <p class="text-sm text-gray-500 pb-3">
-        <strong>{{ bingoCount }}</strong> af {{ teams.length }} startede patruljer har bingo: igennem alle {{ lines.length }} obligatoriske postlinjer til tiden og aldrig fanget af banditter. De står øverst med grøn baggrund. Hold musen over et felt for tider.
+        <strong>{{ bingoCount }}</strong> af {{ teams.length }} startede patruljer har stadig bingo: til tiden på alle obligatoriske postlinjer, der er lukket, og aldrig fanget af banditter. De står øverst med grøn baggrund. Hold musen over et felt for tider.
       </p>
 
       <!--

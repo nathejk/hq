@@ -309,9 +309,86 @@ func TestBingoRowUnclosedLineIsPendingNotMissing(t *testing.T) {
 	if row.Cells[0].DeadlineUts != 9000 {
 		t.Errorf("deadline %d, want 9000", row.Cells[0].DeadlineUts)
 	}
-	// Pending is not a tick: the card is not full until the last post is behind them.
+}
+
+// A patrol with nothing against it and a post still ahead of it holds its card.
+//
+// The bug this pins: requiring every cell to be a tick reported 0 bingo for a table whose first
+// row had six ticks, no catches and two posts not yet open — while the graph directly above it
+// counted that same patrol. Two definitions of one word on one screen.
+func TestBingoRowPendingLineStillCountsAsBingo(t *testing.T) {
+	p := patrol("7", 4)
+	timing := fixedTiming(
+		map[types.CheckgroupID]int64{"a": 2000, "b": 9000},
+		map[types.CheckgroupID]map[types.TeamID]checkgroupScan{"a": {p.TeamID: onTimeAt(1500)}})
+	row := bingoRow(p, []types.CheckgroupID{"a", "b"}, timing, teamCatches{}, 5000)
+	if !row.Bingo {
+		t.Error("row is not bingo; want bingo: on time where it has been, and the rest is not due yet")
+	}
+}
+
+// And the same patrol loses it once that post shuts with no scan.
+func TestBingoRowLosesBingoWhenThePendingLineCloses(t *testing.T) {
+	p := patrol("7", 4)
+	timing := fixedTiming(
+		map[types.CheckgroupID]int64{"a": 2000, "b": 9000},
+		map[types.CheckgroupID]map[types.TeamID]checkgroupScan{"a": {p.TeamID: onTimeAt(1500)}})
+	row := bingoRow(p, []types.CheckgroupID{"a", "b"}, timing, teamCatches{}, 9500)
 	if row.Bingo {
-		t.Error("row is bingo; want not bingo while a post is still ahead of the team")
+		t.Error("row is bingo; want not bingo once the post has closed unvisited")
+	}
+}
+
+// The second disagreement the cell-based test hid: a cell reads `retired` rather than `missing`
+// for a withdrawn patrol whatever the clock says, so "no crosses" passed a team that went home
+// before a post that has since closed — while the curve had long since dropped it.
+func TestBingoRowWithdrawnTeamPastAClosedPostIsNotBingo(t *testing.T) {
+	p := patrol("7", 0)
+	timing := fixedTiming(map[types.CheckgroupID]int64{"a": 2000}, nil)
+	row := bingoRow(p, []types.CheckgroupID{"a"}, timing, teamCatches{}, 5000)
+	if row.Cells[0].Status != TeamAtCheckgroupRetired {
+		t.Fatalf("cell status = %q, want %q — the premise of this test", row.Cells[0].Status, TeamAtCheckgroupRetired)
+	}
+	if row.Bingo {
+		t.Error("row is bingo; want not bingo: the post closed and this patrol was never there")
+	}
+}
+
+// The table's verdict and the curve's height are the same statement, so they must agree team by
+// team. Asserted directly, because they were computed two different ways and silently diverged.
+func TestBingoRowAgreesWithTheCurve(t *testing.T) {
+	const now int64 = 5000
+	timing := fixedTiming(
+		map[types.CheckgroupID]int64{"a": 2000, "b": 9000},
+		map[types.CheckgroupID]map[types.TeamID]checkgroupScan{
+			"a": {"t1": onTimeAt(1500), "t3": onTimeAt(1500)},
+			"b": {"t3": onTimeAt(4000)},
+		})
+	lines := []types.CheckgroupID{"a", "b"}
+
+	cases := []struct {
+		id      types.TeamID
+		active  int
+		catches teamCatches
+	}{
+		{"t1", 4, teamCatches{}},                         // pending at b
+		{"t2", 4, teamCatches{}},                         // missed a
+		{"t3", 4, teamCatches{Count: 1, FirstUts: 3000}}, // caught
+		{"t4", 0, teamCatches{}},                         // withdrawn
+	}
+	for _, c := range cases {
+		team := patrulje.StartedTeam{TeamID: c.id, ActiveMemberCount: c.active}
+		row := bingoRow(team, lines, timing, c.catches, now)
+
+		// The curve's answer for the same team at the same moment: one team, started before the
+		// window, and whether it is still standing at `now`.
+		lost := bingoLoss(c.id, lines, timing, c.catches.FirstUts)
+		points := bingoSeries([]bingoTeam{{TeamID: c.id, StartedUts: 1000, LostUts: lost}}, 1000, 100000, now)
+		onCurve := points[len(points)-1].Count == 1
+
+		if row.Bingo != onCurve {
+			t.Errorf("%s: table says bingo=%v, curve says %v", c.id, row.Bingo, onCurve)
+		}
 	}
 }
 

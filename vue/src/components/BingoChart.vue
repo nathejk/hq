@@ -120,7 +120,7 @@ function onMove(event: MouseEvent) {
     <div class="flex flex-wrap items-baseline justify-between gap-2 mb-2">
       <div>
         <span class="block uppercase text-teal-600">Bingo-patruljer</span>
-        <span class="text-xs text-gray-500"> Startet, igennem alle obligatoriske postlinjer til tiden, aldrig fanget af banditter </span>
+        <span class="text-xs text-gray-500"> Stadig til tiden på alle obligatoriske postlinjer, der er lukket, og aldrig fanget af banditter </span>
         <!--
           A real button, not a styled span: this opens a dialog, so it has to be reachable by
           keyboard and announced as an action.
