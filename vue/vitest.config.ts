@@ -25,6 +25,19 @@ import { PrimeVueResolver } from '@primevue/auto-import-resolver'
 // in with a `@vitest-environment jsdom` docblock at the top of the file — see
 // `src/components/kort/KortSettingsDialog.spec.ts`.
 export default defineConfig({
+  // Vitest's own dep cache, kept out of the dev server's.
+  //
+  // Both default to `node_modules/.vite`, and in this repo that directory is a *shared Docker
+  // volume* (`ui-node_modules` in docker-compose.yml): the running `ui` service and any
+  // `docker compose run ui` see the same files. So running the suite while the dev server is
+  // up had both optimizers writing the same chunk filenames and the same `_metadata.json`,
+  // leaving a cache that is internally inconsistent — the dev server then serves a `vue`
+  // chunk and a `vue-router` chunk built by different passes, and the app dies at boot with
+  // "isFunction is not a function" inside vue-router. White page, and nothing in the source
+  // to explain it.
+  //
+  // Separate directories make the two independent, so the tests can be run at any time.
+  cacheDir: 'node_modules/.vite-vitest',
   // Cast because vitest 2 ships its own pinned copy of Vite, so `@vitejs/plugin-vue` (built against the
   // project's Vite 6) and `vitest/config` disagree about the `Plugin` type even though they are the same
   // plugin at runtime. Contained to this one line, and removable when vitest is upgraded to a version
