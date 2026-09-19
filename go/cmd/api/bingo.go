@@ -263,15 +263,14 @@ type teamCatches struct {
 // than "Scannet af" (see resolveScanner). Crew and gøgler scans at posts are not
 // catches and must not cost a team its card.
 //
-// # Why the year comes from the patrol and not from the scan
+// # Why the year comes from the patrol as well as the scan
 //
-// `scan.year` is NULL on every row: the projection's INSERT never sets it (see
-// table/scan/consumer.go), and the column is nullable with no default. So a
-// `WHERE scan.year = ?` matches nothing and returns silently empty — which is exactly what
-// the first version of this did, reporting zero catches for everybody against a database
-// holding thousands. Scoping through `patrulje`, which *is* year-stamped, is both correct
-// and the only thing available. checkgroupTimings gets away with no year filter at all for
-// the same underlying reason: it scopes through the checkgroup instead.
+// `scan.year` is now written by the projection (see table/scan/consumer.go), which is what
+// makes the table's `(year, teamId, uts)` index usable — without it every one of these
+// queries was a full table scan, and this one cost half a second at 100k scans. The join to
+// `patrulje` is kept even so: it is what restricts the count to *this year's* patruljer
+// rather than to whatever the scan row claims, and it is the scoping that was correct before
+// the column was populated. Belt and braces over a column that was silently NULL for years.
 //
 // The seniors are reduced to DISTINCT memberIds before the join, which is not tidiness:
 // `senior` is keyed (year, memberId), so a senior who attends two years has two rows, and
@@ -283,9 +282,9 @@ func (app *application) banditCatches(ctx context.Context, year types.YearSlug) 
 			JOIN patrulje p ON p.teamId = s.teamId AND LOWER(p.year) = LOWER(?)
 			JOIN (SELECT DISTINCT memberId FROM senior WHERE LOWER(year) = LOWER(?)) sen
 				ON sen.memberId = s.scannerId
-			WHERE s.uts > 0
+			WHERE s.year = ? AND s.uts > 0
 			GROUP BY s.teamId`,
-		string(year), string(year))
+		string(year), string(year), string(year))
 	if err != nil {
 		return nil, err
 	}
