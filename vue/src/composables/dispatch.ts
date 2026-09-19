@@ -18,7 +18,7 @@ import { severityLabel, severityTagSeverity, severityOptions } from './severity'
 // (task 112): two race-night desks should not have two words for urgent.
 export { severityLabel as priorityLabel, severityTagSeverity as priorityTagSeverity, severityOptions as priorityOptions }
 
-export type TaskKind = 'pickup' | 'transport' | 'collection' | 'delivery' | 'samarit'
+export type TaskKind = 'pickup' | 'transport' | 'collection' | 'delivery' | 'samarit' | 'guides'
 export type TaskState = 'queued' | 'planned' | 'underway' | 'done' | 'cancelled'
 export type TourState = 'planned' | 'underway' | 'completed' | 'cancelled'
 export type PlaceKind = 'checkpoint' | 'lok' | 'hq' | 'text'
@@ -152,6 +152,7 @@ const kindLabels: Record<string, string> = {
   collection: 'Indsamling',
   delivery: 'Levering',
   samarit: 'Samaritter',
+  guides: 'Guides',
 }
 
 export const kindLabel = (kind: string) => kindLabels[kind] ?? kind
@@ -165,6 +166,7 @@ const kindIcons: Record<string, string> = {
   collection: 'pi pi-download',
   delivery: 'pi pi-upload',
   samarit: 'pi pi-heart-fill',
+  guides: 'pi pi-flag-fill',
 }
 
 export const kindIcon = (kind: string) => kindIcons[kind] ?? 'pi pi-box'
@@ -270,15 +272,16 @@ export const placeLine = (place?: Place) => {
  * The one line that says where a task happens.
  *
  * Two places joined by an arrow for everything that moves — and a single place for a samaritter
- * call-out, which moves nothing. Rendering its empty dropoff would put "→ Adresse" on the board,
- * a destination nobody drives to and the operator would have to learn to ignore.
+ * call-out or a Guides drive, which deliver nothing back. Rendering an empty dropoff would put
+ * "→ Adresse" on the board, a destination nobody drives to and the operator would have to learn to
+ * ignore.
  */
 export const taskRoute = (task: Pick<Task, 'kind' | 'pickup' | 'dropoff'>) => {
   const from = placeLine(task.pickup)
   // A place with no label and no kind but `text` is one nobody filled in — which is exactly what
   // a call-out's dropoff is, and what an aborted edit of any other kind leaves behind.
   const unset = !task.dropoff?.label && (task.dropoff?.kind ?? 'text') === 'text'
-  if (task.kind === 'samarit' || unset) return from
+  if (task.kind === 'samarit' || task.kind === 'guides' || unset) return from
   return `${from} → ${placeLine(task.dropoff)}`
 }
 
@@ -316,8 +319,9 @@ export const samePlace = (a?: Place, b?: Place) => {
  * and a single stop would make "when will they be collected" and "when will they arrive" the same
  * number.
  *
- * A samaritter call-out becomes **one** stop with role `action`: it moves nothing, so a second
- * stop would be a place the car never goes and a time the desk would be asked about.
+ * A samaritter call-out or a Guides drive becomes **one** stop with role `action`: the car goes to
+ * that one place and brings nothing back, so a second stop would be a place it never goes and a
+ * time the desk would be asked about.
  *
  * A task whose place nobody filled in still gets a stop, labelled with what it is for — the plan
  * is allowed to be vaguer than the map, and the driver is on the phone anyway.
@@ -333,6 +337,7 @@ export const stopsForTask = (task: Task): TourStop[] => {
     tasks: [{ taskId: task.id, role }],
   })
   if (task.kind === 'samarit') return [stop('Tilses', task.pickup, 'action')]
+  if (task.kind === 'guides') return [stop('Sættes af', task.pickup, 'action')]
   return [stop('Hentes', task.pickup, 'load'), stop('Afleveres', task.dropoff, 'unload')]
 }
 
@@ -444,6 +449,9 @@ export const ALLOWANCE_MINUTES: Record<TaskKind, number> = {
   // A call-out is the drive plus looking somebody over, which is not a stop you tick off in
   // passing: a blister gets cleaned and taped where the scout is standing.
   samarit: 30,
+  // Guides are set down where they are needed and the car drives on — the drive, plus long enough
+  // to hand over what they are standing there to do.
+  guides: 25,
 }
 
 /** Units on duty at an instant. */

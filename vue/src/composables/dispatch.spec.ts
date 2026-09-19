@@ -319,6 +319,18 @@ describe('planning a task onto a tour', () => {
     expect(stops.filter((s) => s.place.label === 'Hentes')).toHaveLength(2)
   })
 
+  it('gives a Guides drive one stop too — the crew is set down and nothing comes back', () => {
+    const drive = task({
+      id: 't-5',
+      kind: 'guides',
+      pickup: { kind: 'checkpoint', refId: 'cp-3', label: 'Post 3' },
+      dropoff: { kind: 'text', label: '' },
+    })
+    const stops = planTaskOntoStops([hqStop()], drive)
+    expect(stops.map((s) => s.place.label)).toEqual(['HQ', 'Post 3'])
+    expect(stops[1].tasks).toEqual([{ taskId: 't-5', role: 'action' }])
+  })
+
   it('gives a samaritter call-out one stop, and reuses a place already on the tour', () => {
     const callout = task({
       id: 't-4',

@@ -87,11 +87,17 @@ const (
 	// so a samaritter call-out is not a pickup and cannot record people aboard. If they
 	// then have to come along, that is a pickup, and a second task says so.
 	KindSamarit Kind = "samarit"
+	// KindGuides is a drive for the Guides crew: guides taken out to where they are needed,
+	// a post to man or a crossing to stand at. Named after the crew rather than after the
+	// cargo, as the desk names it, and its own kind for the same reason KindSamarit is one —
+	// the crew is set down and the car drives on, so there is one end to plan, and a night's
+	// board should show which crew its drives were spent on.
+	KindGuides Kind = "guides"
 )
 
 func (k Kind) Valid() bool {
 	switch k {
-	case KindPickup, KindTransport, KindCollection, KindDelivery, KindSamarit:
+	case KindPickup, KindTransport, KindCollection, KindDelivery, KindSamarit, KindGuides:
 		return true
 	}
 	return false
