@@ -548,6 +548,62 @@ func (app *application) checkgroupStats(ctx context.Context, year types.YearSlug
 	return stats, len(teams), nil
 }
 
+// CheckpointStats is how many distinct teams were seen at one post.
+//
+// Per post, not per line: a line's four numbers say whether a team came through it at
+// all, which on a multi-post line hides that one post is carrying everybody and another
+// has seen nobody — either because its shift is unmanned or because the teams are not
+// finding it.
+type CheckpointStats struct {
+	CheckgroupID types.CheckgroupID `json:"checkgroupId"`
+	CheckpointID types.CheckpointID `json:"checkpointId"`
+	TeamCount    int                `json:"teamCount"`
+}
+
+// checkpointStats counts the distinct teams scanned at each post of the given lines.
+//
+// Attribution is the same join as checkgroupTimings — a scan belongs to the post whose
+// registered shift the scanner was on at that moment — so these numbers cannot describe
+// a different set of scans than the line's own. Timeliness plays no part: the question
+// here is where the scans landed, not whether they were in time.
+//
+// Posts with no scans are absent from the result; the caller knows the full post list
+// and reads a missing entry as zero.
+func (app *application) checkpointStats(ctx context.Context, cgIDs []types.CheckgroupID) ([]CheckpointStats, error) {
+	if len(cgIDs) == 0 {
+		return []CheckpointStats{}, nil
+	}
+	query := `
+		SELECT cpt.checkgroupId, cpt.id, COUNT(DISTINCT s.teamId)
+		FROM scan s
+		JOIN checkpersonnel cpn ON s.scannerId = cpn.userId AND s.uts >= cpn.startUts AND s.uts <= cpn.endUts
+		JOIN checkpoint cpt ON cpn.checkpointId = cpt.id
+		WHERE cpt.checkgroupId IN (?` + strings.Repeat(",?", len(cgIDs)-1) + `)
+		GROUP BY cpt.checkgroupId, cpt.id`
+	args := make([]any, len(cgIDs))
+	for i, id := range cgIDs {
+		args[i] = string(id)
+	}
+	rows, err := app.db.DB().QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	stats := []CheckpointStats{}
+	for rows.Next() {
+		var s CheckpointStats
+		if err := rows.Scan(&s.CheckgroupID, &s.CheckpointID, &s.TeamCount); err != nil {
+			return nil, err
+		}
+		stats = append(stats, s)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return stats, nil
+}
+
 // checkgroupTeamsHandler serves every started team's standing at one checkgroup.
 //
 // A dedicated endpoint rather than folding the rows into the post list: seventy-six

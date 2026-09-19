@@ -27,6 +27,7 @@ const scanners = ref([])
 const checkgroups = ref([])
 const startedTeamCount = ref(0)
 const checkgroupStats = ref([])
+const checkpointStats = ref([])
 const checkgroup = (id) => checkgroups.value.filter((cg) => cg.id == id).shift()
 const edit = ref({ controls: [] })
 const expandedPanels = ref(new Set())
@@ -97,7 +98,8 @@ const { data: postData, error, refresh } = useLiveResource(
       assignedPersonnel: allPersonnel,
       personnel: rsp.data.personnel || [],
       startedTeamCount: rsp.data.startedTeamCount || 0,
-      checkgroupStats: rsp.data.checkgroupStats || []
+      checkgroupStats: rsp.data.checkgroupStats || [],
+      checkpointStats: rsp.data.checkpointStats || []
     }
   },
   { dependsOn: ['checkgroup', 'checkgroups', 'checkpoint', 'checkpersonnel', 'qr', 'patrulje', 'spejder', 'crewmember', 'crew', 'section', 'friend'] }
@@ -114,6 +116,7 @@ watch(
     personnel.value = payload.personnel
     startedTeamCount.value = payload.startedTeamCount
     checkgroupStats.value = payload.checkgroupStats
+    checkpointStats.value = payload.checkpointStats
     scanners.value = [
       { name: 'Søren Sølvmus', id: 1 },
       { name: 'Hanne Sjakke', id: 2 }
@@ -212,6 +215,20 @@ const meterForCheckgroup = (cgId) => {
 }
 const meterTotal = (m) => m.reduce((s, o) => s + o.value, 0)
 const percent = (f, t) => (t === 0 ? 0 : Math.round((100 * f) / t))
+
+// How the line's scans are spread over its posts.
+//
+// The denominator is the line's own busiest post, not the number of started teams: a
+// post is read against its neighbours here, and against the total there is no useful
+// reading anyway once teams are still on their way. So the busiest post is 100% and the
+// rest are relative to it, which is what makes an unmanned or unfound post obvious.
+const checkpointTeamCount = (cpId) => {
+  const s = checkpointStats.value.find((s) => s.checkpointId === cpId)
+  return s ? s.teamCount : 0
+}
+const checkpointBusiest = (checkgroup) =>
+  (checkgroup.checkpoints || []).reduce((max, cp) => Math.max(max, checkpointTeamCount(cp.id)), 0)
+const checkpointShare = (checkgroup, cpId) => percent(checkpointTeamCount(cpId), checkpointBusiest(checkgroup))
 
 // The line whose teams are being listed, and which of its four numbers was clicked.
 //
@@ -326,6 +343,26 @@ const toggle = (event, checkgroup) => {
 
             <div class="grid grid-cols-3 gap-4 pt-3">
               <Fieldset v-for="cp in element.checkpoints" :key="cp.id" :legend="cp.name" class="pb-3 min-h-32">
+                <!--
+                  The post's share of the line's scans, on top: whether this post is
+                  pulling its weight is the first thing to know about it, and the
+                  staffing below is the explanation when it is not.
+                -->
+                <div class="pb-2 mb-2 border-b border-gray-200">
+                  <div class="flex items-center justify-between">
+                    <span class="text-sm font-semibold text-gray-600">Scanninger</span>
+                    <span class="text-sm text-gray-500">
+                      <span class="font-bold">{{ checkpointTeamCount(cp.id) }}</span>
+                      hold ({{ checkpointShare(element, cp.id) }}%)
+                    </span>
+                  </div>
+                  <ProgressBar
+                    :value="checkpointShare(element, cp.id)"
+                    :showValue="false"
+                    class="mt-1 h-1.5"
+                    v-tooltip.bottom="`${checkpointTeamCount(cp.id)} hold scannet her, mod ${checkpointBusiest(element)} på postlinjens travleste post`"
+                  />
+                </div>
                 <!-- div class="grid grid-cols-3 controlpoint p-2">
                   <div class="col">{{ cp.name }}</div>
                   <div class="col text-center">{{ dddhhmm(cp.openFrom) }} <i class="far fa-clock mx-1"></i> {{ hhmm(cp.openUntil) }}</div>

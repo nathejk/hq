@@ -66,6 +66,13 @@ func (app *application) listCheckgroupsHandler(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// Where the scans landed within each line, for the per-post distribution.
+	checkpointStats, err := app.checkpointStats(r.Context(), filter.CheckgroupIDs)
+	if err != nil {
+		app.ServerErrorResponse(w, r, err)
+		return
+	}
+
 	envelope := jsonapi.Envelope{
 		//"metadata": metadata,
 		"checkgroups":       checkgroups,
@@ -74,6 +81,7 @@ func (app *application) listCheckgroupsHandler(w http.ResponseWriter, r *http.Re
 		"personnel":         availablePersonnel,
 		"startedTeamCount":  startedTeamCount,
 		"checkgroupStats":   checkgroupStats,
+		"checkpointStats":   checkpointStats,
 	}
 	err = app.WriteJSON(w, http.StatusOK, envelope, nil)
 	if err != nil {

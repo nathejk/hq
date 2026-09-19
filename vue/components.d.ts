@@ -62,6 +62,7 @@ declare module 'vue' {
     PatruljePhoto: typeof import('./src/components/PatruljePhoto.vue')['default']
     PatruljePhotoDialog: typeof import('./src/components/PatruljePhotoDialog.vue')['default']
     PositionIndicator: typeof import('./src/components/PositionIndicator.vue')['default']
+    ProgressBar: typeof import('primevue/progressbar')['default']
     ProgressSpinner: typeof import('primevue/progressspinner')['default']
     RadioButton: typeof import('primevue/radiobutton')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
