@@ -24,5 +24,11 @@ CREATE TABLE IF NOT EXISTS patrulje (
     remark TEXT NOT NULL DEFAULT "",
     remarkSeverity VARCHAR(20) NOT NULL DEFAULT "",
 
+    -- Fototilladelse: who refused public photographs after the race. photoRefusedTeam is
+    -- "somebody did, we don't know who"; photoRefusedMembers the comma-separated member ids
+    -- when we do. Both empty is the default: everybody accepts.
+    photoRefusedTeam BOOLEAN NOT NULL DEFAULT FALSE,
+    photoRefusedMembers TEXT NOT NULL DEFAULT "",
+
     PRIMARY KEY (teamId)
 );

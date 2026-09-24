@@ -22,6 +22,7 @@ func (c *consumer) Consumes() (subjs []stream.Subject) {
 		subject.FromStr("NATHEJK:*.patrulje.*.numberassigned"),
 		subject.FromStr("NATHEJK:*.patrulje.*.started"),
 		subject.FromStr("NATHEJK:*.patrulje.*.remark.set"),
+		subject.FromStr("NATHEJK:*.patrulje.*.photoconsented"),
 	}
 }
 
@@ -43,6 +44,18 @@ func (c *consumer) HandleMessage(msg stream.Message) error {
 		query := "UPDATE patrulje SET remark=%q, remarkSeverity=%q WHERE teamId=%q"
 		args := []any{body.Remark, body.Severity, body.TeamID}
 		return c.w.Consume(fmt.Sprintf(query, args...))
+
+	case msg.Subject().Match("NATHEJK.*.patrulje.*.photoconsented"):
+		var body PhotoConsentSet
+		if err := msg.Body(&body); err != nil {
+			return err
+		}
+		members := JoinMemberIDs(body.MemberIDs)
+		if body.TeamRefused {
+			members = ""
+		}
+		query := "UPDATE patrulje SET photoRefusedTeam=%t, photoRefusedMembers=%q WHERE teamId=%q"
+		return c.w.Consume(fmt.Sprintf(query, body.TeamRefused, members, body.TeamID))
 
 	case msg.Subject().Match("NATHEJK.*.patrulje.*.signedup"):
 		var body messages.NathejkTeamSignedUp

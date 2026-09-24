@@ -60,6 +60,8 @@ func (app *application) routes() http.Handler {
 	// of the team PUT: it is HQ's annotation, not the team's own data, and the two are
 	// edited by different people at different times.
 	router.HandlerFunc(http.MethodPut, "/api/patrulje/:id/remark", app.setPatruljeRemarkHandler)
+	// Fototilladelse: who refuses public photographs after the race.
+	router.HandlerFunc(http.MethodPut, "/api/patrulje/:id/photoconsent", app.setPatruljePhotoConsentHandler)
 	router.HandlerFunc(http.MethodDelete, "/api/patrulje/:id/remark", app.clearPatruljeRemarkHandler)
 	router.HandlerFunc(http.MethodGet, "/api/patrulje/:id/scans", app.scansPatruljeHandler)
 	// Photographs of the patrols (foto's PRD 001). hq projects foto's events and serves

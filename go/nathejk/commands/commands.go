@@ -90,6 +90,7 @@ type Commands struct {
 	Patrulje interface {
 		SetRemark(ctx context.Context, teamID types.TeamID, remark, severity string) error
 		ClearRemark(ctx context.Context, teamID types.TeamID) error
+		SetPhotoConsent(ctx context.Context, teamID types.TeamID, teamRefused bool, memberIDs []types.MemberID) error
 	}
 	Lok interface {
 		UpdateLok(types.LokID, string, int, []types.UserID, []types.TeamID) error

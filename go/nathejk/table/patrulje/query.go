@@ -166,13 +166,16 @@ func (q *querier) GetByID(ctx context.Context, teamID types.TeamID) (*Patrulje, 
 	}
 
 	// year, remark and remarkSeverity are selected because the remark command reads this
-	// row: it needs the note to dirty-check against, and the year to publish onto the
+	// row (and the photo consent columns because the Fototilladelse command does, likewise):
+	// it needs the note to dirty-check against, and the year to publish onto the
 	// patrol's own year rather than whatever the caller happens to think is current.
-	query := `SELECT p.teamId, p.year, p.teamNumber, p.name, p.groupName, p.korps, p.liga, p.memberCount, p.activeMemberCount, p.signupStatus, p.remark, p.remarkSeverity
+	query := `SELECT p.teamId, p.year, p.teamNumber, p.name, p.groupName, p.korps, p.liga, p.memberCount, p.activeMemberCount, p.signupStatus, p.remark, p.remarkSeverity,
+			p.photoRefusedTeam, p.photoRefusedMembers
 		FROM patrulje p
 		JOIN patruljestatus ps ON p.teamId = ps.teamID
 		WHERE p.teamId = ?`
 	var p Patrulje
+	var photoRefusedMembers string
 	err := q.db.QueryRow(query, teamID).Scan(
 		&p.TeamID,
 		&p.Year,
@@ -186,6 +189,8 @@ func (q *querier) GetByID(ctx context.Context, teamID types.TeamID) (*Patrulje, 
 		&p.SignupStatus,
 		&p.Remark,
 		&p.RemarkSeverity,
+		&p.PhotoRefusedTeam,
+		&photoRefusedMembers,
 	)
 	if err != nil {
 		switch {
@@ -195,6 +200,7 @@ func (q *querier) GetByID(ctx context.Context, teamID types.TeamID) (*Patrulje, 
 			return nil, err
 		}
 	}
+	p.PhotoRefusedMemberIDs = SplitMemberIDs(photoRefusedMembers)
 	return &p, nil
 }
 

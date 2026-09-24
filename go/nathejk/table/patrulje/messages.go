@@ -1,6 +1,10 @@
 package patrulje
 
-import "github.com/nathejk/shared-go/types"
+import (
+	"strings"
+
+	"github.com/nathejk/shared-go/types"
+)
 
 // The operational note HQ can attach to a patrulje for banditter and postmandskab.
 //
@@ -56,4 +60,44 @@ type RemarkSet struct {
 	TeamID   types.TeamID `json:"teamId"`
 	Remark   string       `json:"remark"`
 	Severity string       `json:"severity"`
+}
+
+// PhotoConsentSet is the event body for "Fototilladelse": who on the patrol has refused
+// public photographs of themselves after the race, in full.
+//
+// Accepting is the default, so a patrol that never had this set is one where everybody
+// accepts. Refusal is recorded at one of two resolutions, because HQ is often told "one of
+// them doesn't want to be in the pictures" without being told which:
+//
+//   - TeamRefused: somebody on the patrol refused, and we do not know who. The whole
+//     patrol must then be treated as refusing, so MemberIDs is meaningless and is sent empty.
+//   - MemberIDs: exactly these members refused; the rest of the patrol accepts.
+//
+// State, not a delta, for the same reason as RemarkSet.
+type PhotoConsentSet struct {
+	TeamID      types.TeamID     `json:"teamId"`
+	TeamRefused bool             `json:"teamRefused"`
+	MemberIDs   []types.MemberID `json:"memberIds"`
+}
+
+// JoinMemberIDs is how PhotoConsentSet.MemberIDs is stored in its column.
+func JoinMemberIDs(ids []types.MemberID) string {
+	s := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if id != "" {
+			s = append(s, string(id))
+		}
+	}
+	return strings.Join(s, ",")
+}
+
+// SplitMemberIDs is JoinMemberIDs' inverse. Never nil, so it serialises as [].
+func SplitMemberIDs(s string) []types.MemberID {
+	ids := []types.MemberID{}
+	for _, id := range strings.Split(s, ",") {
+		if id != "" {
+			ids = append(ids, types.MemberID(id))
+		}
+	}
+	return ids
 }

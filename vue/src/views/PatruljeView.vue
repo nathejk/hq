@@ -382,6 +382,59 @@ const deleteRemark = async () => {
     remarkSaving.value = false
   }
 }
+
+// --- Fototilladelse ---
+//
+// Who refuses public photographs after the race. Accepting is the default, so nothing checked
+// means everybody accepts. The patrol's own box is tri-state and derived, not stored:
+//   - checked: somebody refused and we don't know who (teamRefused) — the members are greyed,
+//     since which of them is unknown;
+//   - indeterminate: specific members refused, and are checked below;
+//   - unchecked: nobody refused.
+const settingsMenu = ref()
+const settingsItems = [
+  { label: 'Fototilladelse', icon: 'pi pi-camera', command: () => openPhotoConsent() },
+]
+const toggleSettings = (event) => settingsMenu.value.toggle(event)
+
+const photoDlg = ref(null)
+const openPhotoConsent = () => {
+  photoDlg.value = {
+    teamRefused: !!patrulje.value.photoRefusedTeam,
+    memberIds: [...(patrulje.value.photoRefusedMemberIds ?? [])],
+    saving: false,
+  }
+}
+const photoTeamState = computed(() => {
+  if (!photoDlg.value) return false
+  if (photoDlg.value.teamRefused) return true
+  return photoDlg.value.memberIds.length ? null : false
+})
+// Clicking the patrol's box from either unchecked or indeterminate means "the patrol refuses,
+// whoever it is"; clicking it when checked returns to everybody accepting.
+const togglePhotoTeam = () => {
+  const d = photoDlg.value
+  if (d.teamRefused) {
+    photoDlg.value = { ...d, teamRefused: false, memberIds: [] }
+  } else {
+    photoDlg.value = { ...d, teamRefused: true }
+  }
+}
+const savePhotoConsent = async () => {
+  const d = photoDlg.value
+  photoDlg.value = { ...d, saving: true }
+  try {
+    await http.put('/patrulje/' + props.teamId + '/photoconsent', {
+      teamRefused: d.teamRefused,
+      memberIds: d.teamRefused ? [] : d.memberIds,
+    })
+    photoDlg.value = null
+    await refresh()
+  } catch (e) {
+    toast.add({ severity: 'error', summary: 'Fototilladelse blev ikke gemt', detail: e?.message, life: 5000 })
+    photoDlg.value = { ...d, saving: false }
+  }
+}
 </script>
 
 <template>
@@ -401,8 +454,16 @@ const deleteRemark = async () => {
             <!-- The patrol's photograph, from the covers resource shared with the list.
                  Clicking it opens every picture of this team, with the cover picker. -->
             <PatruljePhoto :teamId="teamId" :teamName="patrulje.name" size="lg" />
-            <div>
-                <h1 class="font-nathejk text-2xl">{{ patrulje.number || '×' }} - {{ patrulje.name }}</h1>
+            <div class="flex-1">
+                <div class="flex items-center gap-2">
+                    <h1 class="font-nathejk text-2xl">{{ patrulje.number || '×' }} - {{ patrulje.name }}</h1>
+                    <Tag v-if="patrulje.photoRefusedTeam || patrulje.photoRefusedMemberIds?.length"
+                         severity="warn" icon="pi pi-camera" value="Ingen fototilladelse"
+                         class="cursor-pointer" @click="openPhotoConsent" />
+                    <Button icon="pi pi-cog" text rounded class="ml-auto" aria-label="Indstillinger"
+                            aria-haspopup="true" aria-controls="patrulje_settings_menu" @click="toggleSettings" />
+                    <Menu ref="settingsMenu" id="patrulje_settings_menu" :model="settingsItems" popup />
+                </div>
 
                 <Button label="Tilmelding" icon="pi pi-external-link" iconPos="right" @click="linkToSignUp" />
             </div>
@@ -731,6 +792,35 @@ const deleteRemark = async () => {
                     <Button label="Flyt" :disabled="!moveDlg.target || moveDlg.pendingTransfer"
                             :loading="moveDlg.submitting"
                             @click="submitMove" />
+                </div>
+            </template>
+        </Dialog>
+
+        <!-- Fototilladelse. A checked box means "no public photographs of me after the race". -->
+        <Dialog v-if="photoDlg" :visible="true" modal header="Fototilladelse"
+                :style="{ width: '28rem' }" @update:visible="photoDlg = null">
+            <p class="mb-3 text-sm text-gray-600">
+                Afkryds dem der <strong>ikke</strong> ønsker offentlige billeder af sig selv efter løbet.
+                Ved vi ikke hvem, afkrydses patruljen.
+            </p>
+            <div class="flex items-center gap-2 font-semibold">
+                <Checkbox inputId="photo_team" binary
+                          :modelValue="photoTeamState === true" :indeterminate="photoTeamState === null"
+                          @update:modelValue="togglePhotoTeam" />
+                <label for="photo_team">{{ patrulje.number || '×' }} - {{ patrulje.name }}</label>
+            </div>
+            <div class="ml-7 mt-2 flex flex-col gap-1">
+                <div v-for="m in spejdere" :key="m.memberId" class="flex items-center gap-2"
+                     :class="photoDlg.teamRefused ? 'text-gray-400' : ''">
+                    <Checkbox :inputId="'photo_' + m.memberId" v-model="photoDlg.memberIds" :value="m.memberId"
+                              :disabled="photoDlg.teamRefused" />
+                    <label :for="'photo_' + m.memberId">{{ m.name }}</label>
+                </div>
+            </div>
+            <template #footer>
+                <div class="flex justify-end gap-2">
+                    <Button label="Annuller" severity="secondary" text @click="photoDlg = null" />
+                    <Button label="Gem" :loading="photoDlg.saving" @click="savePhotoConsent" />
                 </div>
             </template>
         </Dialog>

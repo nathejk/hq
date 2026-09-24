@@ -3,6 +3,7 @@ package data
 import (
 	"database/sql"
 	"errors"
+	"strings"
 
 	"github.com/nathejk/shared-go/types"
 )
@@ -43,6 +44,10 @@ type Patrulje struct {
 	// was ever written. See nathejk/table/patrulje/messages.go.
 	Remark         string `json:"remark"`
 	RemarkSeverity string `json:"remarkSeverity"`
+
+	// Fototilladelse — see nathejk/table/patrulje.PhotoConsentSet.
+	PhotoRefusedTeam      bool             `json:"photoRefusedTeam"`
+	PhotoRefusedMemberIDs []types.MemberID `json:"photoRefusedMemberIds"`
 }
 type Klan struct {
 	ID          types.TeamID       `json:"id"`
@@ -75,11 +80,13 @@ func (m TeamModel) GetPatrulje(teamID types.TeamID) (*Patrulje, error) {
 	}
 
 	query := `SELECT p.teamId, p.teamNumber, p.name, p.groupName, p.korps, p.liga, p.memberCount,
-			p.activeMemberCount, p.signupStatus, p.startedUts, p.remark, p.remarkSeverity
+			p.activeMemberCount, p.signupStatus, p.startedUts, p.remark, p.remarkSeverity,
+			p.photoRefusedTeam, p.photoRefusedMembers
 		FROM patrulje p
 		JOIN patruljestatus ps ON p.teamId = ps.teamID
 		WHERE p.teamId = ?`
 	var p Patrulje
+	var photoRefusedMembers string
 	err := m.DB.QueryRow(query, teamID).Scan(
 		&p.ID,
 		&p.Number,
@@ -93,6 +100,8 @@ func (m TeamModel) GetPatrulje(teamID types.TeamID) (*Patrulje, error) {
 		&p.StartedUts,
 		&p.Remark,
 		&p.RemarkSeverity,
+		&p.PhotoRefusedTeam,
+		&photoRefusedMembers,
 	)
 	if err != nil {
 		switch {
@@ -100,6 +109,14 @@ func (m TeamModel) GetPatrulje(teamID types.TeamID) (*Patrulje, error) {
 			return nil, ErrRecordNotFound
 		default:
 			return nil, err
+		}
+	}
+	// Comma-separated in the column (see nathejk/table/patrulje.JoinMemberIDs); never nil,
+	// so the client always gets an array.
+	p.PhotoRefusedMemberIDs = []types.MemberID{}
+	for _, id := range strings.Split(photoRefusedMembers, ",") {
+		if id != "" {
+			p.PhotoRefusedMemberIDs = append(p.PhotoRefusedMemberIDs, types.MemberID(id))
 		}
 	}
 	return &p, nil

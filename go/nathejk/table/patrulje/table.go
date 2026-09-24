@@ -46,6 +46,11 @@ type Patrulje struct {
 	// loudly to show it, and whether it is in force at all. See messages.go.
 	Remark         string `json:"remark"`
 	RemarkSeverity string `json:"remarkSeverity"`
+
+	// PhotoRefusedTeam and PhotoRefusedMemberIDs are "Fototilladelse": who has refused
+	// public photographs after the race. See PhotoConsentSet in messages.go.
+	PhotoRefusedTeam      bool             `json:"photoRefusedTeam"`
+	PhotoRefusedMemberIDs []types.MemberID `json:"photoRefusedMemberIds"`
 }
 
 type table struct {
@@ -106,6 +111,11 @@ var schemaMigrations = []string{
 	// the two columns above: an existing database gains nothing from table.sql.
 	`ALTER TABLE patrulje ADD COLUMN IF NOT EXISTS remark TEXT NOT NULL DEFAULT ""`,
 	`ALTER TABLE patrulje ADD COLUMN IF NOT EXISTS remarkSeverity VARCHAR(20) NOT NULL DEFAULT ""`,
+
+	// Fototilladelse. Members are a comma-separated id list rather than a table of their
+	// own: it is read only ever with the patrol row, and is restated whole by every event.
+	`ALTER TABLE patrulje ADD COLUMN IF NOT EXISTS photoRefusedTeam BOOLEAN NOT NULL DEFAULT FALSE`,
+	`ALTER TABLE patrulje ADD COLUMN IF NOT EXISTS photoRefusedMembers TEXT NOT NULL DEFAULT ""`,
 }
 
 //go:embed table.sql

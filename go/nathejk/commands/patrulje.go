@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/jrgensen/stream"
 	"github.com/jrgensen/stream/subject"
@@ -94,4 +95,44 @@ func (c *patruljeCommander) ClearRemark(ctx context.Context, teamID types.TeamID
 	msg.SetBody(&patrulje.RemarkSet{TeamID: teamID})
 	msg.SetMeta(&messages.Metadata{Producer: "hq-api"})
 	return c.p.Publish(msg)
+}
+
+// ErrPhotoConsentUnchanged reports a Fototilladelse save that would store what the patrol
+// already has. Silent at the HTTP edge, like ErrRemarkUnchanged.
+var ErrPhotoConsentUnchanged = errors.New("patrulje already has that photo consent")
+
+// SetPhotoConsent records who on the patrol refuses public photographs after the race.
+//
+// teamRefused is "somebody refused, we don't know who", and overrides memberIDs — which
+// are then dropped rather than published, so the event cannot say two things at once.
+// Accepting is the default, so everybody accepting is simply (false, none).
+func (c *patruljeCommander) SetPhotoConsent(ctx context.Context, teamID types.TeamID, teamRefused bool, memberIDs []types.MemberID) error {
+	team, err := c.q.GetByID(ctx, teamID)
+	if err != nil {
+		return err
+	}
+	if teamRefused {
+		memberIDs = nil
+	}
+	// Normalised through the column encoding, so order and blanks do not defeat the check.
+	ids := patrulje.SplitMemberIDs(patrulje.JoinMemberIDs(sortedMemberIDs(memberIDs)))
+	if team.PhotoRefusedTeam == teamRefused &&
+		patrulje.JoinMemberIDs(sortedMemberIDs(team.PhotoRefusedMemberIDs)) == patrulje.JoinMemberIDs(ids) {
+		return ErrPhotoConsentUnchanged
+	}
+
+	msg := c.p.MessageFunc()(subject.FromStr(fmt.Sprintf("NATHEJK.%s.patrulje.%s.photoconsented", team.Year, teamID)))
+	msg.SetBody(&patrulje.PhotoConsentSet{
+		TeamID:      teamID,
+		TeamRefused: teamRefused,
+		MemberIDs:   ids,
+	})
+	msg.SetMeta(&messages.Metadata{Producer: "hq-api"})
+	return c.p.Publish(msg)
+}
+
+func sortedMemberIDs(ids []types.MemberID) []types.MemberID {
+	out := slices.Clone(ids)
+	slices.Sort(out)
+	return out
 }
